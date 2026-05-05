@@ -1,8 +1,14 @@
 import { useState } from 'react'
+import { z } from 'zod'
 import { useAuthContext } from '../context/AuthContext.jsx'
 import { login, logout, signup } from '../services/auth.js'
 import { apiFetch } from '../services/api.js'
 import { APP_NAME } from '../utils/constants.js'
+
+const authFormSchema = z.object({
+  email: z.email('Please enter a valid email address.'),
+  password: z.string().min(6, 'Password must be at least 6 characters.'),
+})
 
 export default function HomePage() {
   const { user, loading, isAuthenticated } = useAuthContext()
@@ -10,13 +16,24 @@ export default function HomePage() {
   const [password, setPassword] = useState('')
   const [mode, setMode] = useState('login')
   const [formError, setFormError] = useState('')
+  const [fieldErrors, setFieldErrors] = useState({})
   const [apiCheck, setApiCheck] = useState(null)
 
   async function handleSubmit(e) {
     e.preventDefault()
     setFormError('')
+    setFieldErrors({})
+    const payload = {
+      email: email.trim(),
+      password,
+    }
+    const parsed = authFormSchema.safeParse(payload)
+    if (!parsed.success) {
+      setFieldErrors(parsed.error.flatten().fieldErrors)
+      return
+    }
     const action = mode === 'signup' ? signup : login
-    const { error } = await action(email, password)
+    const { error } = await action(parsed.data.email, parsed.data.password)
     if (error) setFormError(error.message)
   }
 
@@ -68,21 +85,33 @@ export default function HomePage() {
               <input
                 type="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value)
+                  if (fieldErrors.email) {
+                    setFieldErrors((prev) => ({ ...prev, email: undefined }))
+                  }
+                }}
                 required
                 autoComplete="email"
               />
+              {fieldErrors.email?.[0] ? <p className="error">{fieldErrors.email[0]}</p> : null}
             </label>
             <label>
               Password
               <input
                 type="password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value)
+                  if (fieldErrors.password) {
+                    setFieldErrors((prev) => ({ ...prev, password: undefined }))
+                  }
+                }}
                 required
                 minLength={6}
                 autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
               />
+              {fieldErrors.password?.[0] ? <p className="error">{fieldErrors.password[0]}</p> : null}
             </label>
             {formError ? <p className="error">{formError}</p> : null}
             <button type="submit">{mode === 'signup' ? 'Create account' : 'Log in'}</button>

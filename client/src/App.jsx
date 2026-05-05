@@ -1,14 +1,5 @@
-import { AuthProvider } from './context/AuthContext.jsx'
-import { Shell } from './components/Shell.jsx'
-import HomePage from './pages/HomePage.jsx'
-import './App.css'
+import LandingPage from './pages/LandingPage.jsx'
 
 export default function App() {
-  return (
-    <AuthProvider>
-      <Shell>
-        <HomePage />
-      </Shell>
-    </AuthProvider>
-  )
+  return <LandingPage />
 }
