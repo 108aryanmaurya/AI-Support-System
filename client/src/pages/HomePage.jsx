@@ -4,12 +4,12 @@ import { useAuthContext } from '../context/AuthContext.jsx'
 import { login, logout, signup } from '../services/auth.js'
 import { apiFetch } from '../services/api.js'
 import { APP_NAME } from '../utils/constants.js'
-
+ 
 const authFormSchema = z.object({
   email: z.email('Please enter a valid email address.'),
   password: z.string().min(6, 'Password must be at least 6 characters.'),
 })
-
+ 
 export default function HomePage() {
   const { user, loading, isAuthenticated } = useAuthContext()
   const [email, setEmail] = useState('')
