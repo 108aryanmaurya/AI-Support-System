@@ -4,6 +4,7 @@ import { env } from './config/env.js';
 import { requestLogger } from './middleware/requestLogger.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import authRoutes from './routes/auth.routes.js';
+import onboardingRoutes from './routes/onboarding.routes.js';
 import ticketsRoutes from './routes/tickets.routes.js';
 import messagesRoutes from './routes/messages.routes.js';
 import aiRoutes from './routes/ai.routes.js';
@@ -25,6 +26,7 @@ app.get('/health', (req, res) => {
 });
 
 app.use('/api/auth', authRoutes);
+app.use('/api/onboarding', onboardingRoutes);
 app.use('/api/tickets', ticketsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/ai', aiRoutes);

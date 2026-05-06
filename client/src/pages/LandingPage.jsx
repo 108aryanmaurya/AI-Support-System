@@ -63,15 +63,17 @@ const plans = [
   { name: 'Pro', price: '$149/mo', description: 'Advanced automation and analytics at scale.' },
 ]
 
-export default function LandingPage() {
+export default function LandingPage({ onLoginClick = () => {}, onStartTrialClick = () => {} }) {
   return (
     <div className="min-h-screen bg-gradient-to-b from-white via-[#f7fff9] to-white text-slate-900">
       <nav className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
           <Logo />
           <div className="flex items-center gap-3">
-            <Button variant="outline">Login</Button>
-            <Button>Start Free Trial</Button>
+            <Button variant="outline" onClick={onLoginClick}>
+              Login
+            </Button>
+            <Button onClick={onStartTrialClick}>Start Free Trial</Button>
           </div>
         </div>
       </nav>
@@ -90,7 +92,9 @@ export default function LandingPage() {
               agents.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button className="px-6 py-3">Start Free Trial</Button>
+              <Button className="px-6 py-3" onClick={onStartTrialClick}>
+                Start Free Trial
+              </Button>
               <Button variant="outline" className="px-6 py-3">
                 Watch Demo
               </Button>
@@ -203,7 +207,10 @@ export default function LandingPage() {
                 Launch AI support in minutes and scale without sacrificing quality.
               </p>
             </div>
-            <Button className="mt-6 bg-white text-slate-900 hover:bg-slate-100 md:mt-0">
+            <Button
+              className="mt-6 bg-white text-slate-900 hover:bg-slate-100 md:mt-0"
+              onClick={onStartTrialClick}
+            >
               Start Free Trial
             </Button>
           </div>

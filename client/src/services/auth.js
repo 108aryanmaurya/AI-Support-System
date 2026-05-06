@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js'
+import { apiFetch } from './api.js'
 
 /**
  * Sign in with email and password.
@@ -37,4 +38,32 @@ export async function getCurrentUser() {
   } = await supabase.auth.getUser()
   if (error) return null
   return user
+}
+
+/**
+ * Complete one-time onboarding for a newly signed up user.
+ */
+export async function registerOnboarding({
+  email,
+  firstName,
+  lastName,
+  jobTitle,
+  workspaceName,
+  companySize,
+  useCase,
+  teamEmails = [],
+}) {
+  return apiFetch('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      email,
+      firstName,
+      lastName,
+      jobTitle,
+      workspaceName,
+      companySize,
+      useCase,
+      teamEmails,
+    }),
+  })
 }
