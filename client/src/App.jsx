@@ -4,6 +4,8 @@ import LoginPage from './pages/LoginPage.jsx'
 import Register from './pages/Register.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import GettingStartedPage from './pages/GettingStartedPage.jsx'
+import InboxPage from './pages/InboxPage.jsx'
+import { HoverSidebar } from './components/HoverSidebar.jsx'
 
 export default function App() {
   const [pathname, setPathname] = useState(window.location.pathname)
@@ -21,6 +23,19 @@ export default function App() {
     if (window.location.pathname === path) return
     window.history.pushState({}, '', path)
     setPathname(path)
+  }
+
+  function withHoverSidebar(page) {
+    const excluded = ['/', '/login', '/register', '/getting-started']
+    if (excluded.includes(pathname)) return page
+    return (
+      <>
+        <HoverSidebar />
+        <div className="pl-[72px] md:ml-0">
+          {page}
+        </div>
+      </>
+    )
   }
 
   if (pathname === '/login') {
@@ -42,7 +57,11 @@ export default function App() {
   }
 
   if (pathname === '/dashboard') {
-    return <DashboardPage onGoHome={() => navigateTo('/')} />
+    return withHoverSidebar(<DashboardPage onGoHome={() => navigateTo('/')} />)
+  }
+
+  if (pathname === '/inbox') {
+    return withHoverSidebar(<InboxPage onGoHome={() => navigateTo('/')} />)
   }
 
   return (
