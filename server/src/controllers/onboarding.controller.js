@@ -2,10 +2,6 @@ import { supabaseAdmin } from '../config/supabase.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function isMissingTableError(error, tableName) {
-  return (error?.message ?? '').includes(`Could not find the table 'public.${tableName}'`);
-}
-
 function validatePayload(body) {
   const {
     firstName,
@@ -61,10 +57,8 @@ export async function completeOnboarding(req, res, next) {
       .maybeSingle();
 
     if (existingMembershipError) {
-      if (!isMissingTableError(existingMembershipError, 'organization_members')) {
-        res.status(500).json({ error: existingMembershipError.message || 'Failed to check onboarding status.' });
-        return;
-      }
+      res.status(500).json({ error: existingMembershipError.message || 'Failed to check onboarding status.' });
+      return;
     }
 
     if (existingMembership) {
@@ -75,36 +69,17 @@ export async function completeOnboarding(req, res, next) {
       return;
     }
 
-    const organizationInsert = {
-      name: payload.companyName,
-      company_size: payload.companySize,
-    };
-    if (payload.useCase) organizationInsert.use_case = payload.useCase;
+    const { data: organization, error: organizationError } = await supabaseAdmin
+      .from('organizations')
+      .insert({
+        name: payload.companyName,
+        company_size: payload.companySize,
+        use_case: payload.useCase,
+      })
+      .select('id')
+      .single();
 
-    let organization = null;
-    let organizationError = null;
-    ({
-      data: organization,
-      error: organizationError,
-    } = await supabaseAdmin.from('organizations').insert(organizationInsert).select('id').single());
-
-    if (organizationError && organizationInsert.use_case && organizationError.message?.includes("column 'use_case'")) {
-      ({
-        data: organization,
-        error: organizationError,
-      } = await supabaseAdmin
-        .from('organizations')
-        .insert({
-          name: payload.companyName,
-          company_size: payload.companySize,
-        })
-        .select('id')
-        .single());
-    }
-
-    const missingOrganizationsTable = isMissingTableError(organizationError, 'organizations');
-
-    if (organizationError && !missingOrganizationsTable) {
+    if (organizationError || !organization?.id) {
       res.status(500).json({ error: organizationError?.message || 'Failed to create organization.' });
       return;
     }
@@ -120,26 +95,24 @@ export async function completeOnboarding(req, res, next) {
       { onConflict: 'id' },
     );
 
-    const missingUsersTable = isMissingTableError(userError, 'users');
-    if (userError && !missingUsersTable) {
+    if (userError) {
+      // Best-effort rollback to avoid orphan org record if profile fails.
+      await supabaseAdmin.from('organizations').delete().eq('id', organization.id);
       res.status(500).json({ error: userError.message || 'Failed to create user profile.' });
       return;
     }
 
-    let membershipError = null;
-    if (!missingOrganizationsTable) {
-      ({ error: membershipError } = await supabaseAdmin.from('organization_members').insert({
-        user_id: authUser.id,
-        organization_id: organization.id,
-        role: 'admin',
-      }));
-    }
+    const { error: membershipError } = await supabaseAdmin.from('organization_members').insert({
+      user_id: authUser.id,
+      organization_id: organization.id,
+      role: 'admin',
+    });
 
     if (membershipError) {
-      if (!isMissingTableError(membershipError, 'organization_members')) {
-        res.status(500).json({ error: membershipError.message || 'Failed to create organization membership.' });
-        return;
-      }
+      // Best-effort rollback for consistency.
+      await supabaseAdmin.from('organizations').delete().eq('id', organization.id);
+      res.status(500).json({ error: membershipError.message || 'Failed to create organization membership.' });
+      return;
     }
 
     const invited = payload.invitedEmails.map((email) => ({
@@ -149,23 +122,9 @@ export async function completeOnboarding(req, res, next) {
 
     res.status(201).json({
       success: true,
-      organizationId: organization?.id ?? null,
+      organizationId: organization.id,
       invitedCount: invited.length,
       invitedPreview: invited,
-      warnings: [
-        missingOrganizationsTable
-          ? 'organizations table missing; organization record and membership linkage were skipped.'
-          : null,
-        missingUsersTable
-          ? 'users table missing; profile record was not persisted.'
-          : null,
-        isMissingTableError(existingMembershipError, 'organization_members')
-          ? 'organization_members table missing; duplicate onboarding protection is limited.'
-          : null,
-        isMissingTableError(membershipError, 'organization_members')
-          ? 'organization_members table missing; admin membership was not persisted.'
-          : null,
-      ].filter(Boolean),
     });
   } catch (error) {
     next(error);

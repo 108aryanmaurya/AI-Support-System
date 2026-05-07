@@ -1,11 +1,10 @@
 import { Router } from 'express';
-import * as messagesController from '../controllers/messages.controller.js';
 import { requireAuth } from '../middleware/auth.js';
+import { createOrGetCustomer } from '../controllers/customers.controller.js';
 
 const router = Router();
 
 router.use(requireAuth);
-
-router.post('/', messagesController.createMessageController);
+router.post('/', createOrGetCustomer);
 
 export default router;

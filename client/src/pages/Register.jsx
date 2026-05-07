@@ -123,7 +123,7 @@ export default function Register({ onBackToHome = () => {}, onGoToDashboard = ()
         useCase: form.useCase || undefined,
         invitedEmails: parsedTeamEmails,
       })
-      setStep(5)
+      onGoToDashboard()
     } catch (error) {
       setGlobalError(error.message || 'Failed to complete registration.')
     } finally {
@@ -189,7 +189,7 @@ export default function Register({ onBackToHome = () => {}, onGoToDashboard = ()
 
       <div className="relative z-10 w-full max-w-lg rounded-3xl border border-[#3ECF8E]/25 bg-white p-7 shadow-[0_25px_80px_rgba(0,0,0,0.45)] sm:p-8">
         <div className="mb-7 flex items-center justify-center">
-          <Logo />
+          <Logo variant="dark" />
         </div>
 
         <Stepper currentStep={step} />

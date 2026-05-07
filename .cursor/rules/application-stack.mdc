@@ -1,0 +1,124 @@
+---
+description: Monorepo tech stack, pinned dependency versions, and version-specific conventions
+alwaysApply: false
+---
+
+# Application stack — AI Support System
+
+npm **workspaces** monorepo (`client`, `server`, `shared`). Package manifests declare semver ranges (`^`); **authoritative installs** are in root `package-lock.json` after `npm install`.
+
+## Repository root
+
+| Package | Declared | Notes |
+|--------|----------|--------|
+| `concurrently` | `^9.2.1` | Lock: **9.2.1** — runs client + server dev scripts together (`npm run dev`). |
+
+- No root `engines` field in repo today; consider adding `engines.node` aligned with **Vite** and **Node** support below.
+
+---
+
+## Client (`client/`)
+
+**Runtime / UI**
+
+| Package | Declared | Lock (representative) | Role |
+|---------|----------|------------------------|------|
+| `react` | `^19.2.5` | **19.2.5** | UI |
+| `react-dom` | `^19.2.5` | (same minor as react) | DOM renderer |
+| `@types/react` / `@types/react-dom` | ^19.x | — | TS types when using editors/TS tooling |
+
+**Build / dev server**
+
+| Package | Declared | Lock | Role |
+|---------|----------|------|------|
+| `vite` | `^8.0.10` | **8.0.10** | Bundler / dev server |
+| `@vitejs/plugin-react` | `^6.0.1` | **6.0.1** | React Fast Refresh, JSX |
+
+**Styling**
+
+| Package | Declared | Lock | Role |
+|---------|----------|------|------|
+| `tailwindcss` | `^4.2.4` | **4.2.4** | Utility CSS v4 |
+| `@tailwindcss/vite` | `^4.2.4` | **4.2.4** | Vite integration for Tailwind 4 |
+| `postcss` | `^8.5.14` | — | Pipeline (e.g. with `autoprefixer`) |
+| `autoprefixer` | `^10.5.0` | — | Vendor prefixes |
+
+**Data / validation / backend client**
+
+| Package | Declared | Lock | Role |
+|---------|----------|------|------|
+| `@supabase/supabase-js` | `^2.49.8` | **2.105.1** | Browser Supabase client (anon key only) |
+| `zod` | `^4.4.3` | **4.4.3** | Runtime schema validation |
+
+**Lint**
+
+| Package | Declared | Notes |
+|---------|----------|--------|
+| `eslint` | `^10.2.1` | Lock: **10.3.0** — ESLint 9+ style **flat config** (`eslint.config.js`). |
+| `@eslint/js` | `^10.0.1` | Base JS recommended rules. |
+| `eslint-plugin-react-hooks` | `^7.1.1` | Hooks rules; keep aligned with React major. |
+| `eslint-plugin-react-refresh` | `^0.5.2` | Fast Refresh constraints. |
+| `globals` | `^17.5.0` | Global env presets for flat config. |
+
+**Workspace**
+
+| Package | Declared | Role |
+|---------|----------|------|
+| `@ai-support/shared` | `*` | Shared constants / types from `shared/`. |
+
+---
+
+## Server (`server/`)
+
+| Package | Declared | Lock (representative) | Role |
+|---------|----------|------------------------|------|
+| `express` | `^5.1.0` | **5.2.1** | HTTP API (v5 line; not Express 4). |
+| `cors` | `^2.8.5` | **2.8.6** | CORS middleware |
+| `dotenv` | `^16.5.0` | **16.6.1** | Load `.env` (validate in app code). |
+| `@supabase/supabase-js` | `^2.49.8` | **2.105.1** | Admin/service-role usage on server only |
+| `@ai-support/shared` | `*` | Shared package |
+
+**Runtime:** ESM (`"type": "module"`). Dev: `node --watch src/server.js`. Prod: `NODE_ENV=production node src/server.js`.
+
+---
+
+## Shared (`shared/`)
+
+| Aspect | Detail |
+|--------|--------|
+| Name | `@ai-support/shared` |
+| Module | ESM — `"type": "module"`, `exports` map to `./src/index.js` + `./src/index.d.ts` |
+| Dependencies | None listed — keep it lean; add only if shared code truly needs them. |
+
+---
+
+## Best practices and version remarks
+
+1. **Node.js** — Vite 8 and the toolchain expect a **current Node LTS** (check [Vite’s docs](https://vite.dev) for the exact minimum). Add root `engines.node` and use the same Node in CI and production.
+
+2. **React 19** — Prefer patterns documented for React 19 (e.g. ref-as-prop where applicable). Keep `eslint-plugin-react-hooks` and `@types/react*` on compatible majors with `react` / `react-dom`.
+
+3. **Vite 8** — Use the Vite 8 + plugin docs for `vite.config.js`. Environment variables follow Vite’s `import.meta.env` rules on the client; do not rely on Node-only `process.env` in client source unless exposed via `define` / `envPrefix`.
+
+4. **Tailwind CSS 4** — Configuration is **CSS-first** (`@import "tailwindcss"`, `@theme`, etc.); prefer `@tailwindcss/vite` over legacy PostCSS-only Tailwind 3 setups. Verify `index.css` / entry imports match Tailwind 4 guidance.
+
+5. **Zod 4** — Zod 4 is a **major** line vs Zod 3; examples in the wild may still show v3 APIs. Prefer [Zod 4 docs](https://zod.dev) for `z.object`, error shapes, and schema methods.
+
+6. **Express 5** — Not drop-in identical to Express 4 in every edge case (routing, async errors, removed APIs). When adding middleware or copying snippets, confirm they target Express 5.
+
+7. **Supabase JS v2** — The lockfile can resolve **newer 2.x** than the minimum in `package.json`; that is normal for `^`. **Never** ship the service role key to the client; **browser** uses the anon key, **server** uses the service role for privileged operations.
+
+8. **Lockfile** — Commit `package-lock.json` and run `npm ci` in CI for reproducible builds. After range bumps, re-run install and smoke-test client build and server start.
+
+9. **Security / env** — Keep secrets in `.env` (see workspace `.env.example` files). Validate required env vars at server startup (project already uses config validation patterns).
+
+---
+
+## Quick reference — major stack
+
+| Layer | Choices |
+|-------|---------|
+| Monorepo | npm workspaces |
+| Client | React 19, Vite 8, Tailwind 4, Zod 4, Supabase JS |
+| Server | Node (ESM), Express 5, cors, dotenv, Supabase JS |
+| Shared | `@ai-support/shared` (ESM + types) |

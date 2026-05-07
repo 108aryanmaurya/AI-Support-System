@@ -1,0 +1,107 @@
+---
+description: Conventions for the Express API under server/ (ESM layout, routing, auth, errors, config)
+globs:
+  - server/**/*
+alwaysApply: false
+---
+
+# Server (`server/`) — Express API conventions
+
+Use this when adding or changing code under `server/`. The API is **Express 5**, **Node ESM** (`"type": "module"` in `server/package.json`), and talks to **Supabase** with the **service role** on the server only.
+
+## Runtime and scripts
+
+- **Local imports** must use the `.js` extension (e.g. `'./config/env.js'`) so Node resolves ESM paths correctly.
+- **Dev:** `npm run dev` runs `node --watch src/server.js`.
+- **Prod:** `npm run start` sets `NODE_ENV=production` and runs `node src/server.js`.
+- **Workspace:** `server` depends on `@ai-support/shared` as `"*"`; use it for shared constants/types when appropriate.
+
+## Entry points: `server.js` vs `app.js`
+
+- **`src/server.js`** is the process entry: it loads environment configuration **before** other modules that read `process.env` at import time.
+  - Import `dotenv/config` at the top (see comment in file).
+  - Start HTTP with `app.listen(env.port, ...)`.
+  - Register **graceful shutdown** on `SIGTERM` and `SIGINT` (`server.close` then `process.exit(0)`).
+- **`src/app.js`** defines the Express app only (no `listen`): middleware, route mounts, and error handlers. **Default-export** the `app` instance.
+
+## Middleware order (in `app.js`)
+
+1. `cors` — `origin: env.corsOrigins`, `credentials: true`.
+2. `express.json({ limit: '1mb' })`.
+3. `requestLogger`.
+4. Routes (including root `GET /health`).
+5. `notFoundHandler`, then `errorHandler` (both last).
+
+Do not mount routes after the 404 handler except for error middleware.
+
+## Routes (`src/routes/*.routes.js`)
+
+- **Filename:** `kebab-or-domain.routes.js` (e.g. `auth.routes.js`, `tickets.routes.js`).
+- **Export:** `export default router` where `router` is `Router()` from Express.
+- **Mount prefix** in `app.js` is `/api/<resource>` (e.g. `/api/auth`, `/api/tickets`).
+- **Auth:** either `router.use(requireAuth)` for an entire router, or per-route `requireAuth` before the handler (see `auth.routes.js` vs `tickets.routes.js`).
+- **Controller wiring:** project uses both styles:
+  - `import * as fooController from '../controllers/foo.controller.js'` and `fooController.listTickets`, or
+  - `import { namedHandler } from '../controllers/bar.controller.js'`.
+  Keep new files consistent with the router you are editing unless you are standardizing a whole area.
+
+## Controllers (`src/controllers/*.controller.js`)
+
+- **Filename:** `*.controller.js`.
+- **Handlers** are **named exports** (e.g. `export async function registerUser(req, res, next)`).
+- **Sync success:** `res.json(...)` or `res.status(201).json(...)`.
+- **Validation / expected failures:** set status and respond with JSON **`{ error: '<message>' }`**, then **`return`** (do not throw for normal 4xx cases).
+- **Unexpected errors** in async handlers: wrap in `try/catch` and call **`next(error)`** (see `registerUser`, `completeOnboarding`).
+- Placeholder handlers may omit `next` if they only return static JSON.
+
+## Auth middleware (`src/middleware/auth.js`)
+
+- **`requireAuth`:** reads `Authorization: Bearer <jwt>`, validates with `supabaseAdmin.auth.getUser(token)`.
+- On failure: **`res.status(401).json({ error: '...' })`** and `return` (no `next` with error for those paths).
+- On success: sets **`req.user`** and **`req.accessToken`**, then `next()`.
+- On thrown exceptions: `next(e)`.
+
+## Centralized errors (`src/middleware/errorHandler.js`)
+
+- **`notFoundHandler`:** `404` with `{ error: 'Not Found', path: req.originalUrl }`.
+- **`errorHandler`:** status from **`err.status ?? err.statusCode ?? 500`**; body `{ error: message }`.
+  - In **production**, 5xx responses use a generic **Internal Server Error** message; **stack** is omitted.
+  - In **non-production**, **stack** may be included for debugging.
+  - **5xx** errors are logged with `console.error` (eslint `no-console` disabled for that line).
+- Controllers should rely on this by passing errors to `next(err)` instead of duplicating 500 handling where possible.
+
+## HTTP error helper (`src/utils/httpError.js`)
+
+- **`HttpError`** extends `Error` and sets **`status`**. The global error handler reads `status`, so this class is the intended way to throw **typed HTTP errors** (e.g. `next(new HttpError(404, 'Not found'))`) when you migrate away from inline `res.status` for some paths.
+
+## Config (`src/config/`)
+
+- **`env.js`:** loads dotenv, validates **required** vars (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`), throws a clear error if missing (points to copying `.env.example`).
+  - Exports a frozen **`env`** object: `nodeEnv`, `port` (default `3001`), Supabase URL/key, **`corsOrigins`** (from comma-separated `CORS_ORIGIN` or default `['http://localhost:5173']`).
+- **`supabase.js`:** exports **`supabaseAdmin`** — `createClient` with **no** session persistence / auto-refresh; documented as **server-only** and **never** exposed to the client.
+
+## Services (`src/services/*.service.js`)
+
+- Place **domain / data access** helpers here (e.g. async functions used by controllers). The existing tickets service is a stub with a JSDoc note to use `supabaseAdmin` for real queries.
+
+## Request logging (`src/middleware/requestLogger.js`)
+
+- Logs **method**, **originalUrl**, **statusCode**, and **duration** using `process.hrtime.bigint()` on `res` `'finish'`. Uses `console.log` for the line (no eslint suppression in this file).
+
+## Health checks
+
+- **Global:** `GET /health` on the app — `{ ok: true, service: 'ai-support-api' }`.
+- **Scoped:** nested routes may expose their own `.../health` with `{ ok: true, scope: '<name>' }` (e.g. auth, AI).
+
+## Environment files
+
+- **`server/.env.example`** documents `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, optional `PORT`, optional `CORS_ORIGIN` (comma-separated).
+
+## Supabase usage patterns (from controllers)
+
+- Use **`supabaseAdmin`** from `../config/supabase.js` for server-side queries and auth admin APIs.
+- Some flows **tolerate missing tables/columns** by detecting PostgREST error messages (e.g. missing `public.<table>`, missing column) and continuing with **warnings** in the JSON response — follow the same defensive style when extending onboarding/profile features if the schema is still evolving.
+
+## Console and eslint
+
+- Where logging is intentional in `server.js` and `errorHandler.js`, the code uses **`// eslint-disable-next-line no-console`** next to `console.log` / `console.error` lines.

@@ -3,6 +3,7 @@ import LandingPage from './pages/LandingPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import Register from './pages/Register.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
+import GettingStartedPage from './pages/GettingStartedPage.jsx'
 
 export default function App() {
   const [pathname, setPathname] = useState(window.location.pathname)
@@ -23,11 +24,21 @@ export default function App() {
   }
 
   if (pathname === '/login') {
-    return <LoginPage onBackToHome={() => navigateTo('/')} onStartTrial={() => navigateTo('/register')} />
+    return (
+      <LoginPage
+        onBackToHome={() => navigateTo('/')}
+        onStartTrial={() => navigateTo('/register')}
+        onLoginSuccess={() => navigateTo('/getting-started')}
+      />
+    )
   }
 
   if (pathname === '/register') {
-    return <Register onBackToHome={() => navigateTo('/')} onGoToDashboard={() => navigateTo('/dashboard')} />
+    return <Register onBackToHome={() => navigateTo('/')} onGoToDashboard={() => navigateTo('/getting-started')} />
+  }
+
+  if (pathname === '/getting-started') {
+    return <GettingStartedPage />
   }
 
   if (pathname === '/dashboard') {
