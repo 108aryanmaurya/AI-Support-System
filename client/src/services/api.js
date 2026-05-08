@@ -9,7 +9,7 @@ export async function apiFetch(path, options = {}) {
   const {
     data: { session },
   } = await supabase.auth.getSession()
-
+console.log('session', session)
   const headers = new Headers(options.headers)
   headers.set('Content-Type', 'application/json')
   if (session?.access_token) {

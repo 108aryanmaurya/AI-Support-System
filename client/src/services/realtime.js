@@ -165,3 +165,54 @@ export function subscribeToOrganizationConversations({
     },
   })
 }
+
+export function subscribeToOrganizationMessages({
+  organizationId,
+  onInsert,
+  onUpdate,
+  onDelete,
+  onStatusChange,
+  reconnectDelayMs = 2000,
+}) {
+  if (!organizationId) return () => {}
+
+  const channelName = buildChannelName('org-messages', [organizationId])
+
+  return createManagedSubscription({
+    channelName,
+    onStatusChange,
+    reconnectDelayMs,
+    registerHandlers: (channel) => {
+      channel.on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `organization_id=eq.${organizationId}`,
+        },
+        (payload) => onInsert?.(payload),
+      )
+      channel.on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'messages',
+          filter: `organization_id=eq.${organizationId}`,
+        },
+        (payload) => onUpdate?.(payload),
+      )
+      channel.on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'messages',
+          filter: `organization_id=eq.${organizationId}`,
+        },
+        (payload) => onDelete?.(payload),
+      )
+    },
+  })
+}

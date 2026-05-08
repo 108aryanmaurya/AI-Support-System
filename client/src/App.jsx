@@ -5,6 +5,7 @@ import Register from './pages/Register.jsx'
 import DashboardPage from './pages/DashboardPage.jsx'
 import GettingStartedPage from './pages/GettingStartedPage.jsx'
 import InboxPage from './pages/InboxPage.jsx'
+import TestSendMessagePage from './pages/TestSendMessagePage.jsx'
 import { HoverSidebar } from './components/HoverSidebar.jsx'
 
 export default function App() {
@@ -62,6 +63,10 @@ export default function App() {
 
   if (pathname === '/inbox') {
     return withHoverSidebar(<InboxPage onGoHome={() => navigateTo('/')} />)
+  }
+
+  if (pathname === '/test/send-message') {
+    return <TestSendMessagePage />
   }
 
   return (

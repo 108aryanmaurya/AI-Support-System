@@ -1,3 +1,4 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bell,
   ChevronDown,
@@ -31,6 +32,9 @@ import {
   UserRoundPlus,
   X,
 } from 'lucide-react'
+import { apiFetch } from '../services/api.js'
+import { useRealtimeInbox } from '../hooks/useRealtimeInbox.js'
+import { useInboxStore } from '../stores/inboxStore.js'
 
 const leftSections = [
   { label: 'Your inbox', count: 4 },
@@ -40,13 +44,6 @@ const leftSections = [
   { label: 'Unassigned', count: 0 },
   { label: 'Spam', count: 0 },
   { label: 'Dashboard' },
-]
-
-const conversations = [
-  { title: 'Messenger - [Demo]', body: 'hi', time: '5h', channel: 'M' },
-  { title: 'Email - [Demo]', body: 'This is a demo email. It shows how em...', time: '2d', channel: 'E' },
-  { title: 'WhatsApp - [Demo]', body: 'Set up WhatsApp or social channels', time: '2d', channel: 'W' },
-  { title: 'Phone - [Demo]', body: 'Set up phone or SMS', time: '2d', channel: 'P' },
 ]
 
 const finForServiceOptions = [
@@ -66,7 +63,112 @@ const viewOptions = [
   { label: 'Tickets', count: 0 },
 ]
 
+function getRelativeTimeLabel(isoDate) {
+  if (!isoDate) return '-'
+  const now = Date.now()
+  const then = new Date(isoDate).getTime()
+  if (!Number.isFinite(then)) return '-'
+  const diffMin = Math.floor((now - then) / 60000)
+  if (diffMin < 1) return 'now'
+  if (diffMin < 60) return `${diffMin}m`
+  const diffHr = Math.floor(diffMin / 60)
+  if (diffHr < 24) return `${diffHr}h`
+  return `${Math.floor(diffHr / 24)}d`
+}
+
+function toConversationViewModel(item) {
+  const channel = (item.source ?? 'chat').slice(0, 1).toUpperCase() || 'C'
+  return {
+    ...item,
+    title: `${item.source ?? 'chat'} - ${item.id.slice(0, 8)}`,
+    body: item.last_message_preview ?? 'No messages yet',
+    time: getRelativeTimeLabel(item.last_message_at),
+    channel,
+  }
+}
+
 export default function InboxPage() {
+  
+  const organizationId = import.meta.env.VITE_TEST_ORGANIZATION_ID?.trim() ?? ''
+  const conversations = useInboxStore((state) => state.conversations)
+  const activeConversationId = useInboxStore((state) => state.activeConversationId)
+  const messagesByConversationId = useInboxStore((state) => state.messagesByConversationId)
+  const setConversations = useInboxStore((state) => state.setConversations)
+  const setActiveConversationId = useInboxStore((state) => state.setActiveConversationId)
+  const setMessagesForConversation = useInboxStore((state) => state.setMessagesForConversation)
+  const setTypingState = useInboxStore((state) => state.setTypingState)
+
+  const [loadingConversations, setLoadingConversations] = useState(false)
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [error, setError] = useState('')
+
+  useRealtimeInbox({
+    organizationId,
+    userId: 'de3bc97d-da3b-42be-8900-39ae7d828089',
+  })
+
+  const selectedConversation = useMemo(
+    () => conversations.find((item) => item.id === activeConversationId) ?? null,
+    [conversations, activeConversationId],
+  )
+  const messages = messagesByConversationId[activeConversationId] ?? []
+
+  const openCount = useMemo(
+    () => conversations.filter((item) => item.status === 'open').length,
+    [conversations],
+  )
+
+  const loadConversations = useCallback(async () => {
+    if (!organizationId) return
+    setLoadingConversations(true)
+    setError('')
+    try {
+      const response = await apiFetch(`/api/conversations?organizationId=${organizationId}&page=1&pageSize=50`)
+      setConversations(response?.items ?? [])
+    } catch (err) {
+      setError(err?.message || 'Failed to load conversations.')
+    } finally {
+      setLoadingConversations(false)
+    }
+  }, [organizationId, setConversations])
+
+  const loadMessages = useCallback(
+    async (conversationId) => {
+      if (!organizationId || !conversationId) return
+      setLoadingMessages(true)
+      setError('')
+      try {
+        const response = await apiFetch(
+          `/api/conversations/${conversationId}/messages?organizationId=${organizationId}&page=1&pageSize=100`,
+        )
+        setMessagesForConversation(conversationId, response?.items ?? [])
+      } catch (err) {
+        setError(err?.message || 'Failed to load messages.')
+      } finally {
+        setLoadingMessages(false)
+      }
+    },
+    [organizationId, setMessagesForConversation],
+  )
+
+  useEffect(() => {
+    loadConversations()
+  }, [loadConversations])
+
+  useEffect(() => {
+    if (!activeConversationId) {
+      return
+    }
+    loadMessages(activeConversationId)
+  }, [activeConversationId, loadMessages])
+
+  useEffect(() => {
+    if (!activeConversationId) return
+    setTypingState(activeConversationId, [])
+  }, [activeConversationId, setTypingState])
+
+  const conversationView = conversations.map(toConversationViewModel)
+
   return (
     <main className="h-screen overflow-hidden bg-[#0f1422] text-slate-100">
       <div className="grid h-screen grid-cols-[260px_1fr_2fr_1.1fr] gap-0">
@@ -164,7 +266,7 @@ export default function InboxPage() {
           <div className="px-4 py-3">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-full border border-[#3a4b6f] bg-[#18233b] px-2.5 py-1 text-[12px] font-semibold text-white">
-                4 Open
+                {loadingConversations ? 'Loading...' : `${openCount} Open`}
               </span>
               <div className="flex items-center gap-2">
                 <span className="rounded-full border border-[#3a4b6f] bg-[#18233b] px-2.5 py-1 text-[12px] font-semibold text-white">
@@ -177,11 +279,12 @@ export default function InboxPage() {
             </div>
 
             <div className="space-y-0">
-              {conversations.map((item) => (
+              {conversationView.map((item) => (
                 <article
-                  key={item.title}
+                  key={item.id}
+                  onClick={() => setActiveConversationId(item.id)}
                   className={`border-b border-[#27314a] px-1 py-3 last:border-b-0 ${
-                    item.active ? 'rounded-xl border border-[#384b70] bg-[#1a2337]' : ''
+                    item.id === activeConversationId ? 'rounded-xl border border-[#384b70] bg-[#1a2337]' : ''
                   }`}
                 >
                   <div className="flex items-start gap-3">
@@ -199,13 +302,18 @@ export default function InboxPage() {
                   </div>
                 </article>
               ))}
+              {!loadingConversations && conversationView.length === 0 ? (
+                <div className="px-1 py-3 text-sm text-slate-400">
+                  {organizationId ? 'No conversations found.' : 'Set VITE_TEST_ORGANIZATION_ID to load conversations.'}
+                </div>
+              ) : null}
             </div>
           </div>
         </section>
 
         <section className="flex relative flex-col border-r border-[#27314a] bg-[#181f32]">
           <div className="flex items-center justify-between border-b border-[#27314a] px-3 py-4">
-            <h3 className="text-2xl font-semibold">Messenger</h3>
+            <h3 className="text-2xl font-semibold">{selectedConversation ? selectedConversation.source ?? 'Messenger' : 'Messenger'}</h3>
             <div className="flex items-center gap-2 text-slate-300">
               <Star size={14} />
               <button className="rounded-full bg-[#2b3346] p-1.5">
@@ -222,7 +330,7 @@ export default function InboxPage() {
           </div>
 <div>
 
-          <div className="flex-1 overflow-auto px-3 py-3">
+          <div className="flex-1 overflow-auto h-[400px] px-3 py-3">
             <div className="rounded-xl border border-[#2a3654] bg-[#242c3f] p-4">
               <div className="mb-3 rounded-lg border border-[#334060] bg-[#2a3040] p-4 text-center">
                 <div className="mb-3 flex justify-center gap-2 text-slate-200">
@@ -243,29 +351,31 @@ export default function InboxPage() {
                 </div>
               </div>
               <p className="text-sm text-slate-100">
-                This is a demo message. It shows how a customer conversation from the Messenger
-                will look in your Inbox. Conversations handled by Fin AI Agent will also appear here.
+                {selectedConversation
+                  ? `Conversation ${selectedConversation.id.slice(0, 8)} is live. Incoming customer messages appear below in real-time.`
+                  : 'Select a conversation from the list to view live messages.'}
               </p>
-              <p className="mt-3 text-sm text-slate-100">
-                Once a channel is installed, all conversations come straight to your Inbox, so you can
-                route them to the right team.
-              </p>
+              {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
             </div>
 
-            <div className="mt-2 inline-flex max-w-[230px] items-center gap-2 rounded-xl bg-[#2b3346] px-3 py-2 text-sm">
-              <a href="#" className="underline">
-                Install Messenger
-              </a>
-              <span className="text-xs text-slate-300">2d</span>
-            </div>
+            {loadingMessages ? <p className="mt-4 text-sm text-slate-300">Loading messages...</p> : null}
+            {!loadingMessages && messages.length === 0 ? (
+              <p className="mt-4 text-sm text-slate-300">No messages yet.</p>
+            ) : null}
 
-            <div className="mt-4 flex items-end justify-between">
-              <div className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#4169b2] text-xs font-bold">M</div>
-              <div className="rounded-2xl bg-[#334680] px-4 py-2 text-sm">
-                <p>hi</p>
-                <p className="text-xs text-slate-300">Not seen • 5h</p>
+            {messages.map((message) => (
+              <div key={message.id} className="mt-4 flex items-end justify-between">
+                <div className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#4169b2] text-xs font-bold">
+                  {(message.sender_type ?? 'c').slice(0, 1).toUpperCase()}
+                </div>
+                <div className="max-w-[75%] rounded-2xl bg-[#334680] px-4 py-2 text-sm">
+                  <p className="whitespace-pre-wrap">{message.content}</p>
+                  <p className="text-xs text-slate-300">
+                    {message.sender_type} • {getRelativeTimeLabel(message.created_at)}
+                  </p>
+                </div>
               </div>
-            </div>
+            ))}
           </div>
 </div>
 
@@ -288,22 +398,22 @@ export default function InboxPage() {
             <button className="text-lg text-slate-400">Copilot</button>
           </div>
           <div className="space-y-3 p-4 text-slate-300">
-            <div className="flex items-center justify-between"><span>Assignee</span><span className="text-white">Aryan Maurya</span></div>
-            <div className="flex items-center justify-between"><span>Team inbox</span><span className="text-white">Unassigned</span></div>
+            <div className="flex items-center justify-between"><span>Assignee</span><span className="text-white">{selectedConversation?.assigned_to_member_id ? selectedConversation.assigned_to_member_id.slice(0, 8) : 'Unassigned'}</span></div>
+            <div className="flex items-center justify-between"><span>Team inbox</span><span className="text-white">{selectedConversation?.status ?? 'Unassigned'}</span></div>
             <div className="pt-2 text-xs text-slate-400">Links</div>
             <div className="flex items-center gap-2"><Link2 size={14} /> Tracker ticket</div>
             <div className="flex items-center gap-2"><ShieldAlert size={14} /> Back-office tickets</div>
             <div className="pt-2 text-xs text-slate-400">Conversation attributes</div>
             <div className="grid grid-cols-2 gap-2 text-xs">
-              <span>Company</span><span className="text-white">[Demo]</span>
-              <span>Brand</span><span className="text-white">Acme</span>
-              <span>ID</span><span className="text-white">2154...</span>
+              <span>Source</span><span className="text-white">{selectedConversation?.source ?? '-'}</span>
+              <span>Priority</span><span className="text-white">{selectedConversation?.priority ?? '-'}</span>
+              <span>ID</span><span className="text-white">{selectedConversation ? `${selectedConversation.id.slice(0, 8)}...` : '-'}</span>
             </div>
             <div className="pt-2 text-xs text-slate-400">User data</div>
-            <div className="flex items-center gap-2"><CircleUserRound size={14} /> No recent conversations</div>
+            <div className="flex items-center gap-2"><CircleUserRound size={14} /> Customer: {selectedConversation?.customer_id ? `${selectedConversation.customer_id.slice(0, 8)}...` : 'N/A'}</div>
             <div className="flex items-center gap-2"><Users size={14} /> Team insights</div>
             <div className="flex items-center gap-2"><Bell size={14} /> Alerts</div>
-            <div className="flex items-center gap-2"><Clock3 size={14} /> Last updated 5m ago</div>
+            <div className="flex items-center gap-2"><Clock3 size={14} /> Last updated {getRelativeTimeLabel(selectedConversation?.last_message_at)}</div>
             <div className="flex items-center gap-2"><Phone size={14} /> Voice available</div>
           </div>
         </aside>
