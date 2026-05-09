@@ -9,6 +9,8 @@ router.post('/incoming', incomingMessageRateLimit, messagesController.createInco
 
 router.use(requireAuth);
 
+router.post('/send', messagesController.sendInboxMessageController);
+
 router.post('/', messagesController.createMessageController);
 
 export default router;

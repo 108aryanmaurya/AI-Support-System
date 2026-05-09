@@ -9,6 +9,7 @@ import {
   sanitizeMessage,
 } from '../utils/incomingMessageValidation.js';
 import { emitIncomingMessageEvent } from '../utils/monitoring.js';
+import { sendInboxAgentOutboundMessage } from '../services/inboxAgentSend.service.js';
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -33,6 +34,20 @@ async function callIncomingMessageRpcWithRetry(params) {
 
   // Safe retry: DB function is atomic and idempotency key aware.
   return supabaseAdmin.rpc('handle_incoming_message', params);
+}
+
+export async function sendInboxMessageController(req, res, next) {
+  try {
+    const { conversation_id: conversationId, content } = req.body ?? {};
+    const result = await sendInboxAgentOutboundMessage({
+      userId: req.user.id,
+      conversationId,
+      rawContent: content,
+    });
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
 }
 
 export async function createMessageController(req, res, next) {

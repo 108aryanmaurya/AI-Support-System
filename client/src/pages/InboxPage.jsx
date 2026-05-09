@@ -25,6 +25,7 @@ import {
   Search,
   ShieldAlert,
   SlidersHorizontal,
+  RotateCcw,
   Sparkles,
   Star,
   Users,
@@ -32,7 +33,11 @@ import {
   X,
 } from 'lucide-react'
 import { apiFetch } from '../services/api.js'
-import { createSendMessage, validateOutboundMessage } from '../services/conversationSendMessage.js'
+import {
+  createSendMessage,
+  getMessageDeliveryStatus,
+  validateOutboundMessage,
+} from '../services/conversationSendMessage.js'
 import { useAuth } from '../hooks/useAuth.js'
 import { useInboxPeriodicSync } from '../hooks/useInboxPeriodicSync.js'
 import { useRealtimeInbox } from '../hooks/useRealtimeInbox.js'
@@ -324,14 +329,34 @@ export default function InboxPage() {
     }
   }, [activeConversationId, draftMessage, organizationId, sendMessage, stopTypingImmediately])
 
+  const handleRetryMessage = useCallback(
+    async (message) => {
+      if (!activeConversationId || !organizationId || !message?.content) return
+      setError('')
+      setSendingMessage(true)
+      try {
+        const result = await sendMessage(activeConversationId, message.content, {
+          retryOfMessageId: message.id,
+        })
+        if (!result.ok && !result.skipped) {
+          setError(result.error || 'Retry failed.')
+        }
+      } finally {
+        setSendingMessage(false)
+      }
+    },
+    [activeConversationId, organizationId, sendMessage],
+  )
+
   const onComposerKeyDown = useCallback(
     (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault()
+        if (!canSendMessage) return
         handleSendMessage()
       }
     },
-    [handleSendMessage],
+    [canSendMessage, handleSendMessage],
   )
 
   return (
@@ -531,25 +556,59 @@ export default function InboxPage() {
               <p className="mt-4 text-sm text-slate-300">No messages yet.</p>
             ) : null}
 
-            {messages.map((message) => (
-              <div key={message.id} className="mt-4 flex items-end justify-between">
-                <div className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#4169b2] text-xs font-bold">
-                  {(message.sender_type ?? 'c').slice(0, 1).toUpperCase()}
+            {messages.map((message) => {
+              const delivery = getMessageDeliveryStatus(message)
+              const isAgent = (message.sender_type ?? '') === 'agent'
+              const statusLabel =
+                delivery === 'sending' ? 'Sending' : delivery === 'failed' ? 'Failed' : 'Sent'
+              return (
+                <div key={message.id} className="mt-4 flex items-end justify-between gap-2">
+                  <div className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#4169b2] text-xs font-bold">
+                    {(message.sender_type ?? 'c').slice(0, 1).toUpperCase()}
+                  </div>
+                  <div
+                    className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${
+                      delivery === 'failed'
+                        ? 'border border-red-400/70 bg-[#402a38]'
+                        : delivery === 'sending'
+                          ? 'border border-amber-400/40 bg-[#2f3a5c]'
+                          : 'bg-[#334680]'
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <p className="text-xs text-slate-300">
+                        {message.sender_type} • {getRelativeTimeLabel(message.created_at)}
+                      </p>
+                      {isAgent ? (
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
+                            delivery === 'sending'
+                              ? 'bg-amber-500/25 text-amber-200'
+                              : delivery === 'failed'
+                                ? 'bg-red-500/25 text-red-200'
+                                : 'bg-emerald-500/20 text-emerald-200'
+                          }`}
+                        >
+                          {statusLabel}
+                        </span>
+                      ) : null}
+                      {isAgent && delivery === 'failed' ? (
+                        <button
+                          type="button"
+                          onClick={() => handleRetryMessage(message)}
+                          disabled={sendingMessage || !activeConversationId}
+                          className="inline-flex items-center gap-1 rounded-md border border-red-300/40 bg-red-950/40 px-2 py-0.5 text-[11px] font-medium text-red-100 hover:bg-red-900/50 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <RotateCcw size={12} aria-hidden />
+                          Retry
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
-                <div
-                  className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${
-                    message.sendFailed ? 'border border-red-400/70 bg-[#402a38]' : 'bg-[#334680]'
-                  }`}
-                >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                  <p className="text-xs text-slate-300">
-                    {message.sender_type} • {getRelativeTimeLabel(message.created_at)}
-                    {message.optimistic ? ' • sending…' : ''}
-                    {message.sendFailed ? ' • failed to send' : ''}
-                  </p>
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
 </div>
 

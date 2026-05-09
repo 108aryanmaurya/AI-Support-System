@@ -10,6 +10,7 @@ import conversationsRoutes from './routes/conversations.routes.js';
 import ticketsRoutes from './routes/tickets.routes.js';
 import messagesRoutes from './routes/messages.routes.js';
 import aiRoutes from './routes/ai.routes.js';
+import emailWebhookRoutes from './routes/emailWebhook.routes.js';
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.use('/api/conversations', conversationsRoutes);
 app.use('/api/tickets', ticketsRoutes);
 app.use('/api/messages', messagesRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/webhooks', emailWebhookRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);

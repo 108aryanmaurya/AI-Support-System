@@ -32,6 +32,23 @@ function newClientRequestId() {
 }
 
 /**
+ * Resolve UI delivery state for an agent row (optimistic + server metadata).
+ * @param {Record<string, unknown>} message
+ * @returns {'sending' | 'sent' | 'failed'}
+ */
+export function getMessageDeliveryStatus(message) {
+  const meta = message?.metadata && typeof message.metadata === 'object' ? message.metadata : {}
+  const fromMeta = meta.status ?? meta.delivery_status
+  if (fromMeta === 'pending' || fromMeta === 'sending') return 'sending'
+  if (fromMeta === 'failed') return 'failed'
+  if (fromMeta === 'sent') return 'sent'
+  if (message?.sendFailed) return 'failed'
+  if (message?.optimistic) return 'sending'
+  if (message?.sender_type === 'agent') return 'sent'
+  return 'sent'
+}
+
+/**
  * @param {{
  *   organizationId: string
  *   senderUserId: string | null
@@ -43,10 +60,11 @@ export function createSendMessage(deps) {
 
   /**
    * @param {string} conversationId
-   * @param {string} rawContent draft / unsanitized composer value
+   * @param {string} rawContent
+   * @param {{ retryOfMessageId?: string }} [options]
    * @returns {Promise<{ ok: true } | { ok: false; error?: string; skipped?: boolean }>}
    */
-  return async function sendMessage(conversationId, rawContent) {
+  return async function sendMessage(conversationId, rawContent, options = {}) {
     const validated = validateOutboundMessage(rawContent)
     if (!validated.ok) {
       return { ok: false, error: validated.error }
@@ -57,6 +75,7 @@ export function createSendMessage(deps) {
     }
 
     const content = validated.content
+    const retryOfMessageId = typeof options.retryOfMessageId === 'string' ? options.retryOfMessageId : ''
 
     const lockKey = conversationId
     if (!lockKey || inFlightByConversationId.get(lockKey)) {
@@ -64,6 +83,11 @@ export function createSendMessage(deps) {
     }
 
     inFlightByConversationId.set(lockKey, true)
+
+    const store = useInboxStore.getState()
+    if (retryOfMessageId) {
+      store.removeMessage(conversationId, retryOfMessageId)
+    }
 
     const clientRequestId = newClientRequestId()
     const optimisticId = `temp-${clientRequestId}`
@@ -79,44 +103,61 @@ export function createSendMessage(deps) {
       created_at: nowIso,
       metadata: {
         client_request_id: clientRequestId,
+        status: 'sending',
+        delivery_status: 'sending',
       },
       optimistic: true,
       sendFailed: false,
+      delivery_status: 'sending',
     }
 
-    const store = useInboxStore.getState()
     store.addOptimisticMessage(conversationId, optimisticMessage)
     store.touchConversationWithMessage(conversationId, optimisticMessage)
 
     try {
-      const response = await apiFetch('/api/messages', {
+      const data = await apiFetch('/api/messages/send', {
         method: 'POST',
         body: JSON.stringify({
-          organizationId,
-          conversationId,
-          senderType: 'agent',
+          conversation_id: conversationId,
           content,
-          metadata: {
-            client_request_id: clientRequestId,
-          },
         }),
       })
 
-      const serverMessage = response?.message
+      const serverMessage = data?.message
+      store.removeMessage(conversationId, optimisticId)
+
       if (serverMessage) {
-        store.addMessage(conversationId, {
+        const merged = {
           ...serverMessage,
           optimistic: false,
           sendFailed: false,
-        })
-        store.touchConversationWithMessage(conversationId, serverMessage)
+          delivery_status: 'sent',
+          metadata: {
+            ...(serverMessage.metadata && typeof serverMessage.metadata === 'object' ? serverMessage.metadata : {}),
+            status: serverMessage.metadata?.status ?? 'sent',
+            delivery_status: 'sent',
+          },
+        }
+        store.addMessage(conversationId, merged)
+        store.touchConversationWithMessage(conversationId, merged)
       }
 
       return { ok: true }
     } catch (err) {
+      const list = useInboxStore.getState().messagesByConversationId[conversationId] ?? []
+      const prev = list.find((m) => m.id === optimisticId)
+      const prevMeta =
+        prev?.metadata && typeof prev.metadata === 'object' ? { ...prev.metadata } : {}
+
       store.patchConversationMessage(conversationId, optimisticId, {
         optimistic: false,
         sendFailed: true,
+        delivery_status: 'failed',
+        metadata: {
+          ...prevMeta,
+          status: 'failed',
+          delivery_status: 'failed',
+        },
       })
       return { ok: false, error: err?.message || 'Failed to send message.' }
     } finally {

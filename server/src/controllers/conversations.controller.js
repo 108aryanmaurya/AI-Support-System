@@ -14,6 +14,8 @@ export async function createConversationController(req, res, next) {
       customerId,
       assignedToMemberId,
       source = 'chat',
+      channelType = null,
+      channelId = null,
       priority = null,
       metadata = {},
     } = req.body ?? {};
@@ -28,6 +30,8 @@ export async function createConversationController(req, res, next) {
       customerId,
       assignedToMemberId,
       source,
+      channelType,
+      channelId,
       priority,
       metadata,
       createdByUserId: req.user.id,
