@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import {
   Bell,
   ChevronDown,
@@ -8,7 +8,6 @@ import {
   Clock3,
   Ellipsis,
   
-  FileText,
   Flame,
   Folder,
   Handshake,
@@ -33,7 +32,11 @@ import {
   X,
 } from 'lucide-react'
 import { apiFetch } from '../services/api.js'
+import { createSendMessage, validateOutboundMessage } from '../services/conversationSendMessage.js'
+import { useAuth } from '../hooks/useAuth.js'
+import { useInboxPeriodicSync } from '../hooks/useInboxPeriodicSync.js'
 import { useRealtimeInbox } from '../hooks/useRealtimeInbox.js'
+import { formatTypingIndicator, useTypingPresence } from '../hooks/useTypingPresence.js'
 import { useInboxStore } from '../stores/inboxStore.js'
 
 const leftSections = [
@@ -54,6 +57,8 @@ const finForServiceOptions = [
   { label: 'Pending', icon: HelpCircle },
   { label: 'Spam', icon: ShieldAlert },
 ]
+
+const MESSAGE_LIST_SCROLL_BOTTOM_PX = 80
 
 const viewOptions = [
   { label: 'Messenger', count: 1 },
@@ -87,68 +92,185 @@ function toConversationViewModel(item) {
   }
 }
 
+const ConversationListRow = memo(
+  function ConversationListRow({ conversationId, title, body, timeLabel, channelLetter, isActive, onSelect }) {
+    return (
+      <article
+        role="button"
+        tabIndex={0}
+        onClick={() => onSelect(conversationId)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onSelect(conversationId)
+          }
+        }}
+        className={`border-b border-[#27314a] px-1 py-3 last:border-b-0 ${
+          isActive ? 'rounded-xl border border-[#384b70] bg-[#1a2337]' : ''
+        }`}
+      >
+        <div className="flex items-start gap-3">
+          <div className="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-teal-700 text-xs font-bold text-white">
+            {channelLetter}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-2">
+              <p className="truncate text-sm font-semibold text-[#d8deef]">{title}</p>
+              {title.startsWith('Email') ? <Star size={14} className="fill-yellow-400 text-yellow-400" /> : null}
+            </div>
+            <p className="mt-1 truncate text-sm text-slate-300">{body}</p>
+          </div>
+          <span className="text-xs text-slate-300">{timeLabel}</span>
+        </div>
+      </article>
+    )
+  },
+  (prev, next) =>
+    prev.conversationId === next.conversationId &&
+    prev.title === next.title &&
+    prev.body === next.body &&
+    prev.timeLabel === next.timeLabel &&
+    prev.channelLetter === next.channelLetter &&
+    prev.isActive === next.isActive &&
+    prev.onSelect === next.onSelect,
+)
+
 export default function InboxPage() {
-  
   const organizationId = import.meta.env.VITE_TEST_ORGANIZATION_ID?.trim() ?? ''
+  const { user } = useAuth()
   const conversations = useInboxStore((state) => state.conversations)
   const activeConversationId = useInboxStore((state) => state.activeConversationId)
   const messagesByConversationId = useInboxStore((state) => state.messagesByConversationId)
-  const setConversations = useInboxStore((state) => state.setConversations)
+  const activeViewersByConversationId = useInboxStore((state) => state.activeViewersByConversationId)
+  const typingState = useInboxStore((state) => state.typingState)
+  const setConversationsPage = useInboxStore((state) => state.setConversationsPage)
   const setActiveConversationId = useInboxStore((state) => state.setActiveConversationId)
   const setMessagesForConversation = useInboxStore((state) => state.setMessagesForConversation)
-  const setTypingState = useInboxStore((state) => state.setTypingState)
 
   const [loadingConversations, setLoadingConversations] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [sendingMessage, setSendingMessage] = useState(false)
+  const [draftMessage, setDraftMessage] = useState('')
   const [error, setError] = useState('')
 
-  useRealtimeInbox({
-    organizationId,
-    userId: 'de3bc97d-da3b-42be-8900-39ae7d828089',
-  })
+  const messagesScrollRef = useRef(null)
+  const stickToBottomRef = useRef(true)
 
-  const selectedConversation = useMemo(
-    () => conversations.find((item) => item.id === activeConversationId) ?? null,
-    [conversations, activeConversationId],
-  )
-  const messages = messagesByConversationId[activeConversationId] ?? []
-
-  const openCount = useMemo(
-    () => conversations.filter((item) => item.status === 'open').length,
-    [conversations],
+  const sendMessage = useMemo(
+    () =>
+      createSendMessage({
+        organizationId,
+        senderUserId: user?.id ?? null,
+        apiFetch,
+      }),
+    [organizationId, user?.id],
   )
 
-  const loadConversations = useCallback(async () => {
-    if (!organizationId) return
-    setLoadingConversations(true)
-    setError('')
-    try {
-      const response = await apiFetch(`/api/conversations?organizationId=${organizationId}&page=1&pageSize=50`)
-      setConversations(response?.items ?? [])
-    } catch (err) {
-      setError(err?.message || 'Failed to load conversations.')
-    } finally {
-      setLoadingConversations(false)
-    }
-  }, [organizationId, setConversations])
+  const loadConversations = useCallback(
+    async (opts = {}) => {
+      const silent = opts.silent === true
+      if (!organizationId) return
+      if (!silent) setLoadingConversations(true)
+      if (!silent) setError('')
+      try {
+        const response = await apiFetch(`/api/conversations?organizationId=${organizationId}&page=1&pageSize=50`)
+        setConversationsPage({
+          items: response?.items ?? [],
+          pagination: response?.pagination,
+        })
+      } catch (err) {
+        if (!silent) setError(err?.message || 'Failed to load conversations.')
+      } finally {
+        if (!silent) setLoadingConversations(false)
+      }
+    },
+    [organizationId, setConversationsPage],
+  )
 
   const loadMessages = useCallback(
-    async (conversationId) => {
+    async (conversationId, opts = {}) => {
+      const silent = opts.silent === true
       if (!organizationId || !conversationId) return
-      setLoadingMessages(true)
-      setError('')
+      if (!silent) setLoadingMessages(true)
+      if (!silent) setError('')
       try {
         const response = await apiFetch(
           `/api/conversations/${conversationId}/messages?organizationId=${organizationId}&page=1&pageSize=100`,
         )
         setMessagesForConversation(conversationId, response?.items ?? [])
       } catch (err) {
-        setError(err?.message || 'Failed to load messages.')
+        if (!silent) setError(err?.message || 'Failed to load messages.')
       } finally {
-        setLoadingMessages(false)
+        if (!silent) setLoadingMessages(false)
       }
     },
     [organizationId, setMessagesForConversation],
+  )
+
+  const handleRealtimeReconnect = useCallback(async () => {
+    await loadConversations({ silent: true })
+    const convId = useInboxStore.getState().activeConversationId
+    if (convId) {
+      await loadMessages(convId, { silent: true })
+    }
+  }, [loadConversations, loadMessages])
+
+  useRealtimeInbox({
+    organizationId,
+    userId: user?.id ?? '',
+    onReconnect: handleRealtimeReconnect,
+  })
+
+  useInboxPeriodicSync({
+    organizationId,
+    activeConversationId,
+    enabled: Boolean(organizationId && user?.id),
+  })
+
+  const agentDisplayName =
+    (typeof user?.user_metadata?.full_name === 'string' && user.user_metadata.full_name.trim()) ||
+    (typeof user?.email === 'string' ? user.email.split('@')[0] : '') ||
+    'Agent'
+
+  const { onComposerActivity, stopTypingImmediately } = useTypingPresence({
+    conversationId: activeConversationId,
+    userId: user?.id ?? '',
+    displayName: agentDisplayName,
+    enabled: Boolean(organizationId && user?.id && activeConversationId),
+  })
+
+  const selectedConversation = useMemo(
+    () => conversations.find((item) => item.id === activeConversationId) ?? null,
+    [conversations, activeConversationId],
+  )
+  const messages = useMemo(
+    () => messagesByConversationId[activeConversationId] ?? [],
+    [activeConversationId, messagesByConversationId],
+  )
+
+  const updateStickToBottom = useCallback(() => {
+    const el = messagesScrollRef.current
+    if (!el) return
+    stickToBottomRef.current =
+      el.scrollHeight - el.scrollTop - el.clientHeight <= MESSAGE_LIST_SCROLL_BOTTOM_PX
+  }, [])
+
+  useEffect(() => {
+    stickToBottomRef.current = true
+  }, [activeConversationId])
+
+  useLayoutEffect(() => {
+    const el = messagesScrollRef.current
+    if (!el || !stickToBottomRef.current) return
+    el.scrollTop = el.scrollHeight
+  }, [messages, activeConversationId])
+  const activeViewers = activeViewersByConversationId[activeConversationId] ?? []
+  const typingUsers = typingState[activeConversationId] ?? []
+  const typingLabel = formatTypingIndicator(typingUsers)
+
+  const openCount = useMemo(
+    () => conversations.filter((item) => item.status === 'open').length,
+    [conversations],
   )
 
   useEffect(() => {
@@ -162,12 +284,55 @@ export default function InboxPage() {
     loadMessages(activeConversationId)
   }, [activeConversationId, loadMessages])
 
-  useEffect(() => {
-    if (!activeConversationId) return
-    setTypingState(activeConversationId, [])
-  }, [activeConversationId, setTypingState])
+  const conversationView = useMemo(() => conversations.map(toConversationViewModel), [conversations])
 
-  const conversationView = conversations.map(toConversationViewModel)
+  const handleSelectConversation = useCallback(
+    (id) => {
+      setActiveConversationId(id)
+    },
+    [setActiveConversationId],
+  )
+  const trimmedDraft = draftMessage.trim()
+  const canSendMessage = Boolean(activeConversationId && organizationId && trimmedDraft) && !sendingMessage
+
+  const handleSendMessage = useCallback(async () => {
+    if (!activeConversationId || !organizationId) return
+
+    const validated = validateOutboundMessage(draftMessage)
+    if (!validated.ok) {
+      setError(validated.error)
+      return
+    }
+
+    stopTypingImmediately()
+
+    const body = validated.content
+
+    setSendingMessage(true)
+    setError('')
+    setDraftMessage('')
+
+    try {
+      const result = await sendMessage(activeConversationId, body)
+
+      if (!result.ok && !result.skipped) {
+        setError(result.error || 'Failed to send message.')
+        setDraftMessage(body)
+      }
+    } finally {
+      setSendingMessage(false)
+    }
+  }, [activeConversationId, draftMessage, organizationId, sendMessage, stopTypingImmediately])
+
+  const onComposerKeyDown = useCallback(
+    (event) => {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+        event.preventDefault()
+        handleSendMessage()
+      }
+    },
+    [handleSendMessage],
+  )
 
   return (
     <main className="h-screen overflow-hidden bg-[#0f1422] text-slate-100">
@@ -280,27 +445,16 @@ export default function InboxPage() {
 
             <div className="space-y-0">
               {conversationView.map((item) => (
-                <article
+                <ConversationListRow
                   key={item.id}
-                  onClick={() => setActiveConversationId(item.id)}
-                  className={`border-b border-[#27314a] px-1 py-3 last:border-b-0 ${
-                    item.id === activeConversationId ? 'rounded-xl border border-[#384b70] bg-[#1a2337]' : ''
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-full bg-teal-700 text-xs font-bold text-white">
-                      {item.channel}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-sm font-semibold text-[#d8deef]">{item.title}</p>
-                        {item.title.startsWith('Email') ? <Star size={14} className="fill-yellow-400 text-yellow-400" /> : null}
-                      </div>
-                      <p className="mt-1 truncate text-sm text-slate-300">{item.body}</p>
-                    </div>
-                    <span className="text-xs text-slate-300">{item.time}</span>
-                  </div>
-                </article>
+                  conversationId={item.id}
+                  title={item.title}
+                  body={item.body}
+                  timeLabel={item.time}
+                  channelLetter={item.channel}
+                  isActive={item.id === activeConversationId}
+                  onSelect={handleSelectConversation}
+                />
               ))}
               {!loadingConversations && conversationView.length === 0 ? (
                 <div className="px-1 py-3 text-sm text-slate-400">
@@ -328,9 +482,18 @@ export default function InboxPage() {
               <button className="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-slate-900">Close</button>
             </div>
           </div>
+          {selectedConversation ? (
+            <div className="border-b border-[#27314a] px-3 py-2 text-xs text-slate-300">
+              Active viewers: {activeViewers.length}
+            </div>
+          ) : null}
 <div>
 
-          <div className="flex-1 overflow-auto h-[400px] px-3 py-3">
+          <div
+            ref={messagesScrollRef}
+            className="flex-1 overflow-auto h-[630px] px-3 py-3"
+            onScroll={updateStickToBottom}
+          >
             <div className="rounded-xl border border-[#2a3654] bg-[#242c3f] p-4">
               <div className="mb-3 rounded-lg border border-[#334060] bg-[#2a3040] p-4 text-center">
                 <div className="mb-3 flex justify-center gap-2 text-slate-200">
@@ -358,6 +521,11 @@ export default function InboxPage() {
               {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
             </div>
 
+            {typingLabel ? (
+              <p className="mt-4 text-sm italic text-slate-400" aria-live="polite">
+                {typingLabel}
+              </p>
+            ) : null}
             {loadingMessages ? <p className="mt-4 text-sm text-slate-300">Loading messages...</p> : null}
             {!loadingMessages && messages.length === 0 ? (
               <p className="mt-4 text-sm text-slate-300">No messages yet.</p>
@@ -368,10 +536,16 @@ export default function InboxPage() {
                 <div className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-[#4169b2] text-xs font-bold">
                   {(message.sender_type ?? 'c').slice(0, 1).toUpperCase()}
                 </div>
-                <div className="max-w-[75%] rounded-2xl bg-[#334680] px-4 py-2 text-sm">
+                <div
+                  className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${
+                    message.sendFailed ? 'border border-red-400/70 bg-[#402a38]' : 'bg-[#334680]'
+                  }`}
+                >
                   <p className="whitespace-pre-wrap">{message.content}</p>
                   <p className="text-xs text-slate-300">
                     {message.sender_type} • {getRelativeTimeLabel(message.created_at)}
+                    {message.optimistic ? ' • sending…' : ''}
+                    {message.sendFailed ? ' • failed to send' : ''}
                   </p>
                 </div>
               </div>
@@ -384,10 +558,34 @@ export default function InboxPage() {
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
               <MessageSquare size={14} /> Reply <ChevronDown size={14} />
             </div>
-            <p className="mb-6 text-sm text-slate-400">Use Ctr+K for shortcuts</p>
+            <textarea
+              value={draftMessage}
+              onChange={(event) => {
+                const next = event.target.value
+                setDraftMessage(next)
+                if (next.trim()) {
+                  onComposerActivity()
+                } else {
+                  stopTypingImmediately()
+                }
+              }}
+              onKeyDown={onComposerKeyDown}
+              onBlur={() => stopTypingImmediately()}
+              rows={3}
+              placeholder={activeConversationId ? 'Type a reply...' : 'Select a conversation first'}
+              className="mb-3 w-full resize-none rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-slate-100 outline-none focus:border-[#4f6290]"
+              disabled={!activeConversationId || sendingMessage}
+            />
             <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>⚡</span>
-              <span>Send</span>
+              <span>Use Ctrl/Cmd + Enter to send</span>
+              <button
+                type="button"
+                onClick={handleSendMessage}
+                disabled={!canSendMessage}
+                className="rounded-md bg-[#334680] px-3 py-1 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sendingMessage ? 'Sending...' : 'Send'}
+              </button>
             </div>
           </div>
         </section>
