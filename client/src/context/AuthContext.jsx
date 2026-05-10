@@ -5,7 +5,7 @@ const AuthContext = createContext(null)
 
 export function AuthProvider({ children }) {
   const value = useAuth()
-  const memo = useMemo(() => value, [value.user, value.session, value.loading])
+  const memo = useMemo(() => value, [value.user?.id, value.session?.access_token, value.loading])
   return <AuthContext.Provider value={memo}>{children}</AuthContext.Provider>
 }
 

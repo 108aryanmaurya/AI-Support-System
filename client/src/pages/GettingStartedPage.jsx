@@ -1,4 +1,6 @@
+import { useNavigate } from 'react-router-dom'
 import { Logo } from '../components/Logo.jsx'
+import { getLastOrgId } from '../utils/lastOrgStorage.js'
 import {
   ArrowRight,
   Bot,
@@ -44,6 +46,13 @@ const nextCards = [
 ]
 
 export default function GettingStartedPage() {
+  const navigate = useNavigate()
+
+  function goToSettings() {
+    const id = getLastOrgId()
+    if (id) navigate(`/org/${id}/settings`)
+  }
+
   const topItems = [
     { label: 'Inbox', icon: Home },
     { label: 'Fin AI Agent', icon: Bot },
@@ -97,6 +106,7 @@ export default function GettingStartedPage() {
               <button
                 key={item.label}
                 type="button"
+                onClick={item.label === 'Settings' ? goToSettings : undefined}
                 className="mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-medium text-white transition hover:bg-[#111a2f]"
               >
                 <item.icon size={18} className="text-white/95" />

@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { sortConversationsInbox } from '@ai-support/shared'
 
 /** Hard cap for conversations kept in client memory (pagination / load-more trim). */
 export const MAX_CONVERSATIONS_IN_MEMORY = 100
@@ -7,50 +8,32 @@ function getClientRequestId(message) {
   return message?.metadata?.client_request_id ?? message?.client_request_id ?? ''
 }
 
-function lastMessageMs(conversation) {
-  return new Date(conversation?.last_message_at ?? 0).getTime()
-}
-
-/** Sort by last_message_at descending (newest activity first). */
-export function sortConversationsByLastMessageDesc(items) {
-  return [...(items ?? [])].sort((a, b) => lastMessageMs(b) - lastMessageMs(a))
-}
-
 /**
- * Drop overflow from a list already sorted DESC by last_message_at.
+ * Drop overflow from a list already sorted by inbox rules (tier + last_message_at).
  * Keeps `pinnedConversationId` visible when possible (e.g. active thread).
  */
-export function trimConversationsToCap(sortedDescList, max, pinnedConversationId = '') {
-  if (sortedDescList.length <= max) return sortedDescList
-  if (!pinnedConversationId) return sortedDescList.slice(0, max)
+export function trimConversationsToCap(sortedInboxList, max, pinnedConversationId = '', myMemberId = null) {
+  if (sortedInboxList.length <= max) return sortedInboxList
+  if (!pinnedConversationId) return sortedInboxList.slice(0, max)
 
-  const top = sortedDescList.slice(0, max)
+  const top = sortedInboxList.slice(0, max)
   if (top.some((c) => c.id === pinnedConversationId)) return top
 
-  const pinned = sortedDescList.find((c) => c.id === pinnedConversationId)
-  if (!pinned) return sortedDescList.slice(0, max)
+  const pinned = sortedInboxList.find((c) => c.id === pinnedConversationId)
+  if (!pinned) return sortedInboxList.slice(0, max)
 
-  const rest = sortedDescList.filter((c) => c.id !== pinned.id)
-  return sortConversationsByLastMessageDesc([pinned, ...rest]).slice(0, max)
+  const rest = sortedInboxList.filter((c) => c.id !== pinned.id)
+  return sortConversationsInbox([pinned, ...rest], myMemberId ?? null).slice(0, max)
 }
 
-/**
- * Insert / merge one conversation and reorder by last_message_at DESC without full-array sort.
- * Reuses unchanged row references from `list` where possible.
- */
-function upsertConversationOrdered(list, incoming) {
+/** Merge one conversation and full re-sort O(n log n) — keeps ordering rules with assignment changes. */
+function mergeConversationInboxSort(list, incoming, myMemberId) {
   const id = incoming?.id
   if (!id) return list
-
-  const idx = list.findIndex((c) => c.id === id)
-  const merged = idx >= 0 ? { ...list[idx], ...incoming } : { ...incoming }
-  const without = idx >= 0 ? [...list.slice(0, idx), ...list.slice(idx + 1)] : [...list]
-
-  const t = lastMessageMs(merged)
-  let insertAt = without.findIndex((c) => lastMessageMs(c) < t)
-  if (insertAt === -1) insertAt = without.length
-
-  return [...without.slice(0, insertAt), merged, ...without.slice(insertAt)]
+  const without = list.filter((c) => c.id !== id)
+  const prev = list.find((c) => c.id === id)
+  const merged = prev ? { ...prev, ...incoming } : { ...incoming }
+  return sortConversationsInbox([...without, merged], myMemberId ?? null)
 }
 
 function upsertMessage(list, incoming) {
@@ -70,9 +53,40 @@ function upsertMessage(list, incoming) {
   return next.sort((a, b) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime())
 }
 
+/** Inbox sidebar filter; must match server `filter` param. */
+export const DEFAULT_INBOX_FILTER = 'all'
+
+function readAutoAssignOnSelect() {
+  try {
+    return typeof localStorage !== 'undefined' && localStorage.getItem('inbox-auto-assign-on-select') === 'true'
+  } catch {
+    return false
+  }
+}
+
 export const useInboxStore = create((set) => ({
   conversations: [],
   activeConversationId: '',
+  /** organization_members.id for the current user — drives "assigned to me" tier. */
+  inboxSortMemberId: null,
+  /** Active sidebar filter (drives list + refetch). */
+  activeFilter: DEFAULT_INBOX_FILTER,
+  /** Server bucket counts for sidebar badges. */
+  filterCounts: {
+    inbox: 0,
+    mentions: 0,
+    created_by_you: 0,
+    all: 0,
+    unassigned: 0,
+    spam: 0,
+  },
+  /**
+   * Cached first page per filter (short TTL; used when switching views).
+   * @type {Record<string, { items: unknown[], pagination: object, fetchedAt: number }>}
+   */
+  conversationFilterCache: {},
+  /** When true, selecting a thread PATCH-assigns it to the current agent if unassigned / assigned elsewhere. */
+  autoAssignOnSelect: readAutoAssignOnSelect(),
   messagesByConversationId: {},
   typingState: {},
   activeViewersByConversationId: {},
@@ -82,6 +96,60 @@ export const useInboxStore = create((set) => ({
     pageSize: 50,
     hasMore: false,
     total: null,
+  },
+
+  setInboxSortMemberId: (memberId) =>
+    set((state) => {
+      const id = memberId ?? null
+      const sorted = sortConversationsInbox(state.conversations, id)
+      return {
+        inboxSortMemberId: id,
+        conversations: trimConversationsToCap(
+          sorted,
+          MAX_CONVERSATIONS_IN_MEMORY,
+          state.activeConversationId,
+          id,
+        ),
+      }
+    }),
+
+  setActiveFilter: (activeFilter) => set({ activeFilter }),
+
+  setFilterCounts: (counts) =>
+    set((state) => ({
+      filterCounts: { ...state.filterCounts, ...(counts ?? {}) },
+    })),
+
+  cacheConversationFilterPage: (filterType, payload) =>
+    set((state) => ({
+      conversationFilterCache: {
+        ...state.conversationFilterCache,
+        [filterType]: {
+          items: payload?.items ?? [],
+          pagination: payload?.pagination ?? {},
+          fetchedAt: Date.now(),
+        },
+      },
+    })),
+
+  invalidateConversationFilterCache: () => set({ conversationFilterCache: {} }),
+
+  /** Increment to flash Mentions nav / drive realtime mention cues (no persistence). */
+  mentionsNotifyEpoch: 0,
+  pulseMentionsNotification: () =>
+    set((state) => ({
+      mentionsNotifyEpoch: state.mentionsNotifyEpoch + 1,
+    })),
+
+  setAutoAssignOnSelect: (value) => {
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.setItem('inbox-auto-assign-on-select', value ? 'true' : 'false')
+      }
+    } catch {
+      /* ignore quota / privacy mode */
+    }
+    set({ autoAssignOnSelect: Boolean(value) })
   },
 
   /**
@@ -95,8 +163,9 @@ export const useInboxStore = create((set) => ({
       const page = pg.page ?? 1
       const pageSize = pg.pageSize ?? (items.length || 50)
       const total = typeof pg.total === 'number' ? pg.total : null
-      const sorted = sortConversationsByLastMessageDesc(items)
-      const conversations = trimConversationsToCap(sorted, MAX_CONVERSATIONS_IN_MEMORY, state.activeConversationId)
+      const mid = state.inboxSortMemberId ?? null
+      const sorted = sortConversationsInbox(items, mid)
+      const conversations = trimConversationsToCap(sorted, MAX_CONVERSATIONS_IN_MEMORY, state.activeConversationId, mid)
       return {
         conversations,
         activeConversationId: state.activeConversationId || conversations[0]?.id || '',
@@ -112,8 +181,9 @@ export const useInboxStore = create((set) => ({
   /** @deprecated Use setConversationsPage. Kept for minimal call sites. */
   setConversations: (items) =>
     set((state) => {
-      const sorted = sortConversationsByLastMessageDesc(items ?? [])
-      const conversations = trimConversationsToCap(sorted, MAX_CONVERSATIONS_IN_MEMORY, state.activeConversationId)
+      const mid = state.inboxSortMemberId ?? null
+      const sorted = sortConversationsInbox(items ?? [], mid)
+      const conversations = trimConversationsToCap(sorted, MAX_CONVERSATIONS_IN_MEMORY, state.activeConversationId, mid)
       return {
         conversations,
         activeConversationId: state.activeConversationId || conversations[0]?.id || '',
@@ -140,8 +210,9 @@ export const useInboxStore = create((set) => ({
       for (const c of newItems) {
         if (c?.id) byId.set(c.id, { ...byId.get(c.id), ...c })
       }
-      const merged = sortConversationsByLastMessageDesc([...byId.values()])
-      const conversations = trimConversationsToCap(merged, MAX_CONVERSATIONS_IN_MEMORY, state.activeConversationId)
+      const mid = state.inboxSortMemberId ?? null
+      const merged = sortConversationsInbox([...byId.values()], mid)
+      const conversations = trimConversationsToCap(merged, MAX_CONVERSATIONS_IN_MEMORY, state.activeConversationId, mid)
       const page = pg.page ?? state.conversationPagination.page + 1
       const pageSize = pg.pageSize ?? state.conversationPagination.pageSize
       const total = typeof pg.total === 'number' ? pg.total : state.conversationPagination.total
@@ -160,9 +231,10 @@ export const useInboxStore = create((set) => ({
   upsertConversation: (conversation) =>
     set((state) => ({
       conversations: trimConversationsToCap(
-        upsertConversationOrdered(state.conversations, conversation),
+        mergeConversationInboxSort(state.conversations, conversation, state.inboxSortMemberId),
         MAX_CONVERSATIONS_IN_MEMORY,
         state.activeConversationId,
+        state.inboxSortMemberId ?? null,
       ),
     })),
 
@@ -175,6 +247,7 @@ export const useInboxStore = create((set) => ({
       delete nextTypingState[conversationId]
       return {
         conversations: nextConversations,
+        conversationFilterCache: {},
         messagesByConversationId: nextMessages,
         typingState: nextTypingState,
         activeConversationId:
@@ -258,11 +331,13 @@ export const useInboxStore = create((set) => ({
         last_message_at: message.created_at,
         last_message_preview: message.content,
       }
+      const mid = state.inboxSortMemberId ?? null
       return {
         conversations: trimConversationsToCap(
-          upsertConversationOrdered(state.conversations, patch),
+          mergeConversationInboxSort(state.conversations, patch, mid),
           MAX_CONVERSATIONS_IN_MEMORY,
           state.activeConversationId,
+          mid,
         ),
       }
     }),

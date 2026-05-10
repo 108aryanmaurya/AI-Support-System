@@ -1,6 +1,11 @@
+import { resolveMentionUserIdsFromContent } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
-import { ensureOrgMembership } from './support.service.js';
+import {
+  ensureOrgMembership,
+  listOrganizationMembersWithProfiles,
+  mergeConversationMentionUserIds,
+} from './support.service.js';
 import { getConversation } from './emailReply.service.js';
 import { sendReplyOutbound } from './channelReplyRouter.service.js';
 import { sanitizeMessage, getMaxMessageLength } from '../utils/incomingMessageValidation.js';
@@ -27,7 +32,12 @@ async function patchConversationActivity(conversationId, organizationId, created
 /**
  * Inbox send: insert pending agent row → outbound send → mark sent/failed on same row.
  */
-export async function sendInboxAgentOutboundMessage({ userId, conversationId: rawConversationId, rawContent }) {
+export async function sendInboxAgentOutboundMessage({
+  userId,
+  conversationId: rawConversationId,
+  rawContent,
+  expectedOrganizationId = null,
+}) {
   const conversationId =
     typeof rawConversationId === 'string' ? rawConversationId.trim() : '';
 
@@ -42,7 +52,31 @@ export async function sendInboxAgentOutboundMessage({ userId, conversationId: ra
   }
 
   const conversation = await getConversation(conversationId);
+
+  if (
+    expectedOrganizationId != null &&
+    conversation.organization_id !== expectedOrganizationId
+  ) {
+    throw new HttpError(403, 'Conversation does not belong to this organization.');
+  }
+
   const member = await ensureOrgMembership(userId, conversation.organization_id);
+
+  const membersPayload = await listOrganizationMembersWithProfiles({
+    organizationId: conversation.organization_id,
+    actorUserId: userId,
+  });
+  const mentionMembers = membersPayload.map((m) => ({
+    userId: m.userId,
+    displayName: m.displayName,
+    email: m.email,
+  }));
+  const mentionIds = resolveMentionUserIdsFromContent(body, mentionMembers);
+
+  const initialMetadata = {
+    status: 'pending',
+    ...(mentionIds.length ? { mentions: mentionIds } : {}),
+  };
 
   const { data: inserted, error: insertError } = await supabaseAdmin
     .from('messages')
@@ -53,9 +87,7 @@ export async function sendInboxAgentOutboundMessage({ userId, conversationId: ra
       sender_user_id: userId,
       sender_member_id: member.id,
       content: body,
-      metadata: {
-        status: 'pending',
-      },
+      metadata: initialMetadata,
     })
     .select('*')
     .single();
@@ -63,6 +95,14 @@ export async function sendInboxAgentOutboundMessage({ userId, conversationId: ra
   if (insertError) {
     if (insertError.code === '23514') throw new HttpError(400, insertError.message || 'Message validation failed.');
     throw new HttpError(500, insertError.message || 'Failed to create message.');
+  }
+
+  if (mentionIds.length) {
+    await mergeConversationMentionUserIds({
+      organizationId: conversation.organization_id,
+      conversationId: conversation.id,
+      userIds: mentionIds,
+    });
   }
 
   try {
@@ -76,6 +116,7 @@ export async function sendInboxAgentOutboundMessage({ userId, conversationId: ra
         organizationId: conversation.organization_id,
         messageId: inserted.id,
         metadata: {
+          ...(inserted.metadata && typeof inserted.metadata === 'object' ? inserted.metadata : {}),
           status: 'sent',
           external_message_id: externalId,
           channel: 'email',
@@ -92,6 +133,7 @@ export async function sendInboxAgentOutboundMessage({ userId, conversationId: ra
         organizationId: conversation.organization_id,
         messageId: inserted.id,
         metadata: {
+          ...(inserted.metadata && typeof inserted.metadata === 'object' ? inserted.metadata : {}),
           status: 'sent',
           channel: conversation.channel_type,
         },
@@ -110,6 +152,7 @@ export async function sendInboxAgentOutboundMessage({ userId, conversationId: ra
       organizationId: conversation.organization_id,
       messageId: inserted.id,
       metadata: {
+        ...(inserted.metadata && typeof inserted.metadata === 'object' ? inserted.metadata : {}),
         status: 'failed',
       },
     });

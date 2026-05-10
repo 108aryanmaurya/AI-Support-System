@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
-import { apiFetch } from '../services/api.js'
 import { REALTIME_INBOX } from '../config/realtimeInbox.config.js'
+import { apiFetch } from '../services/api.js'
+import { conversationMessagesUrl, conversationsListUrl } from '../services/inboxApi.js'
 import { useInboxStore } from '../stores/inboxStore.js'
 
 function logSync(phase, detail) {
@@ -31,9 +32,8 @@ export function useInboxPeriodicSync({
     if (!organizationId || !enabled) return
 
     try {
-      const convResponse = await apiFetch(
-        `/api/conversations?organizationId=${organizationId}&page=1&pageSize=50`,
-      )
+      const filter = useInboxStore.getState().activeFilter ?? 'all'
+      const convResponse = await apiFetch(conversationsListUrl(organizationId, filter, { page: 1, pageSize: 50 }))
       const items = convResponse?.items ?? []
 
       for (const serverConv of items) {
@@ -61,7 +61,7 @@ export function useInboxPeriodicSync({
       if (!convId) return
 
       const msgResponse = await apiFetch(
-        `/api/conversations/${convId}/messages?organizationId=${organizationId}&page=1&pageSize=100`,
+        conversationMessagesUrl(organizationId, convId, { page: 1, pageSize: 100 }),
       )
       const apiItems = msgResponse?.items ?? []
       const localMsgs = useInboxStore.getState().messagesByConversationId[convId] ?? []

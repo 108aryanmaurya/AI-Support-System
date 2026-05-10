@@ -1,3 +1,4 @@
+import { resolveMentionUserIdsFromContent } from '@ai-support/shared'
 import { useInboxStore } from '../stores/inboxStore.js'
 
 /** Match server-ish limit (see TestSendMessagePage). */
@@ -53,10 +54,11 @@ export function getMessageDeliveryStatus(message) {
  *   organizationId: string
  *   senderUserId: string | null
  *   apiFetch: typeof import('../services/api.js').apiFetch
+ *   mentionMembers?: import('@ai-support/shared').MentionMemberInput[]
  * }} deps
  */
 export function createSendMessage(deps) {
-  const { organizationId, senderUserId, apiFetch } = deps
+  const { organizationId, senderUserId, apiFetch, mentionMembers = [] } = deps
 
   /**
    * @param {string} conversationId
@@ -93,6 +95,8 @@ export function createSendMessage(deps) {
     const optimisticId = `temp-${clientRequestId}`
     const nowIso = new Date().toISOString()
 
+    const resolvedMentions = resolveMentionUserIdsFromContent(content, mentionMembers ?? [])
+
     const optimisticMessage = {
       id: optimisticId,
       conversation_id: conversationId,
@@ -105,6 +109,7 @@ export function createSendMessage(deps) {
         client_request_id: clientRequestId,
         status: 'sending',
         delivery_status: 'sending',
+        ...(resolvedMentions.length ? { mentions: resolvedMentions } : {}),
       },
       optimistic: true,
       sendFailed: false,
@@ -115,7 +120,7 @@ export function createSendMessage(deps) {
     store.touchConversationWithMessage(conversationId, optimisticMessage)
 
     try {
-      const data = await apiFetch('/api/messages/send', {
+      const data = await apiFetch(`/api/org/${encodeURIComponent(organizationId)}/messages/send`, {
         method: 'POST',
         body: JSON.stringify({
           conversation_id: conversationId,

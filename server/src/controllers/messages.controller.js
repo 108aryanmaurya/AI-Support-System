@@ -1,5 +1,5 @@
 import { HttpError } from '../utils/httpError.js';
-import { createMessage, ensureOrgMembership } from '../services/support.service.js';
+import { createMessage } from '../services/support.service.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import {
   getMaxMessageLength,
@@ -32,17 +32,22 @@ async function callIncomingMessageRpcWithRetry(params) {
     status: firstAttempt.error.status,
   });
 
-  // Safe retry: DB function is atomic and idempotency key aware.
   return supabaseAdmin.rpc('handle_incoming_message', params);
 }
 
 export async function sendInboxMessageController(req, res, next) {
   try {
+    const organizationId = req.orgId ?? req.organizationId;
+    if (!organizationId) {
+      throw new HttpError(500, 'Organization scope missing (middleware misconfigured).');
+    }
+
     const { conversation_id: conversationId, content } = req.body ?? {};
     const result = await sendInboxAgentOutboundMessage({
-      userId: req.user.id,
+      userId: req.userId ?? req.user.id,
       conversationId,
       rawContent: content,
+      expectedOrganizationId: organizationId,
     });
     res.status(200).json(result);
   } catch (error) {
@@ -52,8 +57,12 @@ export async function sendInboxMessageController(req, res, next) {
 
 export async function createMessageController(req, res, next) {
   try {
+    const organizationId = req.orgId ?? req.organizationId;
+    if (!organizationId) {
+      throw new HttpError(500, 'Organization scope missing (middleware misconfigured).');
+    }
+
     const {
-      organizationId,
       conversationId,
       senderType = 'agent',
       senderMemberId = null,
@@ -61,18 +70,22 @@ export async function createMessageController(req, res, next) {
       metadata = {},
     } = req.body ?? {};
 
-    if (!organizationId || !conversationId) {
-      throw new HttpError(400, 'organizationId and conversationId are required.');
+    if (!conversationId) {
+      throw new HttpError(400, 'conversationId is required.');
     }
 
-    const member = await ensureOrgMembership(req.user.id, organizationId);
+    const member = req.orgMembership;
+    if (!member?.id) {
+      throw new HttpError(500, 'Membership missing (middleware misconfigured).');
+    }
+
     const resolvedSenderMemberId = senderType === 'agent' ? senderMemberId ?? member.id : senderMemberId;
 
     const message = await createMessage({
       organizationId,
       conversationId,
       senderType,
-      senderUserId: senderType === 'agent' ? req.user.id : null,
+      senderUserId: senderType === 'agent' ? req.userId ?? req.user.id : null,
       senderMemberId: resolvedSenderMemberId,
       content,
       metadata,
@@ -86,7 +99,13 @@ export async function createMessageController(req, res, next) {
 
 export async function createIncomingMessageController(req, res, next) {
   try {
-    const organizationId = req.body?.organizationId;
+    const organizationId =
+      typeof req.params?.orgId === 'string' ? req.params.orgId.trim() : '';
+
+    if (!organizationId || !UUID_V4_REGEX.test(organizationId)) {
+      throw new HttpError(400, 'orgId path parameter must be a valid UUID.');
+    }
+
     const rawEmail = req.body?.customer?.email;
     const rawMessage = req.body?.message;
     const idempotencyKey =
@@ -94,10 +113,6 @@ export async function createIncomingMessageController(req, res, next) {
       req.headers['x-idempotency-key'] ??
       req.headers['x-request-id'] ??
       null;
-
-    if (typeof organizationId !== 'string' || !UUID_V4_REGEX.test(organizationId)) {
-      throw new HttpError(400, 'organizationId must be a valid UUID.');
-    }
 
     if (typeof rawEmail !== 'string') {
       throw new HttpError(400, 'customer.email is required.');
@@ -113,7 +128,7 @@ export async function createIncomingMessageController(req, res, next) {
     const normalizedMessage = sanitizeMessage(rawMessage);
     if (!normalizedMessage) {
       throw new HttpError(400, 'message cannot be empty.');
-    } 
+    }
     if (normalizedMessage.length > MAX_MESSAGE_LENGTH) {
       throw new HttpError(400, `message exceeds max length of ${MAX_MESSAGE_LENGTH} characters.`);
     }

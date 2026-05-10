@@ -1,14 +1,15 @@
 import { HttpError } from '../utils/httpError.js';
-import { ensureOrgMembership, findOrCreateCustomer } from '../services/support.service.js';
+import { findOrCreateCustomer } from '../services/support.service.js';
 
 export async function createOrGetCustomer(req, res, next) {
   try {
-    const { organizationId, email, name, phone, externalId, metadata = {} } = req.body ?? {};
+    const organizationId = req.orgId ?? req.organizationId;
     if (!organizationId) {
-      throw new HttpError(400, 'organizationId is required.');
+      throw new HttpError(500, 'Organization scope missing (middleware misconfigured).');
     }
 
-    await ensureOrgMembership(req.user.id, organizationId);
+    const { email, name, phone, externalId, metadata = {} } = req.body ?? {};
+
     const result = await findOrCreateCustomer({
       organizationId,
       email,

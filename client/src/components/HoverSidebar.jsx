@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowRight,
   Bot,
@@ -31,6 +32,12 @@ const bottomItems = [
 
 export function HoverSidebar() {
   const [isOpen, setIsOpen] = useState(false)
+  const navigate = useNavigate()
+  const { orgId } = useParams()
+
+  function goToSettings() {
+    if (orgId) navigate(`/org/${orgId}/settings`)
+  }
 
   return (
     <aside
@@ -46,16 +53,26 @@ export function HoverSidebar() {
           ))}
         </div>
         <div className="mb-2 flex flex-col items-center gap-5 text-white/95">
-        <button
-              type="button"
-            >
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-sm">
-                <Plus size={14} />
-              </span>
-            </button>
-          {bottomItems.map((item) => (
-            <item.icon key={item.label} size={18} />
-          ))}
+          <button type="button">
+            <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/10 text-sm">
+              <Plus size={14} />
+            </span>
+          </button>
+          {bottomItems.map((item) =>
+            item.label === 'Settings' ? (
+              <button
+                key={item.label}
+                type="button"
+                onClick={goToSettings}
+                aria-label="Settings"
+                className="text-white/95 transition hover:text-white"
+              >
+                <item.icon size={18} />
+              </button>
+            ) : (
+              <item.icon key={item.label} size={18} />
+            ),
+          )}
         </div>
       </div>
 
@@ -99,6 +116,7 @@ export function HoverSidebar() {
               <button
                 key={item.label}
                 type="button"
+                onClick={item.label === 'Settings' ? goToSettings : undefined}
                 className="mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-medium text-white transition hover:bg-[#111a2f]"
               >
                 <item.icon size={18} className="text-white/95" />

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react'
 import { supabase } from '../services/supabase.js'
 import { apiFetch } from '../services/api.js'
+import { conversationsListUrl } from '../services/inboxApi.js'
 import { REALTIME_INBOX } from '../config/realtimeInbox.config.js'
 import { useInboxStore } from '../stores/inboxStore.js'
 
@@ -79,7 +80,8 @@ function createRealtimeInboxSubscription({ organizationId, userId, subscriptionK
     }
 
     try {
-      const response = await apiFetch(`/api/conversations?organizationId=${organizationId}&page=1&pageSize=100`)
+      const filter = useInboxStore.getState().activeFilter ?? 'all'
+      const response = await apiFetch(conversationsListUrl(organizationId, filter, { page: 1, pageSize: 100 }))
       const conversations = response?.items ?? []
       for (const item of conversations) {
         rememberConversationOrg(item.id, item.organization_id)
@@ -99,7 +101,8 @@ function createRealtimeInboxSubscription({ organizationId, userId, subscriptionK
 
     const pending = (async () => {
       try {
-        const response = await apiFetch(`/api/conversations?organizationId=${organizationId}&page=1&pageSize=100`)
+        const filter = useInboxStore.getState().activeFilter ?? 'all'
+      const response = await apiFetch(conversationsListUrl(organizationId, filter, { page: 1, pageSize: 100 }))
         const conversations = response?.items ?? []
         let target = null
         for (const item of conversations) {
@@ -147,6 +150,16 @@ function createRealtimeInboxSubscription({ organizationId, userId, subscriptionK
 
     const store = useInboxStore.getState()
     store.addMessage(row.conversation_id, row)
+
+    const meta = row.metadata && typeof row.metadata === 'object' ? row.metadata : {}
+    const mentionIds = Array.isArray(meta.mentions) ? meta.mentions.map(String) : []
+    if (
+      userId &&
+      mentionIds.includes(String(userId)) &&
+      String(row.sender_user_id ?? '') !== String(userId)
+    ) {
+      store.pulseMentionsNotification()
+    }
 
     const existingConversation = store.conversations.find((item) => item.id === row.conversation_id)
     if (existingConversation) {

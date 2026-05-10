@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useParams } from 'react-router-dom'
 import {
   Bell,
   ChevronDown,
@@ -42,17 +43,17 @@ import { useAuth } from '../hooks/useAuth.js'
 import { useInboxPeriodicSync } from '../hooks/useInboxPeriodicSync.js'
 import { useRealtimeInbox } from '../hooks/useRealtimeInbox.js'
 import { formatTypingIndicator, useTypingPresence } from '../hooks/useTypingPresence.js'
-import { useInboxStore } from '../stores/inboxStore.js'
-
-const leftSections = [
-  { label: 'Your inbox', count: 4 },
-  { label: 'Mentions', count: 0 },
-  { label: 'Created by you', count: 0 },
-  { label: 'All', count: 4, active: true },
-  { label: 'Unassigned', count: 0 },
-  { label: 'Spam', count: 0 },
-  { label: 'Dashboard' },
-]
+import { CONVERSATION_FILTER_CACHE_MS, FILTER_REFETCH_DEBOUNCE_MS, INBOX_SIDEBAR_FILTERS } from '../config/inboxFilters.js'
+import { useDebouncedCallback } from '../hooks/useDebouncedCallback.js'
+import {
+  conversationCountsUrl,
+  conversationMembersUrl,
+  conversationMessagesUrl,
+  conversationsListUrl,
+  patchConversationSpamUrl,
+  patchConversationUrl,
+} from '../services/inboxApi.js'
+import { DEFAULT_INBOX_FILTER, useInboxStore } from '../stores/inboxStore.js'
 
 const finForServiceOptions = [
   { label: 'All conversations', icon: ListFilter },
@@ -84,6 +85,20 @@ function getRelativeTimeLabel(isoDate) {
   const diffHr = Math.floor(diffMin / 60)
   if (diffHr < 24) return `${diffHr}h`
   return `${Math.floor(diffHr / 24)}d`
+}
+
+function MessageContentRich({ text }) {
+  if (typeof text !== 'string') return text
+  const parts = text.split(/(@[\w.-]+)/g)
+  return parts.map((part, i) =>
+    part.startsWith('@') ? (
+      <span key={`m-${i}`} className="font-semibold text-sky-300">
+        {part}
+      </span>
+    ) : (
+      <span key={`t-${i}`}>{part}</span>
+    ),
+  )
 }
 
 function toConversationViewModel(item) {
@@ -141,45 +156,56 @@ const ConversationListRow = memo(
 )
 
 export default function InboxPage() {
-  const organizationId = import.meta.env.VITE_TEST_ORGANIZATION_ID?.trim() ?? ''
+  const { orgId: orgFromRoute } = useParams()
+  const organizationId =
+    (typeof orgFromRoute === 'string' && orgFromRoute.trim()) ||
+    import.meta.env.VITE_TEST_ORGANIZATION_ID?.trim() ||
+    ''
   const { user } = useAuth()
   const conversations = useInboxStore((state) => state.conversations)
   const activeConversationId = useInboxStore((state) => state.activeConversationId)
+  const activeFilter = useInboxStore((state) => state.activeFilter)
+  const filterCounts = useInboxStore((state) => state.filterCounts)
+  const conversationPagination = useInboxStore((state) => state.conversationPagination)
   const messagesByConversationId = useInboxStore((state) => state.messagesByConversationId)
   const activeViewersByConversationId = useInboxStore((state) => state.activeViewersByConversationId)
   const typingState = useInboxStore((state) => state.typingState)
   const setConversationsPage = useInboxStore((state) => state.setConversationsPage)
   const setActiveConversationId = useInboxStore((state) => state.setActiveConversationId)
   const setMessagesForConversation = useInboxStore((state) => state.setMessagesForConversation)
+  const setActiveFilter = useInboxStore((state) => state.setActiveFilter)
+  const setFilterCounts = useInboxStore((state) => state.setFilterCounts)
+  const cacheConversationFilterPage = useInboxStore((state) => state.cacheConversationFilterPage)
+  const invalidateConversationFilterCache = useInboxStore((state) => state.invalidateConversationFilterCache)
+  const upsertConversation = useInboxStore((state) => state.upsertConversation)
+  const autoAssignOnSelect = useInboxStore((state) => state.autoAssignOnSelect)
+  const setAutoAssignOnSelect = useInboxStore((state) => state.setAutoAssignOnSelect)
 
   const [loadingConversations, setLoadingConversations] = useState(false)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sendingMessage, setSendingMessage] = useState(false)
   const [draftMessage, setDraftMessage] = useState('')
   const [error, setError] = useState('')
+  const [orgMembers, setOrgMembers] = useState([])
+  const [assigningConversation, setAssigningConversation] = useState(false)
+  const [spamUpdating, setSpamUpdating] = useState(false)
 
   const messagesScrollRef = useRef(null)
   const stickToBottomRef = useRef(true)
 
-  const sendMessage = useMemo(
-    () =>
-      createSendMessage({
-        organizationId,
-        senderUserId: user?.id ?? null,
-        apiFetch,
-      }),
-    [organizationId, user?.id],
-  )
-
-  const loadConversations = useCallback(
-    async (opts = {}) => {
+  const runConversationQuery = useCallback(
+    async (filterType, opts = {}) => {
       const silent = opts.silent === true
       if (!organizationId) return
       if (!silent) setLoadingConversations(true)
       if (!silent) setError('')
       try {
-        const response = await apiFetch(`/api/conversations?organizationId=${organizationId}&page=1&pageSize=50`)
+        const response = await apiFetch(conversationsListUrl(organizationId, filterType))
         setConversationsPage({
+          items: response?.items ?? [],
+          pagination: response?.pagination,
+        })
+        cacheConversationFilterPage(filterType, {
           items: response?.items ?? [],
           pagination: response?.pagination,
         })
@@ -189,7 +215,109 @@ export default function InboxPage() {
         if (!silent) setLoadingConversations(false)
       }
     },
-    [organizationId, setConversationsPage],
+    [organizationId, setConversationsPage, cacheConversationFilterPage],
+  )
+
+  const loadFilterCounts = useCallback(async () => {
+    if (!organizationId) return
+    try {
+      const counts = await apiFetch(conversationCountsUrl(organizationId))
+      setFilterCounts(counts)
+    } catch {
+      /* counts are best-effort */
+    }
+  }, [organizationId, setFilterCounts])
+
+  useEffect(() => {
+    if (!organizationId) {
+      const t = window.setTimeout(() => setOrgMembers([]), 0)
+      return () => clearTimeout(t)
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await apiFetch(conversationMembersUrl(organizationId))
+        if (!cancelled) setOrgMembers(res?.members ?? [])
+      } catch {
+        if (!cancelled) setOrgMembers([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [organizationId])
+
+  const myMembership = useMemo(
+    () => orgMembers.find((m) => m.userId === user?.id) ?? null,
+    [orgMembers, user?.id],
+  )
+
+  const setInboxSortMemberId = useInboxStore((state) => state.setInboxSortMemberId)
+  useEffect(() => {
+    setInboxSortMemberId(myMembership?.id ?? null)
+  }, [myMembership?.id, setInboxSortMemberId])
+
+  const membersByMemberId = useMemo(() => {
+    const map = new Map()
+    for (const row of orgMembers) map.set(row.id, row)
+    return map
+  }, [orgMembers])
+
+  const mentionMembersForParse = useMemo(
+    () =>
+      orgMembers.map((m) => ({
+        userId: m.userId,
+        displayName: m.displayName,
+        email: m.email,
+      })),
+    [orgMembers],
+  )
+
+  const sendMessage = useMemo(
+    () =>
+      createSendMessage({
+        organizationId,
+        senderUserId: user?.id ?? null,
+        apiFetch,
+        mentionMembers: mentionMembersForParse,
+      }),
+    [organizationId, user?.id, mentionMembersForParse],
+  )
+
+  const mentionsNotifyEpoch = useInboxStore((state) => state.mentionsNotifyEpoch)
+  const [mentionCue, setMentionCue] = useState(false)
+
+  useEffect(() => {
+    if (mentionsNotifyEpoch === 0) return undefined
+    const tOn = window.setTimeout(() => setMentionCue(true), 0)
+    const tOff = window.setTimeout(() => setMentionCue(false), 1600)
+    return () => {
+      clearTimeout(tOn)
+      clearTimeout(tOff)
+    }
+  }, [mentionsNotifyEpoch])
+
+  const debouncedRefetchFilter = useDebouncedCallback((filterType) => {
+    void (async () => {
+      await runConversationQuery(filterType, { silent: false })
+      await loadFilterCounts()
+    })()
+  }, FILTER_REFETCH_DEBOUNCE_MS)
+
+  const onSelectSidebarFilter = useCallback(
+    (filterType) => {
+      setActiveFilter(filterType)
+      const cached = useInboxStore.getState().conversationFilterCache[filterType]
+      const fresh = cached && Date.now() - cached.fetchedAt < CONVERSATION_FILTER_CACHE_MS
+      if (fresh) {
+        setConversationsPage({
+          items: cached.items,
+          pagination: cached.pagination,
+        })
+      }
+      debouncedRefetchFilter(filterType)
+    },
+    [setActiveFilter, setConversationsPage, debouncedRefetchFilter],
   )
 
   const loadMessages = useCallback(
@@ -200,7 +328,7 @@ export default function InboxPage() {
       if (!silent) setError('')
       try {
         const response = await apiFetch(
-          `/api/conversations/${conversationId}/messages?organizationId=${organizationId}&page=1&pageSize=100`,
+          conversationMessagesUrl(organizationId, conversationId, { page: 1, pageSize: 100 }),
         )
         setMessagesForConversation(conversationId, response?.items ?? [])
       } catch (err) {
@@ -213,12 +341,14 @@ export default function InboxPage() {
   )
 
   const handleRealtimeReconnect = useCallback(async () => {
-    await loadConversations({ silent: true })
+    const filter = useInboxStore.getState().activeFilter
+    await runConversationQuery(filter, { silent: true })
+    await loadFilterCounts()
     const convId = useInboxStore.getState().activeConversationId
     if (convId) {
       await loadMessages(convId, { silent: true })
     }
-  }, [loadConversations, loadMessages])
+  }, [runConversationQuery, loadFilterCounts, loadMessages])
 
   useRealtimeInbox({
     organizationId,
@@ -253,6 +383,13 @@ export default function InboxPage() {
     [activeConversationId, messagesByConversationId],
   )
 
+  const assigneeLabel = useMemo(() => {
+    const mid = selectedConversation?.assigned_to_member_id
+    if (!mid) return 'Unassigned'
+    if (myMembership?.id === mid) return 'You'
+    return membersByMemberId.get(mid)?.displayName ?? `${mid.slice(0, 8)}…`
+  }, [selectedConversation?.assigned_to_member_id, myMembership?.id, membersByMemberId])
+
   const updateStickToBottom = useCallback(() => {
     const el = messagesScrollRef.current
     if (!el) return
@@ -273,30 +410,119 @@ export default function InboxPage() {
   const typingUsers = typingState[activeConversationId] ?? []
   const typingLabel = formatTypingIndicator(typingUsers)
 
-  const openCount = useMemo(
-    () => conversations.filter((item) => item.status === 'open').length,
-    [conversations],
-  )
+  const listTotal = conversationPagination.total ?? conversations.length
 
   useEffect(() => {
-    loadConversations()
-  }, [loadConversations])
-
-  useEffect(() => {
-    if (!activeConversationId) {
-      return
+    if (!organizationId) return undefined
+    invalidateConversationFilterCache()
+    useInboxStore.setState({ activeFilter: DEFAULT_INBOX_FILTER })
+    let cancelled = false
+    ;(async () => {
+      setLoadingConversations(true)
+      setError('')
+      try {
+        const filter = DEFAULT_INBOX_FILTER
+        const response = await apiFetch(conversationsListUrl(organizationId, filter))
+        if (cancelled) return
+        setConversationsPage({
+          items: response?.items ?? [],
+          pagination: response?.pagination,
+        })
+        cacheConversationFilterPage(filter, {
+          items: response?.items ?? [],
+          pagination: response?.pagination,
+        })
+        const counts = await apiFetch(conversationCountsUrl(organizationId))
+        if (!cancelled) setFilterCounts(counts)
+      } catch (err) {
+        if (!cancelled) setError(err?.message || 'Failed to load conversations.')
+      } finally {
+        if (!cancelled) setLoadingConversations(false)
+      }
+    })()
+    return () => {
+      cancelled = true
     }
-    loadMessages(activeConversationId)
+  }, [organizationId, invalidateConversationFilterCache, setConversationsPage, cacheConversationFilterPage, setFilterCounts])
+
+  useEffect(() => {
+    if (!activeConversationId) return undefined
+    const t = window.setTimeout(() => {
+      void loadMessages(activeConversationId)
+    }, 0)
+    return () => clearTimeout(t)
   }, [activeConversationId, loadMessages])
 
   const conversationView = useMemo(() => conversations.map(toConversationViewModel), [conversations])
 
+  const assignConversation = useCallback(
+    async (conversationId, memberId) => {
+      if (!organizationId || !conversationId) return
+      setAssigningConversation(true)
+      setError('')
+      try {
+        const res = await apiFetch(patchConversationUrl(organizationId, conversationId), {
+          method: 'PATCH',
+          body: JSON.stringify({
+            assignedToMemberId: memberId,
+          }),
+        })
+        const updated = res?.conversation
+        if (updated) upsertConversation(updated)
+        const filterNow = useInboxStore.getState().activeFilter
+        await runConversationQuery(filterNow, { silent: true })
+        await loadFilterCounts()
+      } catch (err) {
+        setError(err?.message || 'Could not update assignment.')
+      } finally {
+        setAssigningConversation(false)
+      }
+    },
+    [organizationId, upsertConversation, runConversationQuery, loadFilterCounts],
+  )
+
   const handleSelectConversation = useCallback(
     (id) => {
       setActiveConversationId(id)
+      const conv = useInboxStore.getState().conversations.find((c) => c.id === id)
+      const myMid = myMembership?.id
+      if (
+        useInboxStore.getState().autoAssignOnSelect &&
+        organizationId &&
+        myMid &&
+        conv &&
+        conv.assigned_to_member_id !== myMid
+      ) {
+        void assignConversation(id, myMid)
+      }
     },
-    [setActiveConversationId],
+    [setActiveConversationId, organizationId, myMembership?.id, assignConversation],
   )
+
+  const applySpamFlag = useCallback(
+    async (conversationId, isSpam) => {
+      if (!organizationId || !conversationId) return
+      setSpamUpdating(true)
+      setError('')
+      try {
+        const res = await apiFetch(patchConversationSpamUrl(organizationId, conversationId), {
+          method: 'PATCH',
+          body: JSON.stringify({ is_spam: isSpam }),
+        })
+        const updated = res?.conversation
+        if (updated) upsertConversation(updated)
+        const filterNow = useInboxStore.getState().activeFilter
+        await runConversationQuery(filterNow, { silent: true })
+        await loadFilterCounts()
+      } catch (err) {
+        setError(err?.message || 'Could not update spam flag.')
+      } finally {
+        setSpamUpdating(false)
+      }
+    },
+    [organizationId, upsertConversation, runConversationQuery, loadFilterCounts],
+  )
+
   const trimmedDraft = draftMessage.trim()
   const canSendMessage = Boolean(activeConversationId && organizationId && trimmedDraft) && !sendingMessage
 
@@ -360,9 +586,10 @@ export default function InboxPage() {
   )
 
   return (
-    <main className="h-screen overflow-hidden bg-[#0f1422] text-slate-100">
-      <div className="grid h-screen grid-cols-[260px_1fr_2fr_1.1fr] gap-0">
-        <aside className="border-r border-[#27314a] bg-[#121a2b] p-3">
+    <main className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#0f1422] text-slate-100">
+      <div className="grid h-full min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_minmax(0,2fr)_minmax(0,1.1fr)] gap-0 overflow-hidden">
+        <aside className="flex min-h-0 flex-col overflow-hidden border-r border-[#27314a] bg-[#121a2b]">
+          <div className="inbox-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 [scrollbar-gutter:stable]">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="text-2xl font-semibold">Inbox</h2>
             <button className="rounded-md bg-[#1b2741] p-1.5">
@@ -372,18 +599,37 @@ export default function InboxPage() {
           <div className="mb-3 flex items-center gap-2 rounded-lg bg-[#0e1526] px-2 py-2 text-sm text-slate-300">
             <Search size={14} /> Search
           </div>
+          <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-lg border border-[#27314a] bg-[#0e1526] px-2 py-2 text-xs text-slate-400">
+            <input
+              type="checkbox"
+              className="rounded border-[#4f6290] bg-[#0f1728]"
+              checked={autoAssignOnSelect}
+              onChange={(e) => setAutoAssignOnSelect(e.target.checked)}
+            />
+            <span>Auto-assign when opening</span>
+          </label>
           <div className="space-y-1 text-sm">
-            {leftSections.map((item) => (
-              <div
-                key={item.label}
-                className={`flex items-center justify-between rounded-md px-2 py-1.5 ${
-                  item.active ? 'bg-[#1a2440] text-white' : 'text-slate-300'
-                }`}
-              >
-                <span>{item.label}</span>
-                {item.count != null ? <span className="text-xs text-slate-400">{item.count}</span> : null}
-              </div>
-            ))}
+            {INBOX_SIDEBAR_FILTERS.map((item) => {
+              const isActive = activeFilter === item.id
+              const count = filterCounts[item.id] ?? 0
+              const mentionFlash = item.id === 'mentions' && mentionCue
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onSelectSidebarFilter(item.id)}
+                  className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left transition-colors ${
+                    isActive ? 'bg-[#1a2440] text-white' : 'text-slate-300 hover:bg-[#151e33]'
+                  } ${mentionFlash ? 'ring-2 ring-sky-400/80 shadow-[0_0_14px_rgba(56,189,248,0.35)]' : ''}`}
+                >
+                  <span>{item.label}</span>
+                  <span className="tabular-nums text-xs text-slate-400">{count}</span>
+                </button>
+              )
+            })}
+            <div className="flex items-center justify-between rounded-md px-2 py-1.5 text-slate-400">
+              <span>Dashboard</span>
+            </div>
           </div>
 
           <div className="mt-4 rounded-lg border border-[#27314a] bg-[#0f1728] p-2">
@@ -438,10 +684,11 @@ export default function InboxPage() {
             <p className="font-semibold text-white">Get set up</p>
             <p className="mt-1 text-xs text-slate-300">Set up channels to connect with your customers</p>
           </div>
+          </div>
         </aside>
 
-        <section className="border-r border-[#27314a] bg-[#101729]">
-          <div className="border-b border-[#27314a] px-4 py-3">
+        <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-[#27314a] bg-[#101729]">
+          <div className="shrink-0 border-b border-[#27314a] px-4 py-3">
             <div className="flex items-center justify-between">
               <h3 className="flex items-center gap-2 text-2xl font-semibold text-white">
                 <CircleDot size={20} />
@@ -453,10 +700,10 @@ export default function InboxPage() {
             </div>
           </div>
 
-          <div className="px-4 py-3">
+          <div className="inbox-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 [scrollbar-gutter:stable]">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-full border border-[#3a4b6f] bg-[#18233b] px-2.5 py-1 text-[12px] font-semibold text-white">
-                {loadingConversations ? 'Loading...' : `${openCount} Open`}
+                {loadingConversations ? 'Loading...' : `${listTotal} in view`}
               </span>
               <div className="flex items-center gap-2">
                 <span className="rounded-full border border-[#3a4b6f] bg-[#18233b] px-2.5 py-1 text-[12px] font-semibold text-white">
@@ -490,8 +737,8 @@ export default function InboxPage() {
           </div>
         </section>
 
-        <section className="flex relative flex-col border-r border-[#27314a] bg-[#181f32]">
-          <div className="flex items-center justify-between border-b border-[#27314a] px-3 py-4">
+        <section className="relative flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-[#27314a] bg-[#181f32]">
+          <div className="flex shrink-0 items-center justify-between border-b border-[#27314a] px-3 py-4">
             <h3 className="text-2xl font-semibold">{selectedConversation ? selectedConversation.source ?? 'Messenger' : 'Messenger'}</h3>
             <div className="flex items-center gap-2 text-slate-300">
               <Star size={14} />
@@ -508,15 +755,14 @@ export default function InboxPage() {
             </div>
           </div>
           {selectedConversation ? (
-            <div className="border-b border-[#27314a] px-3 py-2 text-xs text-slate-300">
+            <div className="shrink-0 border-b border-[#27314a] px-3 py-2 text-xs text-slate-300">
               Active viewers: {activeViewers.length}
             </div>
           ) : null}
-<div>
 
           <div
             ref={messagesScrollRef}
-            className="flex-1 overflow-auto h-[630px] px-3 py-3"
+            className="inbox-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 pt-3 [scrollbar-gutter:stable]"
             onScroll={updateStickToBottom}
           >
             <div className="rounded-xl border border-[#2a3654] bg-[#242c3f] p-4">
@@ -575,7 +821,9 @@ export default function InboxPage() {
                           : 'bg-[#334680]'
                     }`}
                   >
-                    <p className="whitespace-pre-wrap">{message.content}</p>
+                    <p className="whitespace-pre-wrap">
+                      <MessageContentRich text={message.content} />
+                    </p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <p className="text-xs text-slate-300">
                         {message.sender_type} • {getRelativeTimeLabel(message.created_at)}
@@ -610,10 +858,8 @@ export default function InboxPage() {
               )
             })}
           </div>
-</div>
 
-
-          <div className="mx-3 mb-3 absolute bottom-18 left-0 right-0 rounded-xl border border-[#2b3652] bg-[#1a2338] p-3">
+          <div className="mx-3 mb-3 mt-auto shrink-0 rounded-xl border border-[#2b3652] bg-[#1a2338] p-3">
             <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
               <MessageSquare size={14} /> Reply <ChevronDown size={14} />
             </div>
@@ -649,14 +895,72 @@ export default function InboxPage() {
           </div>
         </section>
 
-        <aside className="bg-[#141b2d]  text-sm">
-          <div className="p-4  flex gap-4 border-b border-[#27314a] ">
+        <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#141b2d] text-sm">
+          <div className="flex shrink-0 gap-4 border-b border-[#27314a] p-4">
             <button className="text-lg text-white">Details</button>
             <button className="text-lg text-slate-400">Copilot</button>
           </div>
-          <div className="space-y-3 p-4 text-slate-300">
-            <div className="flex items-center justify-between"><span>Assignee</span><span className="text-white">{selectedConversation?.assigned_to_member_id ? selectedConversation.assigned_to_member_id.slice(0, 8) : 'Unassigned'}</span></div>
-            <div className="flex items-center justify-between"><span>Team inbox</span><span className="text-white">{selectedConversation?.status ?? 'Unassigned'}</span></div>
+          <div className="inbox-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 text-slate-300 [scrollbar-gutter:stable]">
+            <div className="flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <span className="shrink-0">Assignee</span>
+                <span className="max-w-[160px] truncate text-right text-white" title={assigneeLabel}>
+                  {assigneeLabel}
+                </span>
+              </div>
+              <button
+                type="button"
+                disabled={
+                  !selectedConversation ||
+                  !myMembership ||
+                  assigningConversation ||
+                  myMembership.id === selectedConversation?.assigned_to_member_id
+                }
+                onClick={() =>
+                  selectedConversation &&
+                  myMembership &&
+                  assignConversation(selectedConversation.id, myMembership.id)
+                }
+                className="inline-flex items-center justify-center gap-2 rounded-md border border-[#334060] bg-[#18233b] px-3 py-2 text-xs font-medium text-white hover:bg-[#1f2d4d] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <UserRoundPlus size={14} aria-hidden />
+                {myMembership?.id === selectedConversation?.assigned_to_member_id
+                  ? 'Assigned to you'
+                  : 'Assign to me'}
+              </button>
+            </div>
+            <div className="flex items-center justify-between">
+              <span>Team inbox</span>
+              <span className="text-white">{selectedConversation?.status ?? '—'}</span>
+            </div>
+            <div className="flex flex-col gap-2 border-t border-[#27314a] pt-3">
+              <span className="text-xs text-slate-400">Spam</span>
+              {selectedConversation?.is_spam === true ? (
+                <button
+                  type="button"
+                  disabled={!selectedConversation || spamUpdating}
+                  onClick={() =>
+                    selectedConversation && applySpamFlag(selectedConversation.id, false)
+                  }
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-900/60 bg-emerald-950/40 px-3 py-2 text-xs font-medium text-emerald-100 hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ShieldAlert size={14} aria-hidden />
+                  Remove from spam
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled={!selectedConversation || spamUpdating}
+                  onClick={() =>
+                    selectedConversation && applySpamFlag(selectedConversation.id, true)
+                  }
+                  className="inline-flex items-center justify-center gap-2 rounded-md border border-amber-900/50 bg-amber-950/30 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-950/50 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <ShieldAlert size={14} aria-hidden />
+                  Mark as spam
+                </button>
+              )}
+            </div>
             <div className="pt-2 text-xs text-slate-400">Links</div>
             <div className="flex items-center gap-2"><Link2 size={14} /> Tracker ticket</div>
             <div className="flex items-center gap-2"><ShieldAlert size={14} /> Back-office tickets</div>

@@ -11,7 +11,6 @@ export function useAuth() {
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session: s } }) => {
-      console.log('session', s)
       setSession(s)
       setUser(s?.user ?? null)
       setLoading(false)

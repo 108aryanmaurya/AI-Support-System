@@ -40,17 +40,19 @@ export default function TestSendMessagePage() {
     setResult(null)
 
     try {
-      const response = await apiFetch('/api/messages/incoming', {
-        method: 'POST',
-        body: JSON.stringify({
-          organizationId,
-          customer: {
-            email: normalizedEmail,
-            name: normalizedName,
-          },
-          message: normalizedMessage,
-        }),
-      })
+      const response = await apiFetch(
+        `/api/org/${encodeURIComponent(organizationId)}/messages/incoming`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            customer: {
+              email: normalizedEmail,
+              name: normalizedName,
+            },
+            message: normalizedMessage,
+          }),
+        },
+      )
 
       setResult(response)
     } catch (err) {
@@ -65,7 +67,7 @@ export default function TestSendMessagePage() {
       <div className="mx-auto w-full max-w-2xl rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h1 className="text-xl font-semibold">Debug: Send Incoming Message</h1>
         <p className="mt-1 text-sm text-slate-600">
-          Internal testing tool for <code>POST /api/messages/incoming</code>.
+          Internal testing tool for <code>POST /api/org/:orgId/messages/incoming</code>.
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>

@@ -1,18 +1,36 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
+import { useAuthContext } from '../context/AuthContext.jsx'
 import { Button } from '../components/Button.jsx'
 import { Logo } from '../components/Logo.jsx'
 import loginBg from '../assets/loginbg.jpg'
 import { login } from '../services/auth.js'
 
-export default function LoginPage({
-  onBackToHome = () => {},
-  onStartTrial = () => {},
-  onLoginSuccess = () => {},
-}) {
+function resolveRedirectTarget(state) {
+  const from = state?.from
+  if (typeof from === 'string') return from
+  if (from && typeof from.pathname === 'string') {
+    return `${from.pathname}${from.search ?? ''}${from.hash ?? ''}`
+  }
+  return '/continue'
+}
+
+export default function LoginPage() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { user, loading: sessionLoading } = useAuthContext()
+  const redirectTo = resolveRedirectTarget(location.state)
+
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [errorMessage, setErrorMessage] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (!sessionLoading && user) {
+      navigate(resolveRedirectTarget(location.state), { replace: true })
+    }
+  }, [sessionLoading, user, navigate, location.state])
 
   async function handleSubmit(event) {
     event.preventDefault()
@@ -24,7 +42,7 @@ export default function LoginPage({
       setErrorMessage(error.message || 'Login failed.')
       return
     }
-    onLoginSuccess()
+    navigate(redirectTo, { replace: true })
   }
 
   return (
@@ -82,7 +100,7 @@ export default function LoginPage({
           New here?{' '}
           <button
             type="button"
-            onClick={onStartTrial}
+            onClick={() => navigate('/register')}
             className="font-semibold text-[#1f8d5f] transition hover:text-[#166c46]"
           >
             Start free trial
@@ -91,7 +109,7 @@ export default function LoginPage({
 
         <button
           type="button"
-          onClick={onBackToHome}
+          onClick={() => navigate('/')}
           className="mt-4 w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-[#3ECF8E] hover:text-[#1f8d5f]"
         >
           Back to landing page

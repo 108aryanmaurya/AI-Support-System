@@ -1,3 +1,4 @@
+import { useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button.jsx'
 import { Logo } from '../components/Logo.jsx'
 
@@ -63,17 +64,21 @@ const plans = [
   { name: 'Pro', price: '$149/mo', description: 'Advanced automation and analytics at scale.' },
 ]
 
-export default function LandingPage({ onLoginClick = () => {}, onStartTrialClick = () => {} }) {
+export default function LandingPage() {
+  const navigate = useNavigate()
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-white via-[#f7fff9] to-white text-slate-900">
       <nav className="sticky top-0 z-30 border-b border-slate-200/70 bg-white/85 backdrop-blur">
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-6 py-4">
           <Logo />
           <div className="flex items-center gap-3">
-            <Button variant="outline" onClick={onLoginClick}>
+            <Button variant="outline" type="button" onClick={() => navigate('/login')}>
               Login
             </Button>
-            <Button onClick={onStartTrialClick}>Start Free Trial</Button>
+            <Button type="button" onClick={() => navigate('/register')}>
+              Start Free Trial
+            </Button>
           </div>
         </div>
       </nav>
@@ -92,7 +97,7 @@ export default function LandingPage({ onLoginClick = () => {}, onStartTrialClick
               agents.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Button className="px-6 py-3" onClick={onStartTrialClick}>
+              <Button className="px-6 py-3" type="button" onClick={() => navigate('/register')}>
                 Start Free Trial
               </Button>
               <Button variant="outline" className="px-6 py-3">
@@ -209,7 +214,8 @@ export default function LandingPage({ onLoginClick = () => {}, onStartTrialClick
             </div>
             <Button
               className="mt-6 bg-white text-slate-900 hover:bg-slate-100 md:mt-0"
-              onClick={onStartTrialClick}
+              type="button"
+              onClick={() => navigate('/register')}
             >
               Start Free Trial
             </Button>

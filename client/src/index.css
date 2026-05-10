@@ -42,3 +42,39 @@ body {
 .animate-fade-up {
   animation: fade-up 700ms ease-out both;
 }
+
+/**
+ * Slim scrollbars for inbox panels (#0f1422 / #121a2b family).
+ */
+@layer utilities {
+  .inbox-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #3a455c #151b2a;
+  }
+
+  .inbox-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  .inbox-scrollbar::-webkit-scrollbar-track {
+    background: #151b2a;
+    border-radius: 9999px;
+  }
+
+  .inbox-scrollbar::-webkit-scrollbar-thumb {
+    background: #3a455c;
+    border-radius: 9999px;
+    border: 1px solid transparent;
+    background-clip: padding-box;
+  }
+
+  .inbox-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #4a5a78;
+    background-clip: padding-box;
+  }
+
+  .inbox-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}

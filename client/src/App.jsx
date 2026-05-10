@@ -1,75 +1,55 @@
-import { useEffect, useState } from 'react'
+import { Navigate, Route, Routes } from 'react-router-dom'
 import LandingPage from './pages/LandingPage.jsx'
 import LoginPage from './pages/LoginPage.jsx'
 import Register from './pages/Register.jsx'
-import DashboardPage from './pages/DashboardPage.jsx'
-import GettingStartedPage from './pages/GettingStartedPage.jsx'
+import OnboardingPage from './pages/OnboardingPage.jsx'
 import InboxPage from './pages/InboxPage.jsx'
 import TestSendMessagePage from './pages/TestSendMessagePage.jsx'
-import { HoverSidebar } from './components/HoverSidebar.jsx'
+import PostAuthRedirect from './pages/PostAuthRedirect.jsx'
+import OrgSelectorPage from './pages/OrgSelectorPage.jsx'
+import InvitePage from './pages/InvitePage.jsx'
+import OrgSettingsLayout from './pages/OrgSettingsLayout.jsx'
+import OrgSettingsHomePage from './pages/OrgSettingsHomePage.jsx'
+import OrgTeammatesPage from './pages/OrgTeammatesPage.jsx'
+import OrgTeammatesSection from './pages/OrgTeammatesSection.jsx'
+import OrgInviteTeammatesPage from './pages/OrgInviteTeammatesPage.jsx'
+import TeammatesInviteDeepLink from './pages/TeammatesInviteDeepLink.jsx'
+import { RequireAuth } from './components/ProtectedRoute.jsx'
+import { OrgWorkspaceLayout } from './layouts/OrgWorkspaceLayout.jsx'
 
 export default function App() {
-  const [pathname, setPathname] = useState(window.location.pathname)
-
-  useEffect(() => {
-    function handleRouteChange() {
-      setPathname(window.location.pathname)
-    }
-
-    window.addEventListener('popstate', handleRouteChange)
-    return () => window.removeEventListener('popstate', handleRouteChange)
-  }, [])
-
-  function navigateTo(path) {
-    if (window.location.pathname === path) return
-    window.history.pushState({}, '', path)
-    setPathname(path)
-  }
-
-  function withHoverSidebar(page) {
-    const excluded = ['/', '/login', '/register', '/getting-started']
-    if (excluded.includes(pathname)) return page
-    return (
-      <>
-        <HoverSidebar />
-        <div className="pl-[72px] md:ml-0">
-          {page}
-        </div>
-      </>
-    )
-  }
-
-  if (pathname === '/login') {
-    return (
-      <LoginPage
-        onBackToHome={() => navigateTo('/')}
-        onStartTrial={() => navigateTo('/register')}
-        onLoginSuccess={() => navigateTo('/getting-started')}
-      />
-    )
-  }
-
-  if (pathname === '/register') {
-    return <Register onBackToHome={() => navigateTo('/')} onGoToDashboard={() => navigateTo('/getting-started')} />
-  }
-
-  if (pathname === '/getting-started') {
-    return <GettingStartedPage />
-  }
-
-  if (pathname === '/dashboard') {
-    return withHoverSidebar(<DashboardPage onGoHome={() => navigateTo('/')} />)
-  }
-
-  if (pathname === '/inbox') {
-    return withHoverSidebar(<InboxPage onGoHome={() => navigateTo('/')} />)
-  }
-
-  if (pathname === '/test/send-message') {
-    return <TestSendMessagePage />
-  }
-
   return (
-    <LandingPage onLoginClick={() => navigateTo('/login')} onStartTrialClick={() => navigateTo('/register')} />
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/register" element={<Register />} />
+      <Route path="/invite" element={<InvitePage />} />
+
+      <Route element={<RequireAuth />}>
+        <Route path="/continue" element={<PostAuthRedirect />} />
+        <Route path="/onboarding" element={<OnboardingPage />} />
+        <Route path="/select-org" element={<OrgSelectorPage />} />
+        <Route path="/teammates/invite/new" element={<TeammatesInviteDeepLink />} />
+
+        <Route path="/org/:orgId" element={<OrgWorkspaceLayout />}>
+          <Route path="inbox" element={<InboxPage />} />
+          <Route path="settings" element={<OrgSettingsLayout />}>
+            <Route index element={<OrgSettingsHomePage />} />
+            <Route path="teammates" element={<OrgTeammatesSection />}>
+              <Route index element={<OrgTeammatesPage />} />
+              <Route path="invite/new" element={<OrgInviteTeammatesPage />} />
+            </Route>
+          </Route>
+        </Route>
+      </Route>
+
+      <Route path="/getting-started" element={<Navigate to="/onboarding" replace />} />
+      <Route path="/dashboard" element={<Navigate to="/continue" replace />} />
+      <Route path="/inbox" element={<Navigate to="/continue" replace />} />
+
+      <Route path="/test/send-message" element={<TestSendMessagePage />} />
+
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }

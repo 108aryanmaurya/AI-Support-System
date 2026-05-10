@@ -103,8 +103,8 @@ export async function createConversation({
       source,
       channel_type: channelType ?? (source === 'email' ? 'email' : 'web'),
       channel_id: channelId ?? null,
-      priority,
-      created_by_user_id: createdByUserId,
+      priority: priority ?? 'normal',
+      created_by: createdByUserId,
       metadata,
     })
     .select('*')
@@ -159,23 +159,147 @@ export async function createMessage({
   return data;
 }
 
-export async function listConversations({ organizationId, page, pageSize, from, to }) {
-  const { data, error, count } = await supabaseAdmin
-    .from('conversations')
-    .select('*', { count: 'exact' })
-    .eq('organization_id', organizationId)
-    .order('last_message_at', { ascending: false })
-    .range(from, to);
+/**
+ * Update conversation assignee (any org member or null to unassign).
+ * Validates tenant + assignee membership; DB triggers enforce customer/assignment rules.
+ */
+export async function updateConversationAssignment({
+  organizationId,
+  conversationId,
+  assignedToMemberId,
+  actorUserId,
+}) {
+  await ensureOrgMembership(actorUserId, organizationId);
 
-  if (error) throw new HttpError(500, error.message || 'Failed to fetch conversations.');
-  return {
-    items: data ?? [],
-    pagination: {
-      page,
-      pageSize,
-      total: count ?? 0,
-    },
-  };
+  if (assignedToMemberId != null) {
+    const { data: assignee, error: assigneeError } = await supabaseAdmin
+      .from('organization_members')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .eq('id', assignedToMemberId)
+      .limit(1)
+      .maybeSingle();
+
+    if (assigneeError) {
+      throw new HttpError(500, assigneeError.message || 'Failed to validate assignee.');
+    }
+    if (!assignee) {
+      throw new HttpError(400, 'Assignee must be a member of this organization.');
+    }
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('conversations')
+    .update({ assigned_to_member_id: assignedToMemberId ?? null })
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId)
+    .select('*')
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === '23514') throw new HttpError(400, error.message || 'Assignment validation failed.');
+    throw new HttpError(500, error.message || 'Failed to update assignment.');
+  }
+  if (!data) throw new HttpError(404, 'Conversation not found in this organization.');
+  return data;
+}
+
+/** Soft-flag spam (never deletes). */
+export async function updateConversationSpam({
+  organizationId,
+  conversationId,
+  isSpam,
+  actorUserId,
+}) {
+  await ensureOrgMembership(actorUserId, organizationId);
+  if (typeof isSpam !== 'boolean') {
+    throw new HttpError(400, 'isSpam must be a boolean.');
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from('conversations')
+    .update({ is_spam: isSpam })
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId)
+    .select('*')
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to update spam flag.');
+  }
+  if (!data) throw new HttpError(404, 'Conversation not found in this organization.');
+  return data;
+}
+
+/** Union user ids into conversations.metadata.mentions for inbox filter / realtime. */
+export async function mergeConversationMentionUserIds({ organizationId, conversationId, userIds }) {
+  if (!userIds?.length) return;
+
+  const { data: row, error: fetchError } = await supabaseAdmin
+    .from('conversations')
+    .select('metadata')
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+
+  if (fetchError) {
+    throw new HttpError(500, fetchError.message || 'Failed to load conversation metadata.');
+  }
+
+  const meta = row?.metadata && typeof row.metadata === 'object' ? { ...row.metadata } : {};
+  const prev = Array.isArray(meta.mentions) ? meta.mentions.map(String) : [];
+  const next = [...new Set([...prev, ...userIds.map(String)])];
+  meta.mentions = next;
+
+  const { error: updateError } = await supabaseAdmin
+    .from('conversations')
+    .update({ metadata: meta })
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId);
+
+  if (updateError) {
+    throw new HttpError(500, updateError.message || 'Failed to merge conversation mentions.');
+  }
+}
+
+/** Members + user profiles for inbox assignee labels and picker context. */
+export async function listOrganizationMembersWithProfiles({ organizationId, actorUserId }) {
+  await ensureOrgMembership(actorUserId, organizationId);
+
+  const { data: members, error: membersError } = await supabaseAdmin
+    .from('organization_members')
+    .select('id, user_id, role')
+    .eq('organization_id', organizationId);
+
+  if (membersError) {
+    throw new HttpError(500, membersError.message || 'Failed to load organization members.');
+  }
+  if (!members?.length) return [];
+
+  const userIds = [...new Set(members.map((m) => m.user_id))];
+  const { data: users, error: usersError } = await supabaseAdmin
+    .from('users')
+    .select('id, email, first_name, last_name')
+    .in('id', userIds);
+
+  if (usersError) {
+    throw new HttpError(500, usersError.message || 'Failed to load user profiles.');
+  }
+
+  const byUserId = new Map((users ?? []).map((u) => [u.id, u]));
+
+  return members.map((m) => {
+    const u = byUserId.get(m.user_id);
+    const fullName = [u?.first_name, u?.last_name].filter(Boolean).join(' ').trim();
+    const displayName = fullName || (typeof u?.email === 'string' ? u.email.split('@')[0] : '') || 'Teammate';
+    return {
+      id: m.id,
+      userId: m.user_id,
+      role: m.role,
+      email: u?.email ?? null,
+      displayName,
+    };
+  });
 }
 
 export async function listMessages({ organizationId, conversationId, page, pageSize, from, to }) {

@@ -1,5 +1,23 @@
 export const API_PREFIX: string;
 
+export interface MentionMemberInput {
+  userId: string;
+  displayName?: string | null;
+  email?: string | null;
+}
+
+export function extractMentionHandles(content: string): string[];
+export function mentionHandlesForMember(member: MentionMemberInput): Set<string>;
+export function resolveMentionUserIdsFromContent(
+  content: string,
+  members: MentionMemberInput[],
+): string[];
+
+export function lastMessageMs(conversation: unknown): number;
+export function inboxSortTier(conversation: unknown, myMemberId: string | null | undefined): 0 | 1 | 2;
+export function compareConversationsInbox(a: unknown, b: unknown, myMemberId: string | null | undefined): number;
+export function sortConversationsInbox(items: unknown[], myMemberId: string | null | undefined): unknown[];
+
 /** Ticket entity shared between client and API */
 export interface Ticket {
   id: string;

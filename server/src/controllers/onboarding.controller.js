@@ -75,6 +75,7 @@ export async function completeOnboarding(req, res, next) {
         name: payload.companyName,
         company_size: payload.companySize,
         use_case: payload.useCase,
+        created_by: authUser.id,
       })
       .select('id')
       .single();
@@ -105,7 +106,8 @@ export async function completeOnboarding(req, res, next) {
     const { error: membershipError } = await supabaseAdmin.from('organization_members').insert({
       user_id: authUser.id,
       organization_id: organization.id,
-      role: 'admin',
+      role: 'ADMIN',
+      status: 'ACTIVE',
     });
 
     if (membershipError) {

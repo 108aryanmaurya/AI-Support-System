@@ -1,0 +1,443 @@
+import { randomUUID } from 'node:crypto';
+import { env } from '../config/env.js';
+import { supabaseAdmin } from '../config/supabase.js';
+import { HttpError } from '../utils/httpError.js';
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+export function isValidInviteRole(role) {
+  const r = String(role ?? '').trim().toUpperCase();
+  return r === 'ADMIN' || r === 'AGENT' ? r : null;
+}
+
+export function normalizeEmail(email) {
+  return typeof email === 'string' ? email.trim().toLowerCase() : '';
+}
+
+/** ACTIVE membership only — used for auth gates. */
+export async function getActiveMembership({ userId, organizationId }) {
+  const { data, error } = await supabaseAdmin
+    .from('organization_members')
+    .select('id, user_id, organization_id, role, status')
+    .eq('user_id', userId)
+    .eq('organization_id', organizationId)
+    .eq('status', 'ACTIVE')
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to resolve organization membership.');
+  }
+  return data ?? null;
+}
+
+export async function createOrganizationWithAdmin({
+  userId,
+  name,
+  companySize,
+  useCase,
+}) {
+  const trimmed = typeof name === 'string' ? name.trim() : '';
+  if (!trimmed) throw new HttpError(400, 'Organization name is required.');
+  if (trimmed.length > 256) throw new HttpError(400, 'Organization name is too long.');
+
+  const sizeTrimmed =
+    typeof companySize === 'string' && companySize.trim()
+      ? companySize.trim()
+      : null;
+  const useTrimmed =
+    typeof useCase === 'string' && useCase.trim() ? useCase.trim() : null;
+  if (sizeTrimmed && sizeTrimmed.length > 64) {
+    throw new HttpError(400, 'Company size value is too long.');
+  }
+  if (useTrimmed && useTrimmed.length > 256) {
+    throw new HttpError(400, 'Use case value is too long.');
+  }
+
+  const normalizedName = trimmed.toLowerCase();
+  const { data: existingByName, error: dupErr } = await supabaseAdmin
+    .from('organizations')
+    .select('id, name')
+    .eq('created_by', userId);
+
+  if (dupErr) {
+    throw new HttpError(500, dupErr.message || 'Failed to check existing organizations.');
+  }
+  const duplicate = (existingByName ?? []).some(
+    (row) => typeof row?.name === 'string' && row.name.trim().toLowerCase() === normalizedName,
+  );
+  if (duplicate) {
+    throw new HttpError(409, 'You already have an organization with this name.');
+  }
+
+  const { data: org, error: orgError } = await supabaseAdmin
+    .from('organizations')
+    .insert({
+      name: trimmed,
+      created_by: userId,
+      company_size: sizeTrimmed,
+      use_case: useTrimmed,
+    })
+    .select('id, name, created_at, created_by')
+    .single();
+
+  if (orgError || !org?.id) {
+    throw new HttpError(500, orgError?.message || 'Failed to create organization.');
+  }
+
+  const { data: member, error: memberError } = await supabaseAdmin
+    .from('organization_members')
+    .insert({
+      user_id: userId,
+      organization_id: org.id,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    })
+    .select('id, role, status')
+    .single();
+
+  if (memberError || !member?.id) {
+    await supabaseAdmin.from('organizations').delete().eq('id', org.id);
+    throw new HttpError(500, memberError?.message || 'Failed to create organization membership.');
+  }
+
+  return { organization: org, membership: member };
+}
+
+export async function listOrganizationsForUser(userId) {
+  const { data: rows, error } = await supabaseAdmin
+    .from('organization_members')
+    .select(
+      `
+      id,
+      role,
+      status,
+      created_at,
+      organizations (
+        id,
+        name,
+        created_at,
+        created_by
+      )
+    `,
+    )
+    .eq('user_id', userId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load organizations.');
+  }
+
+  return (rows ?? []).map((row) => {
+    const org = row.organizations;
+    const organization = Array.isArray(org) ? org[0] ?? null : org ?? null;
+    return {
+      membershipId: row.id,
+      role: row.role,
+      status: row.status,
+      joinedAt: row.created_at,
+      organization,
+    };
+  });
+}
+
+export async function createInviteRecord({
+  organizationId,
+  email,
+  role,
+  expiresAtIso,
+  token,
+}) {
+  const { data, error } = await supabaseAdmin
+    .from('invites')
+    .insert({
+      organization_id: organizationId,
+      email,
+      role,
+      token,
+      status: 'PENDING',
+      expires_at: expiresAtIso,
+    })
+    .select('id, email, role, token, status, expires_at, created_at')
+    .single();
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new HttpError(
+        409,
+        'An outstanding invite already exists for this email in this organization.',
+      );
+    }
+    throw new HttpError(500, error.message || 'Failed to create invite.');
+  }
+
+  return data;
+}
+
+export async function getInviteByToken(token) {
+  if (!token || typeof token !== 'string') return null;
+
+  const { data, error } = await supabaseAdmin
+    .from('invites')
+    .select(
+      `
+      id,
+      email,
+      role,
+      token,
+      status,
+      expires_at,
+      created_at,
+      organization_id,
+      organizations (
+        id,
+        name,
+        created_at
+      )
+    `,
+    )
+    .eq('token', token.trim())
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load invite.');
+  }
+
+  return data;
+}
+
+/**
+ * Validates invite for display / acceptance (caller checks auth where needed).
+ */
+export function classifyInvite(inviteRow) {
+  if (!inviteRow) return { ok: false, reason: 'not_found' };
+  if (inviteRow.status !== 'PENDING') return { ok: false, reason: 'not_pending' };
+
+  const exp = inviteRow.expires_at ? new Date(inviteRow.expires_at) : null;
+  if (exp && Number.isFinite(exp.getTime()) && exp.getTime() < Date.now()) {
+    return { ok: false, reason: 'expired' };
+  }
+
+  return { ok: true };
+}
+
+export async function acceptInviteForUser({ token, userId, userEmail }) {
+  const raw = typeof token === 'string' ? token.trim() : '';
+  if (!raw) throw new HttpError(400, 'token is required.');
+
+  if (!userEmail || typeof userEmail !== 'string') {
+    throw new HttpError(400, 'Your account does not have an email; cannot accept this invite.');
+  }
+
+  const invite = await getInviteByToken(raw);
+  const verdict = classifyInvite(invite);
+  if (!verdict.ok) {
+    if (verdict.reason === 'not_found') throw new HttpError(404, 'Invite not found.');
+    if (verdict.reason === 'expired') throw new HttpError(410, 'This invite has expired.');
+    throw new HttpError(400, 'This invite is no longer valid.');
+  }
+
+  const normalizedInviteEmail = normalizeEmail(invite.email);
+  const normalizedUserEmail = normalizeEmail(userEmail);
+  if (!normalizedUserEmail || normalizedUserEmail !== normalizedInviteEmail) {
+    throw new HttpError(
+      403,
+      'Signed-in account email must match the invite email.',
+    );
+  }
+
+  const role = isValidInviteRole(invite.role);
+  if (!role) throw new HttpError(500, 'Invite has an invalid role.');
+
+  const orgId = invite.organization_id;
+
+  const existing = await getActiveMembership({ userId, organizationId: orgId });
+  if (existing) {
+    await supabaseAdmin.from('invites').update({ status: 'ACCEPTED' }).eq('id', invite.id);
+    return {
+      alreadyMember: true,
+      organizationId: orgId,
+      membership: existing,
+    };
+  }
+
+  const { data: membership, error: insErr } = await supabaseAdmin
+    .from('organization_members')
+    .insert({
+      user_id: userId,
+      organization_id: orgId,
+      role,
+      status: 'ACTIVE',
+    })
+    .select('id, role, status')
+    .single();
+
+  if (insErr || !membership?.id) {
+    if (insErr?.code === '23505') {
+      throw new HttpError(409, 'You are already a member of this organization.');
+    }
+    throw new HttpError(500, insErr?.message || 'Failed to join organization.');
+  }
+
+  const { error: updErr } = await supabaseAdmin
+    .from('invites')
+    .update({ status: 'ACCEPTED' })
+    .eq('id', invite.id)
+    .eq('status', 'PENDING');
+
+  if (updErr) {
+    throw new HttpError(500, updErr.message || 'Failed to finalize invite.');
+  }
+
+  return {
+    alreadyMember: false,
+    organizationId: orgId,
+    membership,
+  };
+}
+
+export function validateInviteEmail(email) {
+  const e = typeof email === 'string' ? email.trim() : '';
+  if (!e || !EMAIL_REGEX.test(e)) return null;
+  return normalizeEmail(e);
+}
+
+export function newInviteToken() {
+  return randomUUID();
+}
+
+const INVITE_TTL_MS = 48 * 60 * 60 * 1000;
+
+/** Active members with profile rows from `public.users`. */
+export async function listMembersForOrganization(organizationId) {
+  const { data: rows, error } = await supabaseAdmin
+    .from('organization_members')
+    .select('id, role, status, created_at, user_id')
+    .eq('organization_id', organizationId)
+    .eq('status', 'ACTIVE')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load members.');
+  }
+
+  const ids = [...new Set((rows ?? []).map((r) => r.user_id).filter(Boolean))];
+  const userMap = new Map();
+  if (ids.length > 0) {
+    const { data: users, error: uErr } = await supabaseAdmin
+      .from('users')
+      .select('id, email, first_name, last_name')
+      .in('id', ids);
+    if (uErr) {
+      throw new HttpError(500, uErr.message || 'Failed to load user profiles.');
+    }
+    for (const u of users ?? []) {
+      userMap.set(u.id, u);
+    }
+  }
+
+  return (rows ?? []).map((row) => {
+    const u = userMap.get(row.user_id);
+    return {
+      membershipId: row.id,
+      userId: row.user_id,
+      role: row.role,
+      status: row.status,
+      joinedAt: row.created_at,
+      email: u?.email ?? null,
+      firstName: u?.first_name ?? null,
+      lastName: u?.last_name ?? null,
+    };
+  });
+}
+
+/** Pending invites for an organization (not expired; caller may filter further). */
+export async function listPendingInvitesForOrganization(organizationId) {
+  const { data, error } = await supabaseAdmin
+    .from('invites')
+    .select('id, email, role, status, expires_at, created_at')
+    .eq('organization_id', organizationId)
+    .eq('status', 'PENDING')
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load invites.');
+  }
+
+  const now = Date.now();
+  return (data ?? []).filter((row) => {
+    if (!row.expires_at) return true;
+    const t = new Date(row.expires_at).getTime();
+    return Number.isFinite(t) && t > now;
+  });
+}
+
+/** Email / web / messenger channels for inbox assignment UI. */
+export async function listChannelsForOrganization(organizationId) {
+  const { data, error } = await supabaseAdmin
+    .from('channels')
+    .select('id, name, type, is_active')
+    .eq('organization_id', organizationId)
+    .eq('is_active', true)
+    .order('name', { ascending: true });
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load channels.');
+  }
+
+  return data ?? [];
+}
+
+/**
+ * Create multiple invites (default role AGENT). Each email is validated; duplicates or conflicts become entries in `errors`.
+ */
+export async function createInvitesBatchForOrganization({
+  organizationId,
+  emails,
+  role,
+}) {
+  if (!Array.isArray(emails)) {
+    throw new HttpError(400, 'emails must be an array.');
+  }
+  const normalized = [...new Set(emails.map((e) => validateInviteEmail(e)).filter(Boolean))];
+  if (normalized.length === 0) {
+    throw new HttpError(400, 'No valid email addresses.');
+  }
+  if (normalized.length > 50) {
+    throw new HttpError(400, 'Maximum 50 emails per request.');
+  }
+
+  const r = isValidInviteRole(role) ?? 'AGENT';
+  const expiresAtIso = new Date(Date.now() + INVITE_TTL_MS).toISOString();
+
+  const created = [];
+  const errors = [];
+
+  for (const email of normalized) {
+    try {
+      const token = newInviteToken();
+      const invite = await createInviteRecord({
+        organizationId,
+        email,
+        role: r,
+        expiresAtIso,
+        token,
+      });
+      const link = `${env.publicAppUrl}/invite?token=${encodeURIComponent(token)}`;
+      console.log(`[invite-batch] organization=${organizationId} email=${email} role=${r} link=${link}`);
+      created.push({
+        id: invite.id,
+        email: invite.email,
+        role: invite.role,
+        status: invite.status,
+        expiresAt: invite.expires_at,
+      });
+    } catch (e) {
+      const msg = e instanceof HttpError ? e.message : 'Failed to create invite.';
+      errors.push({ email, error: msg });
+    }
+  }
+
+  return { created, errors };
+}

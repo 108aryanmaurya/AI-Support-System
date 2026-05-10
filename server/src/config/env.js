@@ -26,12 +26,19 @@ function loadEnv() {
     emailProvider = 'mock';
   }
 
+  const publicAppUrl = (process.env.PUBLIC_APP_URL || origins[0] || 'http://localhost:5173').replace(
+    /\/$/,
+    '',
+  );
+
   return {
     nodeEnv: process.env.NODE_ENV ?? 'development',
     port: Number(process.env.PORT) || 3001,
     supabaseUrl: process.env.SUPABASE_URL,
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     corsOrigins: origins,
+    /** Browser URL used in invite emails / mock logs (e.g. `${publicAppUrl}/invite?token=…`). */
+    publicAppUrl,
     emailProvider,
     /** When true: simulate successful outbound email without HTTP to Resend */
     emailProviderMock,

@@ -1,16 +1,28 @@
 import { HttpError } from '../utils/httpError.js';
 import {
+  CONVERSATION_INBOX_FILTER_TYPES,
+  getConversationFilterCounts,
+  getFilteredConversations,
+} from '../services/conversationInboxFilters.service.js';
+import {
   createConversation,
-  ensureOrgMembership,
   getPagination,
-  listConversations,
   listMessages,
+  listOrganizationMembersWithProfiles,
+  updateConversationAssignment,
+  updateConversationSpam,
 } from '../services/support.service.js';
+
+function orgIdOrThrow(req) {
+  const id = req.orgId ?? req.organizationId;
+  if (!id) throw new HttpError(500, 'Organization scope missing (middleware misconfigured).');
+  return id;
+}
 
 export async function createConversationController(req, res, next) {
   try {
+    const organizationId = orgIdOrThrow(req);
     const {
-      organizationId,
       customerId,
       assignedToMemberId,
       source = 'chat',
@@ -20,11 +32,10 @@ export async function createConversationController(req, res, next) {
       metadata = {},
     } = req.body ?? {};
 
-    if (!organizationId || !customerId) {
-      throw new HttpError(400, 'organizationId and customerId are required.');
+    if (!customerId) {
+      throw new HttpError(400, 'customerId is required.');
     }
 
-    await ensureOrgMembership(req.user.id, organizationId);
     const conversation = await createConversation({
       organizationId,
       customerId,
@@ -34,7 +45,7 @@ export async function createConversationController(req, res, next) {
       channelId,
       priority,
       metadata,
-      createdByUserId: req.user.id,
+      createdByUserId: req.userId ?? req.user.id,
     });
 
     res.status(201).json({ conversation });
@@ -45,13 +56,113 @@ export async function createConversationController(req, res, next) {
 
 export async function getConversationsController(req, res, next) {
   try {
-    const organizationId = req.query.organizationId;
-    if (!organizationId) throw new HttpError(400, 'organizationId query param is required.');
+    const organizationId = orgIdOrThrow(req);
 
-    await ensureOrgMembership(req.user.id, organizationId);
+    const rawFilter = req.query.filter ?? req.query.filterType ?? 'all';
+    const filterType = String(rawFilter).trim().toLowerCase().replace(/-/g, '_');
+    if (!CONVERSATION_INBOX_FILTER_TYPES.includes(filterType)) {
+      throw new HttpError(
+        400,
+        `Invalid filter. Use one of: ${CONVERSATION_INBOX_FILTER_TYPES.join(', ')}.`,
+      );
+    }
+
+    const includeSpam =
+      req.query.includeSpam === 'true' || req.query.includeSpam === '1';
+
     const pagination = getPagination(req.query);
-    const result = await listConversations({ organizationId, ...pagination });
+    const result = await getFilteredConversations({
+      filterType,
+      currentUserId: req.userId ?? req.user.id,
+      organizationId,
+      includeSpam,
+      ...pagination,
+    });
     res.json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getConversationCountsController(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+
+    const counts = await getConversationFilterCounts({
+      currentUserId: req.userId ?? req.user.id,
+      organizationId,
+    });
+    res.json(counts);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function patchConversationSpamController(req, res, next) {
+  try {
+    const conversationId = req.params.id;
+    const organizationId = orgIdOrThrow(req);
+    if (!conversationId) throw new HttpError(400, 'conversation id is required.');
+
+    const body = req.body ?? {};
+    if (!Object.prototype.hasOwnProperty.call(body, 'is_spam')) {
+      throw new HttpError(400, 'is_spam is required.');
+    }
+    const { is_spam: isSpam } = body;
+    if (typeof isSpam !== 'boolean') {
+      throw new HttpError(400, 'is_spam must be a boolean.');
+    }
+
+    const conversation = await updateConversationSpam({
+      organizationId,
+      conversationId,
+      isSpam,
+      actorUserId: req.userId ?? req.user.id,
+    });
+
+    res.json({ conversation });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function patchConversationController(req, res, next) {
+  try {
+    const conversationId = req.params.id;
+    const organizationId = orgIdOrThrow(req);
+    if (!conversationId) throw new HttpError(400, 'conversation id is required.');
+
+    const body = req.body ?? {};
+    if (!Object.prototype.hasOwnProperty.call(body, 'assignedToMemberId')) {
+      throw new HttpError(400, 'assignedToMemberId is required (use null to unassign).');
+    }
+    const { assignedToMemberId } = body;
+    if (assignedToMemberId !== null && typeof assignedToMemberId !== 'string') {
+      throw new HttpError(400, 'assignedToMemberId must be a uuid string or null.');
+    }
+
+    const conversation = await updateConversationAssignment({
+      organizationId,
+      conversationId,
+      assignedToMemberId,
+      actorUserId: req.userId ?? req.user.id,
+    });
+
+    res.json({ conversation });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function listOrganizationMembersController(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+
+    const members = await listOrganizationMembersWithProfiles({
+      organizationId,
+      actorUserId: req.userId ?? req.user.id,
+    });
+    res.json({ members });
   } catch (error) {
     next(error);
   }
@@ -60,11 +171,9 @@ export async function getConversationsController(req, res, next) {
 export async function getConversationMessagesController(req, res, next) {
   try {
     const conversationId = req.params.id;
-    const organizationId = req.query.organizationId;
-    if (!organizationId) throw new HttpError(400, 'organizationId query param is required.');
+    const organizationId = orgIdOrThrow(req);
     if (!conversationId) throw new HttpError(400, 'conversation id is required.');
 
-    await ensureOrgMembership(req.user.id, organizationId);
     const pagination = getPagination(req.query);
     const result = await listMessages({
       organizationId,
