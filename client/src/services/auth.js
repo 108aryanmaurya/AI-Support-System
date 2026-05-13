@@ -10,7 +10,7 @@ export async function login(email, password) {
 
 /**
  * Register a new user.
- * @param {object} [options] Passed to `signUp` (e.g. `{ data: { full_name } }`, `emailRedirectTo`).
+ * @param {object} [options] Passed to `signUp` (e.g. `{ data: { first_name, last_name } }`, `emailRedirectTo`).
  */
 export async function signup(email, password, options = {}) {
   return supabase.auth.signUp({

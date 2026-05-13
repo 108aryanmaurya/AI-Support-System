@@ -10,6 +10,8 @@ import { getPendingInviteToken } from '../utils/pendingInviteStorage.js'
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const INITIAL_FORM = {
+  firstName: '',
+  lastName: '',
   email: '',
   password: '',
   confirmPassword: '',
@@ -40,6 +42,12 @@ export default function Register() {
 
   function validate() {
     const nextErrors = {}
+    if (!form.firstName.trim()) {
+      nextErrors.firstName = 'Please enter your first name.'
+    }
+    if (!form.lastName.trim()) {
+      nextErrors.lastName = 'Please enter your last name.'
+    }
     if (!EMAIL_REGEX.test(form.email.trim())) {
       nextErrors.email = 'Please enter a valid email address.'
     }
@@ -59,7 +67,12 @@ export default function Register() {
     if (!validate()) return
 
     setIsSubmitting(true)
-    const { error } = await signup(form.email.trim(), form.password)
+    const { error } = await signup(form.email.trim(), form.password, {
+      data: {
+        first_name: form.firstName.trim(),
+        last_name: form.lastName.trim(),
+      },
+    })
     setIsSubmitting(false)
 
     if (error) {
