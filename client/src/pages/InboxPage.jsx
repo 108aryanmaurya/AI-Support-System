@@ -21,7 +21,6 @@ import {
   RotateCcw,
   Star,
   Users,
-  UserRoundPlus,
   X,
 } from 'lucide-react'
 import { apiFetch } from '../services/api.js'
@@ -47,6 +46,33 @@ import {
 import { DEFAULT_INBOX_FILTER, useInboxStore } from '../stores/inboxStore.js'
 
 const MESSAGE_LIST_SCROLL_BOTTOM_PX = 80
+
+/** Avatar + bubble styling for `messages.sender_type` (customer, agent, system, ai, internal_note). */
+function messageSenderInitial(senderType) {
+  const s = typeof senderType === 'string' ? senderType : ''
+  const map = { customer: 'C', agent: 'A', system: 'S', ai: 'I', internal_note: 'N' }
+  if (map[s]) return map[s]
+  return s ? s.slice(0, 1).toUpperCase() : '?'
+}
+
+function messageAvatarClass(senderType) {
+  const st = typeof senderType === 'string' ? senderType : 'customer'
+  if (st === 'customer') return 'bg-emerald-800'
+  if (st === 'agent' || st === 'internal_note') return 'bg-[#4169b2]'
+  if (st === 'ai') return 'bg-violet-700'
+  if (st === 'system') return 'bg-slate-600'
+  return 'bg-[#4169b2]'
+}
+
+function messageBubbleClassName(senderType, delivery) {
+  if (delivery === 'failed') return 'border border-red-400/70 bg-[#402a38]'
+  if (delivery === 'sending') return 'border border-amber-400/40 bg-[#2f3a5c]'
+  const st = typeof senderType === 'string' ? senderType : 'customer'
+  if (st === 'internal_note') return 'border border-amber-500/35 bg-[#2d2418]'
+  if (st === 'system') return 'border border-slate-600/60 bg-[#242a38]'
+  if (st === 'ai') return 'border border-violet-500/35 bg-[#2a2438]'
+  return 'bg-[#334680]'
+}
 
 function getRelativeTimeLabel(isoDate) {
   if (!isoDate) return '-'
@@ -157,9 +183,11 @@ export default function InboxPage() {
   const [error, setError] = useState('')
   const [orgMembers, setOrgMembers] = useState([])
   const [assigningConversation, setAssigningConversation] = useState(false)
+  const [assignMenuOpen, setAssignMenuOpen] = useState(false)
   const [spamUpdating, setSpamUpdating] = useState(false)
 
   const messagesScrollRef = useRef(null)
+  const assignMenuRef = useRef(null)
   const stickToBottomRef = useRef(true)
 
   const {
@@ -302,6 +330,29 @@ export default function InboxPage() {
     if (myMembership?.id === mid) return 'You'
     return membersByMemberId.get(mid)?.displayName ?? `${mid.slice(0, 8)}…`
   }, [selectedConversation?.assigned_to_member_id, myMembership?.id, membersByMemberId])
+
+  const sortedOrgMembersForAssign = useMemo(() => {
+    return [...orgMembers].sort((a, b) =>
+      (a.displayName || a.email || '').localeCompare(b.displayName || b.email || '', undefined, {
+        sensitivity: 'base',
+      }),
+    )
+  }, [orgMembers])
+
+  useEffect(() => {
+    setAssignMenuOpen(false)
+  }, [activeConversationId])
+
+  useEffect(() => {
+    if (!assignMenuOpen) return undefined
+    const onPointerDown = (event) => {
+      if (assignMenuRef.current && !assignMenuRef.current.contains(event.target)) {
+        setAssignMenuOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [assignMenuOpen])
 
   const updateStickToBottom = useCallback(() => {
     const el = messagesScrollRef.current
@@ -627,22 +678,19 @@ export default function InboxPage() {
 
             {messages.map((message) => {
               const delivery = getMessageDeliveryStatus(message)
-              const isAgent = (message.sender_type ?? '') === 'agent'
+              const st = message.sender_type ?? 'customer'
+              const showAgentDelivery = st === 'agent'
               const statusLabel =
                 delivery === 'sending' ? 'Sending' : delivery === 'failed' ? 'Failed' : 'Sent'
               return (
                 <div key={message.id} className="mt-4 flex items-end justify-between gap-2">
-                  <div className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#4169b2] text-xs font-bold">
-                    {(message.sender_type ?? 'c').slice(0, 1).toUpperCase()}
+                  <div
+                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${messageAvatarClass(st)}`}
+                  >
+                    {messageSenderInitial(st)}
                   </div>
                   <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${
-                      delivery === 'failed'
-                        ? 'border border-red-400/70 bg-[#402a38]'
-                        : delivery === 'sending'
-                          ? 'border border-amber-400/40 bg-[#2f3a5c]'
-                          : 'bg-[#334680]'
-                    }`}
+                    className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${messageBubbleClassName(st, delivery)}`}
                   >
                     <p className="whitespace-pre-wrap">
                       <MessageContentRich text={message.content} />
@@ -651,7 +699,7 @@ export default function InboxPage() {
                       <p className="text-xs text-slate-300">
                         {message.sender_type} • {getRelativeTimeLabel(message.created_at)}
                       </p>
-                      {isAgent ? (
+                      {showAgentDelivery ? (
                         <span
                           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${
                             delivery === 'sending'
@@ -664,7 +712,7 @@ export default function InboxPage() {
                           {statusLabel}
                         </span>
                       ) : null}
-                      {isAgent && delivery === 'failed' ? (
+                      {showAgentDelivery && delivery === 'failed' ? (
                         <button
                           type="button"
                           onClick={() => handleRetryMessage(message)}
@@ -731,26 +779,68 @@ export default function InboxPage() {
                   {assigneeLabel}
                 </span>
               </div>
-              <button
-                type="button"
-                disabled={
-                  !selectedConversation ||
-                  !myMembership ||
-                  assigningConversation ||
-                  myMembership.id === selectedConversation?.assigned_to_member_id
-                }
-                onClick={() =>
-                  selectedConversation &&
-                  myMembership &&
-                  assignConversation(selectedConversation.id, myMembership.id)
-                }
-                className="inline-flex items-center justify-center gap-2 rounded-md border border-[#334060] bg-[#18233b] px-3 py-2 text-xs font-medium text-white hover:bg-[#1f2d4d] disabled:cursor-not-allowed disabled:opacity-40"
-              >
-                <UserRoundPlus size={14} aria-hidden />
-                {myMembership?.id === selectedConversation?.assigned_to_member_id
-                  ? 'Assigned to you'
-                  : 'Assign to me'}
-              </button>
+              <div ref={assignMenuRef} className="relative">
+                <button
+                  type="button"
+                  disabled={!selectedConversation || !myMembership || assigningConversation}
+                  aria-expanded={assignMenuOpen}
+                  aria-haspopup="listbox"
+                  aria-controls="inbox-assign-member-list"
+                  onClick={() => setAssignMenuOpen((open) => !open)}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#334060] bg-[#18233b] px-3 py-2 text-xs font-medium text-white hover:bg-[#1f2d4d] disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  Assign
+                  <ChevronDown
+                    size={14}
+                    aria-hidden
+                    className={`shrink-0 transition-transform ${assignMenuOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {assignMenuOpen ? (
+                  <div
+                    id="inbox-assign-member-list"
+                    role="listbox"
+                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-md border border-[#2a3654] bg-[#10182a] py-1 shadow-lg [scrollbar-gutter:stable]"
+                  >
+                    {!organizationId ? (
+                      <p className="px-3 py-2 text-xs text-slate-500">No organization context.</p>
+                    ) : sortedOrgMembersForAssign.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-slate-500">No members loaded.</p>
+                    ) : (
+                      sortedOrgMembersForAssign.map((member) => {
+                        const isCurrent = member.id === selectedConversation?.assigned_to_member_id
+                        const isYou = member.userId === user?.id
+                        return (
+                          <button
+                            key={member.id}
+                            type="button"
+                            role="option"
+                            aria-selected={isCurrent}
+                            disabled={assigningConversation || isCurrent || !selectedConversation}
+                            onClick={() => {
+                              if (!selectedConversation || isCurrent) return
+                              setAssignMenuOpen(false)
+                              void assignConversation(selectedConversation.id, member.id)
+                            }}
+                            className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-xs hover:bg-[#1a2540] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <span className="font-medium text-white">
+                              {member.displayName}
+                              {isYou ? <span className="ml-1 font-normal text-slate-400">(you)</span> : null}
+                              {isCurrent ? (
+                                <span className="ml-1 font-normal text-emerald-400/90">· current</span>
+                              ) : null}
+                            </span>
+                            {member.email ? (
+                              <span className="truncate text-[11px] text-slate-500">{member.email}</span>
+                            ) : null}
+                          </button>
+                        )
+                      })
+                    )}
+                  </div>
+                ) : null}
+              </div>
             </div>
             <div className="flex items-center justify-between">
               <span>Team inbox</span>

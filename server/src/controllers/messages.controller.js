@@ -1,6 +1,7 @@
 import { HttpError } from '../utils/httpError.js';
 import { createMessage } from '../services/support.service.js';
 import { supabaseAdmin } from '../config/supabase.js';
+import { MESSAGE_SENDER_TYPES, isMessageSenderType } from '@ai-support/shared';
 import {
   getMaxMessageLength,
   isValidEmail,
@@ -10,6 +11,10 @@ import {
 } from '../utils/incomingMessageValidation.js';
 import { emitIncomingMessageEvent } from '../utils/monitoring.js';
 import { sendInboxAgentOutboundMessage } from '../services/inboxAgentSend.service.js';
+import {
+  isCustomerMessageFreshForNotification,
+  notifyStaffOfCustomerMessage,
+} from '../services/customerInboundNotification.service.js';
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -64,7 +69,7 @@ export async function createMessageController(req, res, next) {
 
     const {
       conversationId,
-      senderType = 'agent',
+      senderType: rawSenderType = 'agent',
       senderMemberId = null,
       content,
       metadata = {},
@@ -74,18 +79,27 @@ export async function createMessageController(req, res, next) {
       throw new HttpError(400, 'conversationId is required.');
     }
 
+    const senderType = typeof rawSenderType === 'string' ? rawSenderType.trim() : 'agent';
+    if (!isMessageSenderType(senderType)) {
+      throw new HttpError(
+        400,
+        `senderType must be one of: ${MESSAGE_SENDER_TYPES.join(', ')}.`,
+      );
+    }
+
     const member = req.orgMembership;
     if (!member?.id) {
       throw new HttpError(500, 'Membership missing (middleware misconfigured).');
     }
 
-    const resolvedSenderMemberId = senderType === 'agent' ? senderMemberId ?? member.id : senderMemberId;
+    const memberBacked = senderType === 'agent' || senderType === 'internal_note';
+    const resolvedSenderMemberId = memberBacked ? senderMemberId ?? member.id : null;
 
     const message = await createMessage({
       organizationId,
       conversationId,
       senderType,
-      senderUserId: senderType === 'agent' ? req.userId ?? req.user.id : null,
+      senderUserId: memberBacked ? req.userId ?? req.user.id : null,
       senderMemberId: resolvedSenderMemberId,
       content,
       metadata,
@@ -183,6 +197,17 @@ export async function createIncomingMessageController(req, res, next) {
       conversationId: row.conversation_id,
       messageId: row.message_id,
     });
+
+    const notifyFresh = await isCustomerMessageFreshForNotification(row.message_id);
+    if (notifyFresh) {
+      void notifyStaffOfCustomerMessage({
+        organizationId,
+        conversationId: row.conversation_id,
+        customerMessage: normalizedMessage,
+        customerEmail: normalizedEmail,
+        channelLabel: 'api',
+      });
+    }
 
     res.status(201).json({
       conversationId: row.conversation_id,

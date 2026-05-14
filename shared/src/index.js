@@ -4,6 +4,8 @@
 
 export const API_PREFIX = '/api';
 
+export { MESSAGE_SENDER_TYPES, isMessageSenderType } from './messageSenderTypes.js';
+
 export {
   extractMentionHandles,
   mentionHandlesForMember,

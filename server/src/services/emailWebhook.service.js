@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { createConversation, createMessage, findOrCreateCustomer } from './support.service.js';
+import { notifyStaffOfCustomerMessage } from './customerInboundNotification.service.js';
 
 function isMissingColumnError(error, column) {
   if (!error) return false;
@@ -362,6 +363,14 @@ export async function processInboundEmail(payload) {
   });
 
   await updateConversationLastMessageAt(conversation.id, channel.organization_id, message.created_at);
+
+  void notifyStaffOfCustomerMessage({
+    organizationId: channel.organization_id,
+    conversationId: conversation.id,
+    customerMessage: message.content,
+    customerEmail: payload.fromEmail,
+    channelLabel: 'email',
+  });
 
   return {
     status: 'processed',

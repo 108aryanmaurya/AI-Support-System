@@ -12,6 +12,7 @@ import {
   updateConversationAssignment,
   updateConversationSpam,
 } from '../services/support.service.js';
+import { notifyConversationAssignee } from '../services/conversationAssignmentNotification.service.js';
 
 function orgIdOrThrow(req) {
   const id = req.orgId ?? req.organizationId;
@@ -141,11 +142,19 @@ export async function patchConversationController(req, res, next) {
       throw new HttpError(400, 'assignedToMemberId must be a uuid string or null.');
     }
 
-    const conversation = await updateConversationAssignment({
+    const { conversation, priorAssignedToMemberId } = await updateConversationAssignment({
       organizationId,
       conversationId,
       assignedToMemberId,
       actorUserId: req.userId ?? req.user.id,
+    });
+
+    void notifyConversationAssignee({
+      organizationId,
+      conversation,
+      assignedToMemberId,
+      actorUserId: req.userId ?? req.user.id,
+      priorAssignedToMemberId,
     });
 
     res.json({ conversation });

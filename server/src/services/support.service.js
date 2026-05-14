@@ -114,6 +114,10 @@ export async function createConversation({
   return data;
 }
 
+/**
+ * Insert a message row. DB rules: `agent` and `internal_note` require `senderMemberId`;
+ * `customer` forbids it; `ai` and `system` leave it optional (usually null).
+ */
 export async function createMessage({
   organizationId,
   conversationId,
@@ -171,6 +175,21 @@ export async function updateConversationAssignment({
 }) {
   await ensureOrgMembership(actorUserId, organizationId);
 
+  const { data: priorRow, error: priorErr } = await supabaseAdmin
+    .from('conversations')
+    .select('assigned_to_member_id')
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+
+  if (priorErr) {
+    throw new HttpError(500, priorErr.message || 'Failed to load conversation.');
+  }
+  if (!priorRow) {
+    throw new HttpError(404, 'Conversation not found in this organization.');
+  }
+  const priorAssignedToMemberId = priorRow.assigned_to_member_id ?? null;
+
   if (assignedToMemberId != null) {
     const { data: assignee, error: assigneeError } = await supabaseAdmin
       .from('organization_members')
@@ -201,7 +220,7 @@ export async function updateConversationAssignment({
     throw new HttpError(500, error.message || 'Failed to update assignment.');
   }
   if (!data) throw new HttpError(404, 'Conversation not found in this organization.');
-  return data;
+  return { conversation: data, priorAssignedToMemberId };
 }
 
 /** Soft-flag spam (never deletes). */

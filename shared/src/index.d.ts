@@ -1,5 +1,11 @@
 export const API_PREFIX: string;
 
+export const MESSAGE_SENDER_TYPES: readonly ['customer', 'agent', 'system', 'ai', 'internal_note'];
+
+export function isMessageSenderType(
+  value: unknown,
+): value is 'customer' | 'agent' | 'system' | 'ai' | 'internal_note';
+
 export interface MentionMemberInput {
   userId: string;
   displayName?: string | null;

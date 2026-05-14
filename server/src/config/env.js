@@ -31,6 +31,10 @@ function loadEnv() {
     '',
   );
 
+  const notificationResendApiKey =
+    process.env.NOTIFICATION_RESEND_API_KEY?.trim() || process.env.RESEND_API_KEY?.trim() || '';
+  const notificationEmailFrom = process.env.NOTIFICATION_EMAIL_FROM?.trim() || '';
+
   return {
     nodeEnv: process.env.NODE_ENV ?? 'development',
     port: Number(process.env.PORT) || 3001,
@@ -42,6 +46,10 @@ function loadEnv() {
     emailProvider,
     /** When true: simulate successful outbound email without HTTP to Resend */
     emailProviderMock,
+    /** Optional Resend API key for internal emails (e.g. conversation assignment). Channel replies use integration config instead. */
+    notificationResendApiKey,
+    /** Verified sender for NOTIFICATION_RESEND_API_KEY (e.g. onboarding@resend.dev or your domain). */
+    notificationEmailFrom,
   };
 }
 
