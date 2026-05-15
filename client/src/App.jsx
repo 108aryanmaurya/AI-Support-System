@@ -5,6 +5,7 @@ import Register from './pages/Register.jsx'
 import OnboardingPage from './pages/OnboardingPage.jsx'
 import InboxPage from './pages/InboxPage.jsx'
 import InboxSearchPage from './pages/InboxSearchPage.jsx'
+import OrgReportsPage from './pages/OrgReportsPage.jsx'
 import TestSendMessagePage from './pages/TestSendMessagePage.jsx'
 import PostAuthRedirect from './pages/PostAuthRedirect.jsx'
 import OrgSelectorPage from './pages/OrgSelectorPage.jsx'
@@ -34,6 +35,7 @@ export default function App() {
 
         <Route path="/org/:orgId" element={<OrgWorkspaceLayout />}>
           <Route path="inbox" element={<InboxPage />} />
+          <Route path="reports" element={<OrgReportsPage />} />
           <Route path="search" element={<InboxSearchPage />} />
           <Route path="settings" element={<OrgSettingsLayout />}>
             <Route index element={<OrgSettingsHomePage />} />

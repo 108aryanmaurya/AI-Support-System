@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { createConversation, createMessage, findOrCreateCustomer } from './support.service.js';
 import { notifyStaffOfCustomerMessage } from './customerInboundNotification.service.js';
+import { CONVERSATION_ACTIVE_STATUSES } from '@ai-support/shared';
 
 function isMissingColumnError(error, column) {
   if (!error) return false;
@@ -187,7 +188,7 @@ async function resolveExistingOpenEmailConversation({ organizationId, customerId
     .eq('organization_id', organizationId)
     .eq('customer_id', customerId)
     .eq('channel_type', 'email')
-    .eq('status', 'open')
+    .in('status', [...CONVERSATION_ACTIVE_STATUSES])
     .eq('channel_id', channelId)
     .order('created_at', { ascending: false })
     .limit(1)

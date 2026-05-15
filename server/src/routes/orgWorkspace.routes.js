@@ -4,6 +4,7 @@ import { requireOrgAccess, requireRole } from '../middleware/orgAccess.js';
 import conversationsRoutes from './conversations.routes.js';
 import customersRoutes from './customers.routes.js';
 import messagesAuthRoutes from './messagesAuth.routes.js';
+import orgAnalyticsRoutes from './orgAnalytics.routes.js';
 import {
   createInviteController,
   createInvitesBatchController,
@@ -26,6 +27,7 @@ router.get('/channels', listWorkspaceChannelsController);
 router.post('/invites/batch', requireRole('ADMIN'), createInvitesBatchController);
 router.get('/invites', listPendingInvitesController);
 router.post('/invite', requireRole('ADMIN'), createInviteController);
+router.use('/analytics', orgAnalyticsRoutes);
 router.use('/conversations', conversationsRoutes);
 router.use('/customers', customersRoutes);
 router.use('/messages', messagesAuthRoutes);

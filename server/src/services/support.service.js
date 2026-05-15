@@ -100,10 +100,11 @@ export async function createConversation({
       organization_id: organizationId,
       customer_id: customerId,
       assigned_to_member_id: assignedToMemberId ?? null,
+      assignment_type: assignedToMemberId ? 'assigned_to_agent' : 'unassigned',
       source,
       channel_type: channelType ?? (source === 'email' ? 'email' : 'web'),
       channel_id: channelId ?? null,
-      priority: priority ?? 'normal',
+      priority: priority ?? 'medium',
       created_by: createdByUserId,
       metadata,
     })
@@ -163,67 +164,7 @@ export async function createMessage({
   return data;
 }
 
-/**
- * Update conversation assignee (any org member or null to unassign).
- * Validates tenant + assignee membership; DB triggers enforce customer/assignment rules.
- */
-export async function updateConversationAssignment({
-  organizationId,
-  conversationId,
-  assignedToMemberId,
-  actorUserId,
-}) {
-  await ensureOrgMembership(actorUserId, organizationId);
-
-  const { data: priorRow, error: priorErr } = await supabaseAdmin
-    .from('conversations')
-    .select('assigned_to_member_id')
-    .eq('id', conversationId)
-    .eq('organization_id', organizationId)
-    .maybeSingle();
-
-  if (priorErr) {
-    throw new HttpError(500, priorErr.message || 'Failed to load conversation.');
-  }
-  if (!priorRow) {
-    throw new HttpError(404, 'Conversation not found in this organization.');
-  }
-  const priorAssignedToMemberId = priorRow.assigned_to_member_id ?? null;
-
-  if (assignedToMemberId != null) {
-    const { data: assignee, error: assigneeError } = await supabaseAdmin
-      .from('organization_members')
-      .select('id')
-      .eq('organization_id', organizationId)
-      .eq('id', assignedToMemberId)
-      .limit(1)
-      .maybeSingle();
-
-    if (assigneeError) {
-      throw new HttpError(500, assigneeError.message || 'Failed to validate assignee.');
-    }
-    if (!assignee) {
-      throw new HttpError(400, 'Assignee must be a member of this organization.');
-    }
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from('conversations')
-    .update({ assigned_to_member_id: assignedToMemberId ?? null })
-    .eq('id', conversationId)
-    .eq('organization_id', organizationId)
-    .select('*')
-    .maybeSingle();
-
-  if (error) {
-    if (error.code === '23514') throw new HttpError(400, error.message || 'Assignment validation failed.');
-    throw new HttpError(500, error.message || 'Failed to update assignment.');
-  }
-  if (!data) throw new HttpError(404, 'Conversation not found in this organization.');
-  return { conversation: data, priorAssignedToMemberId };
-}
-
-/** Soft-flag spam (never deletes). */
+/** Soft-flag spam (never deletes). Syncs `status` with spam bucket. */
 export async function updateConversationSpam({
   organizationId,
   conversationId,
@@ -235,9 +176,34 @@ export async function updateConversationSpam({
     throw new HttpError(400, 'isSpam must be a boolean.');
   }
 
+  const { data: current, error: loadErr } = await supabaseAdmin
+    .from('conversations')
+    .select('status')
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+
+  if (loadErr) {
+    throw new HttpError(500, loadErr.message || 'Failed to load conversation.');
+  }
+  if (!current) {
+    throw new HttpError(404, 'Conversation not found in this organization.');
+  }
+
+  const nextStatus = isSpam ? 'spam' : current.status === 'spam' ? 'open' : current.status;
+
+  const spamPayload = isSpam
+    ? {
+        is_spam: true,
+        status: 'spam',
+        assigned_to_member_id: null,
+        assignment_type: 'unassigned',
+      }
+    : { is_spam: false, status: nextStatus };
+
   const { data, error } = await supabaseAdmin
     .from('conversations')
-    .update({ is_spam: isSpam })
+    .update(spamPayload)
     .eq('id', conversationId)
     .eq('organization_id', organizationId)
     .select('*')
@@ -246,7 +212,9 @@ export async function updateConversationSpam({
   if (error) {
     throw new HttpError(500, error.message || 'Failed to update spam flag.');
   }
-  if (!data) throw new HttpError(404, 'Conversation not found in this organization.');
+  if (!data) {
+    throw new HttpError(404, 'Conversation not found in this organization.');
+  }
   return data;
 }
 

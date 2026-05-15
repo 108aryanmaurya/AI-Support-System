@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { ensureOrgMembership } from './support.service.js';
+import { CONVERSATION_ACTIVE_STATUSES } from '@ai-support/shared';
 
 /** Sidebar / inbox filter keys — single source of truth for API + client. */
 export const CONVERSATION_INBOX_FILTER_TYPES = Object.freeze([
@@ -52,7 +53,7 @@ export function applyConversationFilters(query, options) {
   let q = query.eq('organization_id', organizationId);
 
   if (shouldExcludeSpam(filterType, includeSpam)) {
-    q = q.eq('is_spam', false);
+    q = q.eq('is_spam', false).neq('status', 'spam');
   }
 
   switch (filterType) {
@@ -60,7 +61,7 @@ export function applyConversationFilters(query, options) {
       if (!memberId) {
         throw new HttpError(400, 'memberId is required for the inbox filter.');
       }
-      q = q.eq('assigned_to_member_id', memberId).eq('status', 'open');
+      q = q.eq('assigned_to_member_id', memberId).in('status', [...CONVERSATION_ACTIVE_STATUSES]);
       break;
     }
     case 'mentions':
@@ -74,10 +75,10 @@ export function applyConversationFilters(query, options) {
     case 'all':
       break;
     case 'unassigned':
-      q = q.is('assigned_to_member_id', null).eq('status', 'open');
+      q = q.is('assigned_to_member_id', null).in('status', [...CONVERSATION_ACTIVE_STATUSES]);
       break;
     case 'spam':
-      q = q.eq('is_spam', true);
+      q = q.or('status.eq.spam,is_spam.eq.true');
       break;
     case 'closed':
       q = q.eq('status', 'closed');
@@ -140,13 +141,14 @@ export async function getConversationFilterCounts({ currentUserId, organizationI
     return count ?? 0;
   };
 
-  const [inbox, mentions, created_by_you, all, unassigned, spam] = await Promise.all([
+  const [inbox, mentions, created_by_you, all, unassigned, spam, closed] = await Promise.all([
     countOne('inbox'),
     countOne('mentions'),
     countOne('created_by_you'),
     countOne('all'),
     countOne('unassigned'),
     countOne('spam'),
+    countOne('closed'),
   ]);
 
   return {
@@ -156,6 +158,7 @@ export async function getConversationFilterCounts({ currentUserId, organizationI
     all,
     unassigned,
     spam,
+    closed,
   };
 }
 

@@ -1,4 +1,5 @@
 import { HttpError } from '../utils/httpError.js';
+import { isConversationPriority } from '@ai-support/shared';
 import {
   CONVERSATION_INBOX_FILTER_TYPES,
   getConversationFilterCounts,
@@ -9,9 +10,9 @@ import {
   getPagination,
   listMessages,
   listOrganizationMembersWithProfiles,
-  updateConversationAssignment,
   updateConversationSpam,
 } from '../services/support.service.js';
+import { updateConversationFields } from '../services/conversationUpdate.service.js';
 import { notifyConversationAssignee } from '../services/conversationAssignmentNotification.service.js';
 
 function orgIdOrThrow(req) {
@@ -35,6 +36,13 @@ export async function createConversationController(req, res, next) {
 
     if (!customerId) {
       throw new HttpError(400, 'customerId is required.');
+    }
+
+    if (priority != null && priority !== '' && !isConversationPriority(String(priority).trim())) {
+      throw new HttpError(
+        400,
+        'priority must be one of: low, medium, high, urgent.',
+      );
     }
 
     const conversation = await createConversation({
@@ -134,28 +142,46 @@ export async function patchConversationController(req, res, next) {
     if (!conversationId) throw new HttpError(400, 'conversation id is required.');
 
     const body = req.body ?? {};
-    if (!Object.prototype.hasOwnProperty.call(body, 'assignedToMemberId')) {
-      throw new HttpError(400, 'assignedToMemberId is required (use null to unassign).');
-    }
-    const { assignedToMemberId } = body;
-    if (assignedToMemberId !== null && typeof assignedToMemberId !== 'string') {
-      throw new HttpError(400, 'assignedToMemberId must be a uuid string or null.');
+    const hasAssign = Object.prototype.hasOwnProperty.call(body, 'assignedToMemberId');
+    const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status');
+    const hasPriority = Object.prototype.hasOwnProperty.call(body, 'priority');
+    const hasAssignmentType = Object.prototype.hasOwnProperty.call(body, 'assignmentType');
+
+    if (!hasAssign && !hasStatus && !hasPriority && !hasAssignmentType) {
+      throw new HttpError(
+        400,
+        'Provide at least one of: assignedToMemberId, status, priority, assignmentType.',
+      );
     }
 
-    const { conversation, priorAssignedToMemberId } = await updateConversationAssignment({
+    let assignedToMemberId = undefined;
+    if (hasAssign) {
+      const v = body.assignedToMemberId;
+      if (v !== null && typeof v !== 'string') {
+        throw new HttpError(400, 'assignedToMemberId must be a uuid string or null.');
+      }
+      assignedToMemberId = v;
+    }
+
+    const { conversation, priorAssignedToMemberId } = await updateConversationFields({
       organizationId,
       conversationId,
-      assignedToMemberId,
       actorUserId: req.userId ?? req.user.id,
+      assignedToMemberId: hasAssign ? assignedToMemberId : undefined,
+      status: hasStatus ? body.status : undefined,
+      priority: hasPriority ? body.priority : undefined,
+      assignmentType: hasAssignmentType ? body.assignmentType : undefined,
     });
 
-    void notifyConversationAssignee({
-      organizationId,
-      conversation,
-      assignedToMemberId,
-      actorUserId: req.userId ?? req.user.id,
-      priorAssignedToMemberId,
-    });
+    if (hasAssign) {
+      void notifyConversationAssignee({
+        organizationId,
+        conversation,
+        assignedToMemberId: conversation.assigned_to_member_id ?? null,
+        actorUserId: req.userId ?? req.user.id,
+        priorAssignedToMemberId,
+      });
+    }
 
     res.json({ conversation });
   } catch (error) {

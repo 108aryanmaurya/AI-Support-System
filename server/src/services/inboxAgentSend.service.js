@@ -13,6 +13,7 @@ import {
   replaceMessageMetadataExact,
   syncEmailThreadsLastMessageId,
 } from './emailOutboundDbSync.service.js';
+import { emitSupportEvent } from './analytics/supportEvents.service.js';
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -142,6 +143,19 @@ export async function sendInboxAgentOutboundMessage({
 
     await patchConversationActivity(conversation.id, conversation.organization_id, updated.created_at);
 
+    emitSupportEvent({
+      organizationId: conversation.organization_id,
+      eventType: 'message.outbound_sent',
+      entityType: 'message',
+      entityId: updated.id,
+      actorMemberId: member.id,
+      channelType: conversation.channel_type ?? null,
+      payload: {
+        conversation_id: conversation.id,
+        sender_type: 'agent',
+      },
+    });
+
     return {
       message: updated,
       outbound,
@@ -155,6 +169,16 @@ export async function sendInboxAgentOutboundMessage({
         ...(inserted.metadata && typeof inserted.metadata === 'object' ? inserted.metadata : {}),
         status: 'failed',
       },
+    });
+
+    emitSupportEvent({
+      organizationId: conversation.organization_id,
+      eventType: 'message.outbound_failed',
+      entityType: 'message',
+      entityId: inserted.id,
+      actorMemberId: member.id,
+      channelType: conversation.channel_type ?? null,
+      payload: { conversation_id: conversation.id },
     });
 
     throw err;

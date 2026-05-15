@@ -44,6 +44,12 @@ import {
   patchConversationUrl,
 } from '../services/inboxApi.js'
 import { DEFAULT_INBOX_FILTER, useInboxStore } from '../stores/inboxStore.js'
+import {
+  CONVERSATION_ACTIVE_STATUSES,
+  CONVERSATION_ASSIGNMENT_TYPES,
+  CONVERSATION_PRIORITIES,
+  CONVERSATION_STATUSES,
+} from '@ai-support/shared'
 
 const MESSAGE_LIST_SCROLL_BOTTOM_PX = 80
 
@@ -184,6 +190,7 @@ export default function InboxPage() {
   const [orgMembers, setOrgMembers] = useState([])
   const [assigningConversation, setAssigningConversation] = useState(false)
   const [assignMenuOpen, setAssignMenuOpen] = useState(false)
+  const [conversationDetailSaving, setConversationDetailSaving] = useState(false)
   const [spamUpdating, setSpamUpdating] = useState(false)
 
   const messagesScrollRef = useRef(null)
@@ -427,9 +434,11 @@ export default function InboxPage() {
       try {
         const res = await apiFetch(patchConversationUrl(organizationId, conversationId), {
           method: 'PATCH',
-          body: JSON.stringify({
-            assignedToMemberId: memberId,
-          }),
+          body: JSON.stringify(
+            memberId
+              ? { assignedToMemberId: memberId, assignmentType: 'assigned_to_agent' }
+              : { assignedToMemberId: null, assignmentType: 'unassigned' },
+          ),
         })
         const updated = res?.conversation
         if (updated) upsertConversation(updated)
@@ -455,12 +464,37 @@ export default function InboxPage() {
         organizationId &&
         myMid &&
         conv &&
+        CONVERSATION_ACTIVE_STATUSES.includes(conv.status ?? 'open') &&
         conv.assigned_to_member_id !== myMid
       ) {
         void assignConversation(id, myMid)
       }
     },
     [setActiveConversationId, organizationId, myMembership?.id, assignConversation],
+  )
+
+  const patchConversationDetails = useCallback(
+    async (patch) => {
+      if (!organizationId || !activeConversationId) return
+      setConversationDetailSaving(true)
+      setError('')
+      try {
+        const res = await apiFetch(patchConversationUrl(organizationId, activeConversationId), {
+          method: 'PATCH',
+          body: JSON.stringify(patch),
+        })
+        const updated = res?.conversation
+        if (updated) upsertConversation(updated)
+        const filterNow = useInboxStore.getState().activeFilter
+        await runConversationQuery(filterNow, { silent: true })
+        await loadFilterCounts()
+      } catch (err) {
+        setError(err?.message || 'Could not update conversation.')
+      } finally {
+        setConversationDetailSaving(false)
+      }
+    },
+    [organizationId, activeConversationId, upsertConversation, runConversationQuery, loadFilterCounts],
   )
 
   const applySpamFlag = useCallback(
@@ -804,51 +838,134 @@ export default function InboxPage() {
                   >
                     {!organizationId ? (
                       <p className="px-3 py-2 text-xs text-slate-500">No organization context.</p>
-                    ) : sortedOrgMembersForAssign.length === 0 ? (
-                      <p className="px-3 py-2 text-xs text-slate-500">No members loaded.</p>
                     ) : (
-                      sortedOrgMembersForAssign.map((member) => {
-                        const isCurrent = member.id === selectedConversation?.assigned_to_member_id
-                        const isYou = member.userId === user?.id
-                        return (
-                          <button
-                            key={member.id}
-                            type="button"
-                            role="option"
-                            aria-selected={isCurrent}
-                            disabled={assigningConversation || isCurrent || !selectedConversation}
-                            onClick={() => {
-                              if (!selectedConversation || isCurrent) return
-                              setAssignMenuOpen(false)
-                              void assignConversation(selectedConversation.id, member.id)
-                            }}
-                            className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-xs hover:bg-[#1a2540] disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            <span className="font-medium text-white">
-                              {member.displayName}
-                              {isYou ? <span className="ml-1 font-normal text-slate-400">(you)</span> : null}
-                              {isCurrent ? (
-                                <span className="ml-1 font-normal text-emerald-400/90">· current</span>
-                              ) : null}
-                            </span>
-                            {member.email ? (
-                              <span className="truncate text-[11px] text-slate-500">{member.email}</span>
-                            ) : null}
-                          </button>
-                        )
-                      })
+                      <>
+                        <button
+                          type="button"
+                          role="option"
+                          disabled={
+                            !selectedConversation ||
+                            assigningConversation ||
+                            !selectedConversation?.assigned_to_member_id
+                          }
+                          onClick={() => {
+                            if (!selectedConversation) return
+                            setAssignMenuOpen(false)
+                            void assignConversation(selectedConversation.id, null)
+                          }}
+                          className="flex w-full flex-col items-start gap-0.5 border-b border-[#2a3654] px-3 py-2 text-left text-xs hover:bg-[#1a2540] disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <span className="font-medium text-amber-100/90">Unassign</span>
+                          <span className="text-[11px] text-slate-500">Clear assignee</span>
+                        </button>
+                        {sortedOrgMembersForAssign.length === 0 ? (
+                          <p className="px-3 py-2 text-xs text-slate-500">No members loaded.</p>
+                        ) : (
+                          sortedOrgMembersForAssign.map((member) => {
+                            const isCurrent = member.id === selectedConversation?.assigned_to_member_id
+                            const isYou = member.userId === user?.id
+                            return (
+                              <button
+                                key={member.id}
+                                type="button"
+                                role="option"
+                                aria-selected={isCurrent}
+                                disabled={assigningConversation || isCurrent || !selectedConversation}
+                                onClick={() => {
+                                  if (!selectedConversation || isCurrent) return
+                                  setAssignMenuOpen(false)
+                                  void assignConversation(selectedConversation.id, member.id)
+                                }}
+                                className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-xs hover:bg-[#1a2540] disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <span className="font-medium text-white">
+                                  {member.displayName}
+                                  {isYou ? <span className="ml-1 font-normal text-slate-400">(you)</span> : null}
+                                  {isCurrent ? (
+                                    <span className="ml-1 font-normal text-emerald-400/90">· current</span>
+                                  ) : null}
+                                </span>
+                                {member.email ? (
+                                  <span className="truncate text-[11px] text-slate-500">{member.email}</span>
+                                ) : null}
+                              </button>
+                            )
+                          })
+                        )}
+                      </>
                     )}
                   </div>
                 ) : null}
               </div>
             </div>
-            <div className="flex items-center justify-between">
-              <span>Team inbox</span>
-              <span className="text-white">{selectedConversation?.status ?? '—'}</span>
+            <div className="flex flex-col gap-2 border-t border-[#27314a] pt-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Workspace</span>
+              <label className="flex flex-col gap-1 text-xs text-slate-400">
+                Status
+                <select
+                  value={selectedConversation?.status ?? 'open'}
+                  disabled={!selectedConversation || conversationDetailSaving}
+                  onChange={(e) => void patchConversationDetails({ status: e.target.value })}
+                  className="rounded-md border border-[#334060] bg-[#0f1728] px-2 py-1.5 text-sm text-white outline-none focus:border-[#4f6290] disabled:opacity-40"
+                >
+                  {CONVERSATION_STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s.replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-slate-400">
+                Priority
+                <select
+                  value={selectedConversation?.priority ?? 'medium'}
+                  disabled={!selectedConversation || conversationDetailSaving}
+                  onChange={(e) => void patchConversationDetails({ priority: e.target.value })}
+                  className="rounded-md border border-[#334060] bg-[#0f1728] px-2 py-1.5 text-sm text-white outline-none focus:border-[#4f6290] disabled:opacity-40"
+                >
+                  {CONVERSATION_PRIORITIES.map((p) => (
+                    <option key={p} value={p}>
+                      {p}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-slate-400">
+                Assignment queue
+                <select
+                  value={selectedConversation?.assignment_type ?? 'unassigned'}
+                  disabled={!selectedConversation || conversationDetailSaving}
+                  onChange={(e) => {
+                    const next = e.target.value
+                    if (next === 'assigned_to_ai' || next === 'unassigned') {
+                      void patchConversationDetails({ assignmentType: next, assignedToMemberId: null })
+                      return
+                    }
+                    if (next === 'assigned_to_team') {
+                      void patchConversationDetails({ assignmentType: 'assigned_to_team' })
+                      return
+                    }
+                    if (next === 'assigned_to_agent') {
+                      const mid = selectedConversation?.assigned_to_member_id ?? myMembership?.id
+                      if (mid) void patchConversationDetails({ assignmentType: 'assigned_to_agent', assignedToMemberId: mid })
+                    }
+                  }}
+                  className="rounded-md border border-[#334060] bg-[#0f1728] px-2 py-1.5 text-sm text-white outline-none focus:border-[#4f6290] disabled:opacity-40"
+                >
+                  {CONVERSATION_ASSIGNMENT_TYPES.map((a) => (
+                    <option key={a} value={a}>
+                      {a.replace(/_/g, ' ')}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {conversationDetailSaving ? (
+                <p className="text-[11px] text-slate-500">Saving…</p>
+              ) : null}
             </div>
             <div className="flex flex-col gap-2 border-t border-[#27314a] pt-3">
-              <span className="text-xs text-slate-400">Spam</span>
-              {selectedConversation?.is_spam === true ? (
+              <span className="text-xs text-slate-400">Spam (quick)</span>
+              {selectedConversation?.is_spam === true || selectedConversation?.status === 'spam' ? (
                 <button
                   type="button"
                   disabled={!selectedConversation || spamUpdating}
@@ -880,7 +997,10 @@ export default function InboxPage() {
             <div className="pt-2 text-xs text-slate-400">Conversation attributes</div>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <span>Source</span><span className="text-white">{selectedConversation?.source ?? '-'}</span>
-              <span>Priority</span><span className="text-white">{selectedConversation?.priority ?? '-'}</span>
+              <span>Assignment</span>
+              <span className="text-white">
+                {(selectedConversation?.assignment_type ?? 'unassigned').replace(/_/g, ' ')}
+              </span>
               <span>ID</span><span className="text-white">{selectedConversation ? `${selectedConversation.id.slice(0, 8)}...` : '-'}</span>
             </div>
             <div className="pt-2 text-xs text-slate-400">User data</div>

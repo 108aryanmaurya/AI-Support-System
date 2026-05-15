@@ -6,6 +6,7 @@ export const INBOX_SIDEBAR_FILTERS = Object.freeze([
   { id: 'all', label: 'All' },
   { id: 'unassigned', label: 'Unassigned' },
   { id: 'spam', label: 'Spam' },
+  { id: 'closed', label: 'Closed' },
 ])
 
 /** How long a cached first-page result stays fresh when switching filters (ms). */

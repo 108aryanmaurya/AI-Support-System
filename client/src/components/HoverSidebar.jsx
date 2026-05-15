@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   ArrowRight,
   Bot,
@@ -16,16 +16,16 @@ import minifiedLogo from '../assets/minified_logo.png'
 import { Logo } from './Logo'
 
 const topItems = [
-  { label: 'Inbox', icon: Home },
+  { label: 'Inbox', icon: Home, path: 'inbox' },
   { label: 'Fin AI Agent', icon: Bot },
   { label: 'Knowledge', icon: BookOpen },
-  { label: 'Reports', icon: SquareChartGantt },
+  { label: 'Reports', icon: SquareChartGantt, path: 'reports' },
   { label: 'Outbound', icon: ArrowRight },
   { label: 'Contacts', icon: ContactRound },
 ]
 
 const bottomItems = [
-  { label: 'Search', icon: Search },
+  { label: 'Search', icon: Search, path: 'search' },
   { label: 'Settings', icon: Cog },
   { label: 'Profile', icon: CircleUserRound },
 ]
@@ -33,10 +33,29 @@ const bottomItems = [
 export function HoverSidebar() {
   const [isOpen, setIsOpen] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
   const { orgId } = useParams()
 
   function goToSettings() {
     if (orgId) navigate(`/org/${orgId}/settings`)
+  }
+
+  function goToWorkspacePath(segment) {
+    if (orgId && segment) navigate(`/org/${orgId}/${segment}`)
+  }
+
+  function handleTopNav(item) {
+    if (item.path) goToWorkspacePath(item.path)
+  }
+
+  function handleBottomNav(item) {
+    if (item.label === 'Settings') goToSettings()
+    else if (item.path) goToWorkspacePath(item.path)
+  }
+
+  function isActivePath(segment) {
+    if (!segment || !orgId) return false
+    return location.pathname.startsWith(`/org/${orgId}/${segment}`)
   }
 
   return (
@@ -48,9 +67,21 @@ export function HoverSidebar() {
       <div className="flex h-full w-[72px] flex-col items-center border-r border-[#1d253a] bg-black/95 py-4">
         <img src={minifiedLogo} alt="ResolveAI" className="w-20 object-contain" />
         <div className="mt-8 flex flex-1 flex-col items-center gap-5 text-white/95">
-          {topItems.map((item) => (
-            <item.icon key={item.label} size={18} />
-          ))}
+          {topItems.map((item) =>
+            item.path ? (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => handleTopNav(item)}
+                aria-label={item.label}
+                className="text-white/95 transition hover:text-white"
+              >
+                <item.icon size={18} />
+              </button>
+            ) : (
+              <item.icon key={item.label} size={18} />
+            ),
+          )}
         </div>
         <div className="mb-2 flex flex-col items-center gap-5 text-white/95">
           <button type="button">
@@ -90,7 +121,12 @@ export function HoverSidebar() {
               <button
                 key={item.label}
                 type="button"
-                className="mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-medium text-white transition hover:bg-[#111a2f]"
+                onClick={() => handleTopNav(item)}
+                className={`mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-medium transition hover:bg-[#111a2f] ${
+                  item.path && isActivePath(item.path)
+                    ? 'bg-[#151b2e] text-white'
+                    : 'text-white'
+                }`}
               >
                 <item.icon size={18} className="text-white/95" />
                 <span>{item.label}</span>
@@ -116,8 +152,12 @@ export function HoverSidebar() {
               <button
                 key={item.label}
                 type="button"
-                onClick={item.label === 'Settings' ? goToSettings : undefined}
-                className="mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-medium text-white transition hover:bg-[#111a2f]"
+                onClick={() => handleBottomNav(item)}
+                className={`mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-medium transition hover:bg-[#111a2f] ${
+                  item.path && isActivePath(item.path)
+                    ? 'bg-[#151b2e] text-white'
+                    : 'text-white'
+                }`}
               >
                 <item.icon size={18} className="text-white/95" />
                 <span>{item.label}</span>

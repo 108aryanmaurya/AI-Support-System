@@ -10,6 +10,10 @@ An AI-powered customer support copilot delivered as an **npm workspaces monorepo
 - **Auth helpers** in the frontend (`login`, `signup`, `logout`, `getCurrentUser`) and **`requireAuth`** middleware that attaches **`req.user`** for protected routes.
 - **Placeholder domains** for tickets, messages, and AI assistance, ready to connect to your database and model layer.
 
+## Documentation
+
+- **[AI Feature Design Guide](AI-FEATURE-DESIGN.md)** — Eight-phase AI roadmap, prerequisites per phase, integration map, and technical standards for this codebase.
+
 ---
 
 ## Repository layout

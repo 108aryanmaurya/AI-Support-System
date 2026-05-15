@@ -1,0 +1,182 @@
+import { deltaPercent, parseAnalyticsDateRange } from './dateRange.js';
+import { fetchAiMetrics, fetchProductMetrics } from './metricsQueries.js';
+
+function kpi(id, label, value, previous, unit = 'count') {
+  return {
+    id,
+    label,
+    value,
+    deltaPercent: deltaPercent(value, previous),
+    unit,
+  };
+}
+
+/**
+ * @param {string} organizationId
+ * @param {Record<string, unknown>} query
+ */
+export async function getAnalyticsOverview(organizationId, query) {
+  const range = parseAnalyticsDateRange(query);
+  const [current, previous, ai] = await Promise.all([
+    fetchProductMetrics(organizationId, range.fromDate, range.toExclusive),
+    fetchProductMetrics(organizationId, range.compareFrom, range.compareToExclusive),
+    fetchAiMetrics(organizationId, range.fromDate, range.toExclusive),
+  ]);
+
+  const outboundTotal =
+    current.outboundAgentMessages + current.outboundAiMessages;
+  const prevOutboundTotal =
+    previous.outboundAgentMessages + previous.outboundAiMessages;
+  const failureRate =
+    outboundTotal > 0
+      ? Math.round((current.outboundFailed / outboundTotal) * 1000) / 10
+      : 0;
+  const prevFailureRate =
+    prevOutboundTotal > 0
+      ? Math.round((previous.outboundFailed / prevOutboundTotal) * 1000) / 10
+      : 0;
+
+  return {
+    range: { from: range.fromIso, to: range.toIso },
+    compare: { from: range.compareFromIso, to: range.compareToIso },
+    kpis: [
+      kpi(
+        'conversations_open',
+        'Open conversations',
+        current.openConversations,
+        previous.openConversations,
+      ),
+      kpi(
+        'conversations_new',
+        'New conversations',
+        current.newConversations,
+        previous.newConversations,
+      ),
+      kpi(
+        'conversations_closed',
+        'Closed (activity in range)',
+        current.closedConversations,
+        previous.closedConversations,
+      ),
+      kpi(
+        'messages_inbound',
+        'Customer messages',
+        current.inboundMessages,
+        previous.inboundMessages,
+      ),
+      kpi(
+        'messages_outbound',
+        'Team replies sent',
+        current.outboundAgentMessages,
+        previous.outboundAgentMessages,
+      ),
+      kpi(
+        'outbound_failure_rate',
+        'Outbound failure rate',
+        failureRate,
+        prevFailureRate,
+        'percent',
+      ),
+    ],
+    series: {
+      conversations_created: current.seriesConversationsCreated,
+      inbound_messages: current.seriesInboundMessages,
+    },
+    breakdowns: {
+      channel: current.byChannel,
+      status: current.byStatus,
+      assignment: current.byAssignment,
+    },
+    ai: {
+      enabled: true,
+      available: ai.available !== false,
+      message: ai.message ?? null,
+      summary: ai.available !== false ? {
+        totalRuns: ai.totalRuns,
+        tokensInput: ai.tokensInput,
+        tokensOutput: ai.tokensOutput,
+        aiAssignedConversations: ai.aiAssignedConversations,
+      } : null,
+    },
+  };
+}
+
+export async function getAnalyticsConversations(organizationId, query) {
+  const range = parseAnalyticsDateRange(query);
+  const current = await fetchProductMetrics(organizationId, range.fromDate, range.toExclusive);
+  const previous = await fetchProductMetrics(
+    organizationId,
+    range.compareFrom,
+    range.compareToExclusive,
+  );
+
+  return {
+    range: { from: range.fromIso, to: range.toIso },
+    compare: { from: range.compareFromIso, to: range.compareToIso },
+    totals: {
+      newConversations: current.newConversations,
+      newConversationsDelta: deltaPercent(
+        current.newConversations,
+        previous.newConversations,
+      ),
+      inboundMessages: current.inboundMessages,
+      inboundMessagesDelta: deltaPercent(
+        current.inboundMessages,
+        previous.inboundMessages,
+      ),
+      outboundAgentMessages: current.outboundAgentMessages,
+      outboundAiMessages: current.outboundAiMessages,
+    },
+    breakdowns: {
+      channel: current.byChannel,
+      status: current.byStatus,
+      assignment: current.byAssignment,
+    },
+    series: {
+      conversations_created: current.seriesConversationsCreated,
+      inbound_messages: current.seriesInboundMessages,
+    },
+  };
+}
+
+export async function getAnalyticsTeam(organizationId, query, membership) {
+  const range = parseAnalyticsDateRange(query);
+  const role = membership?.role?.toUpperCase();
+  const filterMemberId = role === 'AGENT' ? membership.id : null;
+
+  const team = await fetchTeamMetrics(
+    organizationId,
+    range.fromDate,
+    range.toExclusive,
+    filterMemberId,
+  );
+
+  return {
+    range: { from: range.fromIso, to: range.toIso },
+    role,
+    members: team.members,
+  };
+}
+
+export async function getAnalyticsAi(organizationId, query) {
+  const range = parseAnalyticsDateRange(query);
+  const [ai, previousAi, product] = await Promise.all([
+    fetchAiMetrics(organizationId, range.fromDate, range.toExclusive),
+    fetchAiMetrics(organizationId, range.compareFrom, range.compareToExclusive),
+    fetchProductMetrics(organizationId, range.fromDate, range.toExclusive),
+  ]);
+
+  return {
+    range: { from: range.fromIso, to: range.toIso },
+    compare: { from: range.compareFromIso, to: range.compareToIso },
+    ...ai,
+    totalRunsDelta:
+      ai.totalRuns != null && previousAi.totalRuns != null
+        ? deltaPercent(ai.totalRuns, previousAi.totalRuns)
+        : 0,
+    productContext: {
+      outboundAiMessages: product.outboundAiMessages,
+      aiAssignedConversations: ai.aiAssignedConversations ?? 0,
+    },
+  };
+}
