@@ -13,7 +13,7 @@ import {
   updateConversationSpam,
 } from '../services/support.service.js';
 import { updateConversationFields } from '../services/conversationUpdate.service.js';
-import { notifyConversationAssignee } from '../services/conversationAssignmentNotification.service.js';
+import { scheduleAssignmentWithFallback } from '../services/automation/automationNotify.service.js';
 
 function orgIdOrThrow(req) {
   const id = req.orgId ?? req.organizationId;
@@ -146,11 +146,12 @@ export async function patchConversationController(req, res, next) {
     const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status');
     const hasPriority = Object.prototype.hasOwnProperty.call(body, 'priority');
     const hasAssignmentType = Object.prototype.hasOwnProperty.call(body, 'assignmentType');
+    const hasAiEnabled = Object.prototype.hasOwnProperty.call(body, 'aiEnabled');
 
-    if (!hasAssign && !hasStatus && !hasPriority && !hasAssignmentType) {
+    if (!hasAssign && !hasStatus && !hasPriority && !hasAssignmentType && !hasAiEnabled) {
       throw new HttpError(
         400,
-        'Provide at least one of: assignedToMemberId, status, priority, assignmentType.',
+        'Provide at least one of: assignedToMemberId, status, priority, assignmentType, aiEnabled.',
       );
     }
 
@@ -171,10 +172,11 @@ export async function patchConversationController(req, res, next) {
       status: hasStatus ? body.status : undefined,
       priority: hasPriority ? body.priority : undefined,
       assignmentType: hasAssignmentType ? body.assignmentType : undefined,
+      aiEnabled: hasAiEnabled ? body.aiEnabled : undefined,
     });
 
-    if (hasAssign) {
-      void notifyConversationAssignee({
+    if (hasAssign || hasAssignmentType) {
+      void scheduleAssignmentWithFallback({
         organizationId,
         conversation,
         assignedToMemberId: conversation.assigned_to_member_id ?? null,

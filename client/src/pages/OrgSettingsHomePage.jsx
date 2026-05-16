@@ -1,6 +1,7 @@
 import {
   AlertTriangle,
   BarChart3,
+  Bot,
   Clock,
   CreditCard,
   Gift,
@@ -155,6 +156,21 @@ export default function OrgSettingsHomePage() {
               iconClass="bg-emerald-700"
               title="Usage"
               description="View your billed usage and set usage alerts and limits."
+            />
+          </div>
+        </section>
+
+        <section className="mb-10">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            AI &amp; Automation
+          </h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <SettingsCard
+              to={`/org/${orgId}/settings/ai`}
+              icon={Bot}
+              iconClass="bg-violet-600"
+              title="AI & Automation"
+              description="Enable AI features, defaults for new conversations, and notification automation."
             />
           </div>
         </section>

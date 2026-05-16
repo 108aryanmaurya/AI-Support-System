@@ -23,6 +23,7 @@ export async function updateConversationFields({
   status: statusPatch = undefined,
   priority: priorityPatch = undefined,
   assignmentType: assignmentTypePatch = undefined,
+  aiEnabled: aiEnabledPatch = undefined,
 }) {
   const actorMember = await ensureOrgMembership(actorUserId, organizationId);
 
@@ -47,6 +48,11 @@ export async function updateConversationFields({
   let status = prior.status ?? 'open';
   let priority = prior.priority ?? 'medium';
   let is_spam = Boolean(prior.is_spam);
+  let ai_enabled = prior.ai_enabled ?? true;
+
+  if (aiEnabledPatch !== undefined) {
+    ai_enabled = Boolean(aiEnabledPatch);
+  }
 
   if (statusPatch !== undefined) {
     const s = typeof statusPatch === 'string' ? statusPatch.trim() : statusPatch;
@@ -122,6 +128,17 @@ export async function updateConversationFields({
     assignment_type = 'unassigned';
   }
 
+  if (assignment_type === 'assigned_to_ai') {
+    const { getOrgAiSettings } = await import('./orgSettings.service.js');
+    const orgAi = await getOrgAiSettings(organizationId);
+    if (!orgAi.ai_enabled) {
+      throw new HttpError(400, 'AI is disabled for this organization.');
+    }
+    if (!ai_enabled) {
+      throw new HttpError(400, 'Cannot assign to AI when conversation AI is disabled.');
+    }
+  }
+
   if (assigned_to_member_id) {
     const { data: assignee, error: assigneeError } = await supabaseAdmin
       .from('organization_members')
@@ -146,6 +163,7 @@ export async function updateConversationFields({
       status,
       priority,
       is_spam,
+      ai_enabled,
     })
     .eq('id', conversationId)
     .eq('organization_id', organizationId)

@@ -86,7 +86,7 @@ Phases 3 (assist) can start after Phase 1 is solid; Phase 2 strongly improves Ph
 | Realtime inbox + HTTP fallback | **Complete** | `client/src/hooks/useRealtimeInbox.js`, `client/src/services/realtime.js` |
 | Internal notes | **Complete** | `shared/src/messageSenderTypes.js` (`internal_note`) |
 | Assignment `assigned_to_ai` | **Partial** | DB + manual UI in `client/src/pages/InboxPage.jsx`; no AI worker consumes queue |
-| AI schema hooks | **Partial** | `conversations.ai_enabled`, `messages.is_ai_generated`, `messages.parent_message_id` — columns exist, app does not read/write them |
+| AI schema hooks | **Partial** | `conversations.ai_enabled` wired; `messages.is_ai_generated`, `parent_message_id` unused until Phase 3+ |
 | AI API | **Stub** | `server/src/controllers/ai.controller.js`, `POST /api/ai/assist` |
 | Copilot / Fin / Knowledge UI | **Placeholder** | `InboxPage.jsx` Copilot tab, `HoverSidebar.jsx`, `settingsNav.js` |
 | LLM / embeddings / RAG / KB | **Missing** | No provider SDKs in `server/package.json`; no vector extension in migrations |
@@ -155,21 +155,21 @@ These exist so AI can plug in without schema refactors later:
 | Realtime messaging | Complete | `useRealtimeInbox.js`, publication migrations |
 | Assignments | Complete | Member, team, unassigned, `assigned_to_ai` (manual) |
 | Permissions | Complete | `requireOrgAccess`, conversation RLS migrations |
-| Analytics | **Missing** | No `support_events` or metrics API |
-| Automation infrastructure | **Missing** | Notifications only; no durable workers or rule engine |
-| Org AI settings UI | **Missing** | `settingsNav.js` has `AI & Automation` with no route/page |
-| `ai_enabled` wiring | **Missing** | Column unused in services |
-| Legacy tickets API | **Stub** | `tickets.service.js` returns empty; risks dual domain model |
+| Analytics | Complete | `support_events`, Reports API/UI — see §14 |
+| Automation infrastructure | Complete | `automation_jobs`, worker, notify + SLA jobs |
+| Org AI settings UI | Complete | `/org/:orgId/settings/ai`, `GET/PATCH .../settings/ai` |
+| `ai_enabled` wiring | Complete | Default on create, patch on update, gates `assigned_to_ai` |
+| Legacy tickets API | **Removed** | Use conversations API only |
 
 ### Phase 1 prerequisites checklist (close before Phase 2+)
 
 Use this as a gate before any model integration:
 
-- [ ] **Analytics / events layer** — Add `support_events` and Reports API/UI per [§14 Analytics & Reports](#14-analytics--reports--backend-ui-and-metrics). Emit on: inbound message, outbound send, assignment change, conversation close. Needed for AI ROI, Phase 4 triggers, and Phase 7 evals.
-- [ ] **Automation infrastructure** — Choose and document: Supabase Edge Functions + `pg_cron`, or Node worker (BullMQ + Redis). Support: delayed jobs, retries, idempotency keys (pattern from `incoming_message_idempotency`).
-- [ ] **Org settings API + UI** — Implement route for `settingsNav` id `ai` (toggles: AI assist on/off, auto-tag on/off, future model tier). Persist in `organizations.settings` JSONB or `org_ai_settings` table.
-- [ ] **Wire `conversations.ai_enabled`** — Read on inbound (`emailWebhook.service.js`, `handle_incoming_message` RPC path); block Phase 6-style automation when false.
-- [ ] **Isolate legacy tickets** — Deprecate `/api/tickets/*` in docs or redirect to conversations; do not build AI on ticket stubs.
+- [x] **Analytics / events layer** — `support_events`, Reports API/UI per [§14](#14-analytics--reports--backend-ui-and-metrics); emit on lifecycle, outbound, SLA.
+- [x] **Automation infrastructure** — Node worker + `automation_jobs` claim RPC; retries, idempotency keys.
+- [x] **Org settings API + UI** — `/settings/ai`; toggles for AI phases + automation; `organizations.settings` JSONB.
+- [x] **Wire `conversations.ai_enabled`** — Default on create, patch on update; block `assigned_to_ai` when org AI off.
+- [x] **Isolate legacy tickets** — `/api/tickets/*` removed; conversations are the only support domain model.
 - [ ] **Operational hardening** — Rate limits on public ingress (exists: `incomingRateLimit`); extend to AI endpoints per org; monitor outbound failures in `inboxAgentSend`.
 
 ### Phase 1 integration map
@@ -211,7 +211,7 @@ Use this as a gate before any model integration:
 - **Internal notes** — Already supported via `sender_type: 'internal_note'`. Use for agent-only context; exclude from customer-facing RAG unless explicitly allowed.
 - **Metadata tags** — Extend `conversations.metadata` for AI classification JSON until normalized tags exist.
 - **Ingestion pipeline** — Upload → extract text → chunk (fixed size + overlap) → store chunks → (Phase 5) embed async.
-- **Client** — Add routes behind sidebar “Knowledge” in `client/src/components/HoverSidebar.jsx` and `GettingStartedPage.jsx`.
+- **Client** — Add routes behind sidebar “Knowledge” in `client/src/components/HoverSidebar.jsx`.
 
 ### Phase 2 integration map
 
@@ -552,7 +552,7 @@ Add to `shared/src/` as needed:
 
 | Phase | Must complete before AI work | Can parallelize | Repo status |
 |-------|------------------------------|-----------------|-------------|
-| **1** Foundation | Yes (all later phases) | — | **Partial** — inbox complete; analytics, automation, settings, `ai_enabled` missing |
+| **1** Foundation | Yes (all later phases) | — | **Mostly complete** — inbox, analytics, automation, org AI settings, `ai_enabled`; operational hardening open |
 | **2** Knowledge | Before Phase 5 RAG | With Phase 3 if assist uses thread only | **Missing** |
 | **3** Agent assist | After Phase 1 | With Phase 2 | **Missing** (stub API only) |
 | **4** Workflow automation | After Phase 3 signals | With Phase 5 infra | **Missing** |
@@ -1053,4 +1053,4 @@ Validate in `server/src/config/env.js` at startup when `AI_FEATURES_ENABLED=true
 
 ---
 
-*Last updated: includes Analytics & Reports (§14) — backend events/rollups, Reports UI, and product + AI metrics catalog. Revise when Phase 1 checklist items are closed.*
+*Last updated: Phase 1 checklist (analytics, automation, org AI settings, `ai_enabled`) marked complete; §14 Analytics & Reports catalog unchanged.*

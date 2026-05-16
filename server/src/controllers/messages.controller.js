@@ -11,10 +11,8 @@ import {
 } from '../utils/incomingMessageValidation.js';
 import { emitIncomingMessageEvent } from '../utils/monitoring.js';
 import { sendInboxAgentOutboundMessage } from '../services/inboxAgentSend.service.js';
-import {
-  isCustomerMessageFreshForNotification,
-  notifyStaffOfCustomerMessage,
-} from '../services/customerInboundNotification.service.js';
+import { isCustomerMessageFreshForNotification } from '../services/customerInboundNotification.service.js';
+import { scheduleStaffInboundWithFallback } from '../services/automation/automationNotify.service.js';
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -200,12 +198,18 @@ export async function createIncomingMessageController(req, res, next) {
 
     const notifyFresh = await isCustomerMessageFreshForNotification(row.message_id);
     if (notifyFresh) {
-      void notifyStaffOfCustomerMessage({
+      const notifyJobKey =
+        typeof idempotencyKey === 'string' && idempotencyKey.trim()
+          ? `inbound:${organizationId}:${idempotencyKey.trim()}`
+          : `inbound:${organizationId}:${row.message_id}`;
+      void scheduleStaffInboundWithFallback({
         organizationId,
         conversationId: row.conversation_id,
+        messageId: row.message_id,
         customerMessage: normalizedMessage,
         customerEmail: normalizedEmail,
         channelLabel: 'api',
+        idempotencyKey: notifyJobKey,
       });
     }
 

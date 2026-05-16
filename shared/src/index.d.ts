@@ -57,25 +57,37 @@ export const SUPPORT_EVENT_TYPES: readonly [
   'conversation.assigned',
   'conversation.priority_changed',
   'member.first_response',
+  'sla.first_response_breach',
 ];
 
 export function isSupportEventType(value: unknown): value is (typeof SUPPORT_EVENT_TYPES)[number];
 
-/** Ticket entity shared between client and API */
-export interface Ticket {
-  id: string;
-  subject: string;
-  status: 'open' | 'pending' | 'resolved' | 'closed';
-  created_at: string;
-  updated_at: string;
-  user_id: string;
-}
+export const AUTOMATION_JOB_TYPES: readonly [
+  'notify.staff_inbound',
+  'notify.assignment',
+  'sla.scan_org',
+];
 
-export interface Message {
-  id: string;
-  ticket_id: string;
-  body: string;
-  author_id: string;
-  created_at: string;
-  role: 'user' | 'agent' | 'system';
-}
+export function isAutomationJobType(value: unknown): value is (typeof AUTOMATION_JOB_TYPES)[number];
+
+export const ORG_AI_SETTINGS_DEFAULTS: {
+  ai_enabled: boolean;
+  assist_enabled: boolean;
+  auto_tag_enabled: boolean;
+  auto_route_to_ai: boolean;
+  autonomous_replies_enabled: boolean;
+  default_conversation_ai_enabled: boolean;
+  model_tier: string;
+};
+
+export const ORG_AI_MODEL_TIERS: readonly ['standard', 'advanced'];
+
+export const ORG_AUTOMATION_SETTINGS_DEFAULTS: {
+  inbound_notify_enabled: boolean;
+  assignment_notify_enabled: boolean;
+  sla_enabled: boolean;
+  first_response_sla_minutes: number;
+};
+
+export function mergeOrgAiSettings(raw: unknown): typeof ORG_AI_SETTINGS_DEFAULTS;
+export function mergeOrgAutomationSettings(raw: unknown): typeof ORG_AUTOMATION_SETTINGS_DEFAULTS;

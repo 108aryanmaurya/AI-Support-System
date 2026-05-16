@@ -4,7 +4,7 @@ export const settingsNav = [
   { id: 'subscription', label: 'Subscription', chevron: true },
   { id: 'channels', label: 'Channels', chevron: true },
   { id: 'inbox', label: 'Inbox', chevron: true },
-  { id: 'ai', label: 'AI & Automation', chevron: true },
+  { id: 'ai', label: 'AI & Automation', path: 'ai', chevron: true },
   { id: 'integrations', label: 'Integrations', chevron: true },
   { id: 'data', label: 'Data', chevron: true },
   { id: 'help', label: 'Help Center', chevron: true },

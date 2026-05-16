@@ -8,7 +8,7 @@ An AI-powered customer support copilot delivered as an **npm workspaces monorepo
 - **REST API** with CORS, JSON bodies, request logging, centralized errors, and JWT verification via Supabase.
 - **Supabase** on the client with the **anon** key only; on the server with the **service role** key (never bundled or exposed to the browser).
 - **Auth helpers** in the frontend (`login`, `signup`, `logout`, `getCurrentUser`) and **`requireAuth`** middleware that attaches **`req.user`** for protected routes.
-- **Placeholder domains** for tickets, messages, and AI assistance, ready to connect to your database and model layer.
+- **Conversations inbox**, org-scoped messaging, email/web channels, analytics reports, and automation workers.
 
 ## Documentation
 
@@ -140,16 +140,16 @@ Base path: `/api` (and `/health` for liveness).
 | Method | Path | Auth | Notes |
 |--------|------|------|--------|
 | GET | `/health` | No | Service heartbeat |
-| GET | `/api/auth` | No | Auth route info |
+| GET | `/api/auth` | No | Auth namespace discovery |
 | GET | `/api/auth/health` | No | Auth namespace heartbeat |
 | GET | `/api/auth/me` | Yes | Current user from JWT |
-| GET | `/api/tickets` | Yes | List tickets (placeholder) |
-| GET | `/api/tickets/:id` | Yes | Ticket by id (placeholder) |
-| POST | `/api/tickets` | Yes | Create ticket (placeholder) |
-| GET | `/api/messages/:ticketId` | Yes | Messages for ticket (placeholder) |
-| POST | `/api/messages/:ticketId` | Yes | Add message (placeholder) |
+| GET | `/api/org/my` | Yes | Organizations for current user |
+| GET/POST | `/api/org/:orgId/conversations/*` | Yes | Inbox (conversations, messages) |
+| POST | `/api/org/:orgId/messages/incoming` | No | Public customer ingress (rate-limited) |
+| GET | `/api/org/:orgId/analytics/*` | Yes | Reports metrics |
 | GET | `/api/ai/health` | No | AI route heartbeat |
-| POST | `/api/ai/assist` | Yes | AI assist (placeholder) |
+| POST | `/api/ai/assist` | Yes | AI assist (stub — no LLM yet) |
+| POST | `/api/webhooks/email` | No* | Inbound email (*provider auth in service) |
 
 Protected routes expect:
 
@@ -163,7 +163,7 @@ Obtain the access token from the Supabase client session after sign-in (see `cli
 
 ## Shared package (`@ai-support/shared`)
 
-Workspace package used by client and server for shared **`API_PREFIX`** and TypeScript **`Ticket`** / **`Message`** shapes in `shared/src/index.d.ts`. Extend this package as your domain model grows.
+Workspace package used by client and server for shared constants (conversation statuses, sender types, inbox sort, automation job types, etc.) in `shared/src/`.
 
 ---
 

@@ -1,11 +1,12 @@
-/**
- * Placeholder auth-related handlers (e.g. session info, callbacks).
- * Login/signup are typically done client-side with Supabase; protected routes use JWT middleware.
- */
+/** Auth namespace discovery (login/signup use Supabase client; API validates JWT). */
 export function getAuthInfo(req, res) {
   res.json({
-    message: 'Auth API placeholder',
-    endpoints: ['/api/auth/health', '/api/auth/me (protected)'],
+    ok: true,
+    scope: 'auth',
+    endpoints: {
+      health: 'GET /api/auth/health',
+      me: 'GET /api/auth/me',
+    },
   });
 }
 

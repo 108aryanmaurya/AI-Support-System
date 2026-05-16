@@ -32,6 +32,26 @@ export default function OrgSettingsLayout() {
                 </NavLink>
               )
             }
+            if (item.path) {
+              return (
+                <NavLink
+                  key={item.id}
+                  to={`/org/${orgId}/settings/${item.path}`}
+                  className={({ isActive }) =>
+                    `flex min-w-0 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium whitespace-nowrap transition md:w-full ${
+                      isActive
+                        ? 'bg-[#151b2e] text-white'
+                        : 'text-slate-400 hover:bg-[#111827] hover:text-slate-200'
+                    }`
+                  }
+                >
+                  <span className="flex-1 md:inline">{item.label}</span>
+                  {item.chevron ? (
+                    <ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-500 md:inline" aria-hidden />
+                  ) : null}
+                </NavLink>
+              )
+            }
             return (
               <button
                 key={item.id}

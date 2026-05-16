@@ -1,0 +1,56 @@
+---
+alwaysApply: true
+---
+# Feature documentation maintenance
+
+Keep **two layers** of docs accurate when you ship or materially change **user-facing** behavior:
+
+| Layer | Location | Purpose |
+|-------|----------|---------|
+| Inventory | `IMPLEMENTED-FEATURES.md` (repo root) | Short bullet list of what exists |
+| Deep dive | `docs/features/<slug>.md` | How it is implemented and how it connects to other features |
+| Index | `docs/README.md` | Table of links to all feature docs |
+
+## When to update
+
+Update in the **same task** when you:
+
+- Add a route, page, API endpoint, worker job type, or migration that enables new product behavior
+- Wire a previously placeholder UI or API to real logic
+- Change how features connect (new dependency, moved endpoint, new event type)
+
+**Do not** update for: pure refactors, style-only changes, internal renames, or bug fixes that do not change documented behavior.
+
+## How to update `IMPLEMENTED-FEATURES.md`
+
+1. Find the best parent section (e.g. §6 Support inbox).
+2. Add or edit a nested bullet (`**Name** — description`).
+3. Use `*(partial)*` / `*(placeholder)*` when accurate.
+4. Update the **Quick reference** table if a primary user flow changed.
+5. Do **not** duplicate `AI-FEATURE-DESIGN.md` (roadmap only).
+
+## How to update `docs/features/`
+
+1. Open the doc for that feature (see `docs/README.md`). If none exists, copy `docs/features/_TEMPLATE.md` → `docs/features/<kebab-slug>.md`.
+2. Update these sections as needed:
+   - **Overview**, **Capabilities**, **Architecture** (diagram if flow changed)
+   - **Key files**, **API**, **Database**
+   - **Connections** — link to other `docs/features/*.md` files with a one-line relationship
+   - **Status**
+3. Add a row to the table in `docs/README.md` for new major features.
+4. Cross-link: if feature A now depends on B, update **Connections** in both docs when the link is user-visible or architectural.
+
+## New major feature checklist
+
+- [ ] `docs/features/<slug>.md` created or updated
+- [ ] `docs/README.md` index row added
+- [ ] `IMPLEMENTED-FEATURES.md` bullet(s) added
+- [ ] Related feature docs’ **Connections** sections updated
+
+## Completion checklist
+
+Before finishing a feature task:
+
+- [ ] `IMPLEMENTED-FEATURES.md` updated, or N/A (no user-facing change)
+- [ ] Relevant `docs/features/*.md` updated, or N/A
+- [ ] `docs/README.md` updated if a new doc was added

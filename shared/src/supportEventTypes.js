@@ -9,6 +9,7 @@ export const SUPPORT_EVENT_TYPES = Object.freeze([
   'conversation.assigned',
   'conversation.priority_changed',
   'member.first_response',
+  'sla.first_response_breach',
 ]);
 
 /** @param {unknown} v */

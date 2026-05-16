@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
+import { getDefaultConversationAiEnabled } from './orgSettings.service.js';
 
 function toInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -82,6 +83,7 @@ export async function createConversation({
   priority = null,
   metadata = {},
   createdByUserId,
+  aiEnabled = undefined,
 }) {
   const { data: customer, error: customerError } = await supabaseAdmin
     .from('customers')
@@ -93,6 +95,9 @@ export async function createConversation({
 
   if (customerError) throw new HttpError(500, customerError.message || 'Failed to validate customer.');
   if (!customer) throw new HttpError(400, 'Customer does not belong to this organization.');
+
+  const resolvedAiEnabled =
+    aiEnabled !== undefined ? Boolean(aiEnabled) : await getDefaultConversationAiEnabled(organizationId);
 
   const { data, error } = await supabaseAdmin
     .from('conversations')
@@ -107,6 +112,7 @@ export async function createConversation({
       priority: priority ?? 'medium',
       created_by: createdByUserId,
       metadata,
+      ai_enabled: Boolean(resolvedAiEnabled),
     })
     .select('*')
     .single();

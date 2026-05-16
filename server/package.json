@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "node --watch src/server.js",
+    "worker:automation": "node src/workers/automationWorker.js",
     "start": "NODE_ENV=production node src/server.js",
     "build": "echo \"Server has no build step\""
   },

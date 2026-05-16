@@ -36,10 +36,10 @@ Do not mount routes after the 404 handler except for error middleware.
 
 ## Routes (`src/routes/*.routes.js`)
 
-- **Filename:** `kebab-or-domain.routes.js` (e.g. `auth.routes.js`, `tickets.routes.js`).
+- **Filename:** `kebab-or-domain.routes.js` (e.g. `auth.routes.js`, `conversations.routes.js`).
 - **Export:** `export default router` where `router` is `Router()` from Express.
-- **Mount prefix** in `app.js` is `/api/<resource>` (e.g. `/api/auth`, `/api/tickets`).
-- **Auth:** either `router.use(requireAuth)` for an entire router, or per-route `requireAuth` before the handler (see `auth.routes.js` vs `tickets.routes.js`).
+- **Mount prefix** in `app.js` is `/api/<resource>` (e.g. `/api/auth`, `/api/org`).
+- **Auth:** either `router.use(requireAuth)` for an entire router, or per-route `requireAuth` before the handler (see `auth.routes.js` vs `orgWorkspace.routes.js`).
 - **Controller wiring:** project uses both styles:
   - `import * as fooController from '../controllers/foo.controller.js'` and `fooController.listTickets`, or
   - `import { namedHandler } from '../controllers/bar.controller.js'`.
@@ -51,7 +51,7 @@ Do not mount routes after the 404 handler except for error middleware.
 - **Handlers** are **named exports** (e.g. `export async function registerUser(req, res, next)`).
 - **Sync success:** `res.json(...)` or `res.status(201).json(...)`.
 - **Validation / expected failures:** set status and respond with JSON **`{ error: '<message>' }`**, then **`return`** (do not throw for normal 4xx cases).
-- **Unexpected errors** in async handlers: wrap in `try/catch` and call **`next(error)`** (see `registerUser`, `completeOnboarding`).
+- **Unexpected errors** in async handlers: wrap in `try/catch` and call **`next(error)`** (see controllers in `server/src/controllers/`).
 - Placeholder handlers may omit `next` if they only return static JSON.
 
 ## Auth middleware (`src/middleware/auth.js`)
@@ -82,7 +82,7 @@ Do not mount routes after the 404 handler except for error middleware.
 
 ## Services (`src/services/*.service.js`)
 
-- Place **domain / data access** helpers here (e.g. async functions used by controllers). The existing tickets service is a stub with a JSDoc note to use `supabaseAdmin` for real queries.
+- Place **domain / data access** helpers here (e.g. `support.service.js`, `conversationUpdate.service.js`) using `supabaseAdmin`.
 
 ## Request logging (`src/middleware/requestLogger.js`)
 

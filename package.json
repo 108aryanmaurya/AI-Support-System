@@ -9,7 +9,8 @@
     "shared"
   ],
   "scripts": {
-    "dev": "concurrently -n client,server -c cyan,magenta \"npm run dev --workspace client\" \"npm run dev --workspace server\"",
+    "dev": "concurrently -n client,server,worker -c cyan,magenta,yellow \"npm run dev --workspace client\" \"npm run dev --workspace server\" \"npm run worker:automation --workspace server\"",
+    "dev:worker": "npm run worker:automation --workspace server",
     "dev:client": "npm run dev --workspace client",
     "dev:server": "npm run dev --workspace server",
     "build": "npm run build --workspace shared && npm run build --workspace client && npm run build --workspace server",

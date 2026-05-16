@@ -179,24 +179,6 @@ export const useInboxStore = create((set) => ({
       }
     }),
 
-  /** @deprecated Use setConversationsPage. Kept for minimal call sites. */
-  setConversations: (items) =>
-    set((state) => {
-      const mid = state.inboxSortMemberId ?? null
-      const sorted = sortConversationsInbox(items ?? [], mid)
-      const conversations = trimConversationsToCap(sorted, MAX_CONVERSATIONS_IN_MEMORY, state.activeConversationId, mid)
-      return {
-        conversations,
-        activeConversationId: state.activeConversationId || conversations[0]?.id || '',
-        conversationPagination: {
-          page: 1,
-          pageSize: sorted.length || 50,
-          hasMore: false,
-          total: null,
-        },
-      }
-    }),
-
   /**
    * Append a page (e.g. load more). Merges by id, re-sorts, trims — future-ready.
    */

@@ -15,6 +15,7 @@ import OrgSettingsHomePage from './pages/OrgSettingsHomePage.jsx'
 import OrgTeammatesPage from './pages/OrgTeammatesPage.jsx'
 import OrgTeammatesSection from './pages/OrgTeammatesSection.jsx'
 import OrgInviteTeammatesPage from './pages/OrgInviteTeammatesPage.jsx'
+import OrgAiSettingsPage from './pages/OrgAiSettingsPage.jsx'
 import TeammatesInviteDeepLink from './pages/TeammatesInviteDeepLink.jsx'
 import { RequireAuth } from './components/ProtectedRoute.jsx'
 import { OrgWorkspaceLayout } from './layouts/OrgWorkspaceLayout.jsx'
@@ -43,6 +44,7 @@ export default function App() {
               <Route index element={<OrgTeammatesPage />} />
               <Route path="invite/new" element={<OrgInviteTeammatesPage />} />
             </Route>
+            <Route path="ai" element={<OrgAiSettingsPage />} />
           </Route>
         </Route>
       </Route>
