@@ -21,7 +21,8 @@ sequenceDiagram
   participant API as messages/send
   participant Send as inboxAgentSend.service
   participant Router as channelReplyRouter
-  Agent->>API: content + conversation_id
+  Agent->>API: content + conversation_id + client_request_id
+  API->>Send: idempotency check (Redis + DB)
   API->>Send: insert pending message
   Send->>Router: sendReplyOutbound
   Router-->>Send: provider result
@@ -36,6 +37,8 @@ sequenceDiagram
 | Controller | `server/src/controllers/messages.controller.js` |
 | Routes | `server/src/routes/messagesAuth.routes.js`, `messagesIncoming.routes.js` |
 | Outbound | `server/src/services/inboxAgentSend.service.js` |
+| Send idempotency | `server/src/services/agentSendIdempotency.service.js` |
+| Client send | `client/src/services/conversationSendMessage.js` (`client_request_id`) |
 | Ingress | `messages.controller.js` → RPC `handle_incoming_message` |
 | Shared | `shared/src/messageSenderTypes.js`, `mentions.js` |
 | Validation | `server/src/utils/incomingMessageValidation.js` |
@@ -45,9 +48,9 @@ sequenceDiagram
 
 | Method | Path | Auth |
 |--------|------|------|
-| POST | `/api/org/:orgId/messages/send` | Yes |
+| POST | `/api/org/:orgId/messages/send` | Yes (rate limit; optional `client_request_id` idempotency) |
 | POST | `/api/org/:orgId/messages` | Yes |
-| POST | `/api/org/:orgId/messages/incoming` | No (rate limit) |
+| POST | `/api/org/:orgId/messages/incoming` | No (ingress rate limit) |
 | POST | `/api/org/:orgId/customers` | Yes |
 
 ## Database
@@ -59,6 +62,7 @@ sequenceDiagram
 
 | Feature | Relationship |
 |---------|----------------|
+| [Operational hardening](./operational-hardening.md) | Agent send rate limit + outbound failure events on send path |
 | [Support inbox](./support-inbox.md) | Composer on `InboxPage` |
 | [Multi-channel](./multi-channel.md) | Outbound uses `channel_type` on parent conversation |
 | [Realtime](./realtime.md) | New rows published to Realtime |

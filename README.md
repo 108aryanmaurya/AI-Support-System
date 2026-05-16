@@ -58,6 +58,7 @@ An AI-powered customer support copilot delivered as an **npm workspaces monorepo
 ## Prerequisites
 
 - **Node.js** 18+ (20+ recommended).
+- **Redis** for API rate limits (local: `docker compose -f docker-compose.redis.yml up -d`).
 - A **Supabase project** ([dashboard](https://supabase.com/dashboard)): project URL, **anon** key, and **service role** key from **Settings → API**.
 
 ---
@@ -82,6 +83,7 @@ Copy `server/.env.example` to `server/.env` and set:
 |----------|-------------|
 | `SUPABASE_URL` | Same project URL as the client |
 | `SUPABASE_SERVICE_ROLE_KEY` | **Server-only** key; bypasses RLS — never expose to the client or commit to git |
+| `REDIS_URL` | **Required.** Rate limits (e.g. `redis://localhost:6379`) |
 | `PORT` | Optional; default **3001** |
 | `CORS_ORIGIN` | Optional; comma-separated allowed origins (default includes `http://localhost:5173`) |
 
@@ -93,6 +95,7 @@ From the repository root:
 
 ```bash
 npm install
+docker compose -f docker-compose.redis.yml up -d   # Redis for rate limits
 ```
 
 **Development (frontend + API together):**
@@ -148,7 +151,9 @@ Base path: `/api` (and `/health` for liveness).
 | POST | `/api/org/:orgId/messages/incoming` | No | Public customer ingress (rate-limited) |
 | GET | `/api/org/:orgId/analytics/*` | Yes | Reports metrics |
 | GET | `/api/ai/health` | No | AI route heartbeat |
-| POST | `/api/ai/assist` | Yes | AI assist (stub — no LLM yet) |
+| POST | `/api/ai/assist` | Yes | AI assist stub (legacy; per-user rate limit) |
+| GET | `/api/org/:orgId/ai/health` | Yes | Org-scoped AI heartbeat |
+| POST | `/api/org/:orgId/ai/assist` | Yes | AI assist stub (preferred; per-org + per-user limits) |
 | POST | `/api/webhooks/email` | No* | Inbound email (*provider auth in service) |
 
 Protected routes expect:

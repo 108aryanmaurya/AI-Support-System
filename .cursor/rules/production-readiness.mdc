@@ -1,0 +1,131 @@
+---
+description: Production-grade code, system design, edge cases, bottlenecks, and ops expectations for all changes
+alwaysApply: true
+---
+
+# Production readiness (strict)
+
+Ship code and designs that are safe under **real traffic, failures, and multi-tenant load**—not only the happy path in local dev.
+
+Cross-read when relevant: [server-express-conventions.mdc](./server-express-conventions.mdc), [application-stack.mdc](./application-stack.mdc), [docs/features/operational-hardening.md](./docs/features/operational-hardening.md).
+
+---
+
+## 1. Tenancy & security (non-negotiable)
+
+- **Org scope from URL** for workspace APIs: `/api/org/:orgId/*` + `requireOrgAccess`. Never trust `organizationId` from body/query alone on authenticated routes.
+- **Service role** stays server-only; client uses anon key + RLS. No secrets in client bundles or logs.
+- **AuthZ before work**: check membership/role (`ADMIN`) before mutations; fail closed (403/401), not silent no-ops.
+- **Public ingress** (webhooks, `messages/incoming`): validate payloads, idempotency keys, rate limits; never log raw PII or tokens.
+- **Input bounds**: max body size (already 1mb), string lengths, UUID format, enum/status checks—reject early with 400.
+- **Production errors**: generic 5xx messages to clients; detail in server logs only (`NODE_ENV=production`).
+
+---
+
+## 2. Reliability & failure modes
+
+Design every async path for: **timeout, partial failure, duplicate delivery, process crash**.
+
+| Pattern | Requirement |
+|---------|-------------|
+| HTTP handlers | Do not block on email/AI/heavy work; enqueue (`automation_jobs`) or fire-and-forget analytics with safe catch |
+| Idempotency | Webhooks and ingress: dedupe keys; DB unique constraints where duplicates are costly |
+| Retries | Exponential backoff + `max_attempts` + dead state; never infinite retry loops |
+| DB writes | Handle `23514` / constraint errors as 400; distinguish 404 vs 500 |
+| External APIs | Timeouts, treat provider errors as retryable vs fatal; record failure reason |
+| Graceful shutdown | HTTP: `server.close()` on SIGTERM/SIGINT; workers: finish current job, stop accepting new work |
+
+**Edge cases to explicitly handle:**
+
+- Duplicate webhook / double-click send
+- Assignee deleted or wrong org
+- Org settings missing → sane defaults, log once
+- Migration/table missing → degrade without crashing the whole request (only where already established, e.g. analytics)
+- Concurrent updates (last-write-wins vs optimistic locking—document choice)
+
+---
+
+## 3. Scalability & bottlenecks
+
+Before merging, ask: **what grows unbounded?**
+
+| Risk | Mitigation |
+|------|------------|
+| N+1 queries | Batch/select; avoid per-row round trips in loops |
+| Large lists | Pagination (`limit`/`cursor`), indexes on filter/sort columns |
+| Hot rows | Avoid serializing all org traffic on one row; use queues |
+| Rate limits | **Redis only** (`REDIS_URL` required); shared across API replicas—do not reintroduce in-memory limit Maps |
+| Full table scans | Reports/analytics: date bounds, rollups, indexes on `(organization_id, created_at)` |
+| Realtime fan-out | Scope channels by org/conversation; don’t broadcast global |
+| Worker poll interval | Tune `AUTOMATION_POLL_MS` / batch size; SLA jobs must not starve notify jobs |
+| LLM (future) | Per-org + per-user rate limits, token budgets, timeouts, circuit breaker |
+
+**Multi-process layout (this repo):**
+
+- API (`server.js`) and **automation worker** are separate processes—`npm run start` does **not** start the worker; document/deploy both.
+- Cron (SLA scan) needs `AUTOMATION_CRON_SECRET` and external scheduler.
+
+---
+
+## 4. Observability
+
+- **Structured logs** for failures (JSON one-liners): `organization_id`, `conversation_id`, `error_code`—see `outboundDeliveryMonitor.service.js`.
+- **Product events**: emit `support_events` for lifecycle, outbound sent/failed, SLA breach—enables Reports and alerting.
+- **No silent swallow** except intentional fire-and-forget; always `console.warn`/`error` with context when skipping.
+- **Health**: keep `GET /health` cheap; deeper checks (DB ping) optional separate route.
+- **Metrics/alerts (ops)**: document how to detect spikes in `message.outbound_failed`, queue depth, job `dead` status.
+
+---
+
+## 5. Data integrity
+
+- Migrations: reversible where possible; `IF NOT EXISTS`; comments on JSONB/settings columns.
+- **JSONB settings**: merge with shared defaults (`mergeOrgAiSettings`); never replace entire document blindly.
+- **Feature flags**: respect `organizations.settings` and `conversations.ai_enabled` before AI/automation side effects.
+- **Transactions**: when multiple tables must stay consistent, use RPC or explicit transaction pattern—don’t leave orphan rows.
+- **Cascade deletes**: rely on FK `on delete cascade` consciously; soft-delete only if product requires it.
+
+---
+
+## 6. API & client contract
+
+- Stable error shape: `{ error: string }` + correct HTTP status.
+- **429** for rate limits with `Retry-After` when known.
+- Version org-scoped routes; deprecate global stubs (e.g. prefer `/api/org/:orgId/ai/assist`).
+- Client: handle loading/error/empty states; don’t assume realtime always connected.
+
+---
+
+## 7. Production checklist (apply before marking work done)
+
+- [ ] Happy path + main failure paths tested (or reason noted)
+- [ ] Org isolation verified on new endpoints
+- [ ] No unbounded memory/CPU (loops, Maps, unbounded `select *`)
+- [ ] Background work queued or async with idempotency
+- [ ] Env vars documented in `server/.env.example` (no secrets committed)
+- [ ] User-facing behavior reflected in `docs/IMPLEMENTED-FEATURES.md` + relevant `docs/features/*.md` when behavior changes
+- [ ] Rate limits on public and costly endpoints (AI, ingress, webhooks)
+
+---
+
+## 8. Anti-patterns (reject in review)
+
+- Global `/api/*` mutations without org scope
+- Sync email/LLM in request thread for high-latency providers
+- Storing API keys in `organizations.settings` without encryption story
+- In-memory rate limit Maps (use Redis via `rateLimitRedis.js`)
+- “Best effort” deletes/updates with no error surfacing
+- Loading entire conversation history for AI without token/limit cap (future phases)
+
+---
+
+## 9. When to escalate design
+
+Pause implementation and propose a short design note when adding:
+
+- New queue/worker type, cron, or cross-service dependency
+- New PII store, export, or retention policy
+- Billing/metering, multi-region, or >1 API replica defaults
+- Autonomous customer-visible AI sends (Phase 6)—needs gates, audit, kill switch
+
+Prefer extending existing services (`conversationUpdate`, `enqueueAutomationJob`, `emitSupportEvent`) over parallel ad-hoc paths.

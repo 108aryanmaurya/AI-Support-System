@@ -170,7 +170,7 @@ Use this as a gate before any model integration:
 - [x] **Org settings API + UI** — `/settings/ai`; toggles for AI phases + automation; `organizations.settings` JSONB.
 - [x] **Wire `conversations.ai_enabled`** — Default on create, patch on update; block `assigned_to_ai` when org AI off.
 - [x] **Isolate legacy tickets** — `/api/tickets/*` removed; conversations are the only support domain model.
-- [ ] **Operational hardening** — Rate limits on public ingress (exists: `incomingRateLimit`); extend to AI endpoints per org; monitor outbound failures in `inboxAgentSend`.
+- [x] **Operational hardening** — Redis-only rate limits, agent send limits, deduped failure logs — [operational-hardening.md](./features/operational-hardening.md).
 
 ### Phase 1 integration map
 
@@ -552,7 +552,7 @@ Add to `shared/src/` as needed:
 
 | Phase | Must complete before AI work | Can parallelize | Repo status |
 |-------|------------------------------|-----------------|-------------|
-| **1** Foundation | Yes (all later phases) | — | **Mostly complete** — inbox, analytics, automation, org AI settings, `ai_enabled`; operational hardening open |
+| **1** Foundation | Yes (all later phases) | — | **Complete** (Phase 1 checklist); multi-instance rate limits / alerts are ops follow-ups |
 | **2** Knowledge | Before Phase 5 RAG | With Phase 3 if assist uses thread only | **Missing** |
 | **3** Agent assist | After Phase 1 | With Phase 2 | **Missing** (stub API only) |
 | **4** Workflow automation | After Phase 3 signals | With Phase 5 infra | **Missing** |

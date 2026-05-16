@@ -6,6 +6,7 @@ import customersRoutes from './customers.routes.js';
 import messagesAuthRoutes from './messagesAuth.routes.js';
 import orgAnalyticsRoutes from './orgAnalytics.routes.js';
 import orgSettingsRoutes from './orgSettings.routes.js';
+import orgAiRoutes from './orgAi.routes.js';
 import {
   createInviteController,
   createInvitesBatchController,
@@ -29,6 +30,7 @@ router.post('/invites/batch', requireRole('ADMIN'), createInvitesBatchController
 router.get('/invites', listPendingInvitesController);
 router.post('/invite', requireRole('ADMIN'), createInviteController);
 router.use('/settings', orgSettingsRoutes);
+router.use('/ai', orgAiRoutes);
 router.use('/analytics', orgAnalyticsRoutes);
 router.use('/conversations', conversationsRoutes);
 router.use('/customers', customersRoutes);

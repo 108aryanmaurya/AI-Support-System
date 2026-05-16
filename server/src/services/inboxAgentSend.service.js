@@ -14,6 +14,12 @@ import {
   syncEmailThreadsLastMessageId,
 } from './emailOutboundDbSync.service.js';
 import { emitSupportEvent } from './analytics/supportEvents.service.js';
+import { recordOutboundDeliveryFailure } from './outboundDeliveryMonitor.service.js';
+import {
+  beginAgentSendIdempotency,
+  commitAgentSendIdempotency,
+  releaseAgentSendIdempotencyLock,
+} from './agentSendIdempotency.service.js';
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -38,6 +44,7 @@ export async function sendInboxAgentOutboundMessage({
   conversationId: rawConversationId,
   rawContent,
   expectedOrganizationId = null,
+  clientRequestId: rawClientRequestId = null,
 }) {
   const conversationId =
     typeof rawConversationId === 'string' ? rawConversationId.trim() : '';
@@ -61,7 +68,22 @@ export async function sendInboxAgentOutboundMessage({
     throw new HttpError(403, 'Conversation does not belong to this organization.');
   }
 
-  const member = await ensureOrgMembership(userId, conversation.organization_id);
+  const organizationId = conversation.organization_id;
+
+  const idempotency = await beginAgentSendIdempotency({
+    organizationId,
+    clientRequestId: rawClientRequestId,
+    conversationId,
+  });
+
+  if (idempotency.mode === 'replay') {
+    return idempotency.result;
+  }
+
+  const activeClientRequestId =
+    idempotency.mode === 'proceed' ? idempotency.clientRequestId : null;
+
+  const member = await ensureOrgMembership(userId, organizationId);
 
   const membersPayload = await listOrganizationMembersWithProfiles({
     organizationId: conversation.organization_id,
@@ -76,10 +98,13 @@ export async function sendInboxAgentOutboundMessage({
 
   const initialMetadata = {
     status: 'pending',
+    ...(activeClientRequestId ? { client_request_id: activeClientRequestId } : {}),
     ...(mentionIds.length ? { mentions: mentionIds } : {}),
   };
 
-  const { data: inserted, error: insertError } = await supabaseAdmin
+  let inserted;
+  try {
+    const { data: row, error: insertError } = await supabaseAdmin
     .from('messages')
     .insert({
       organization_id: conversation.organization_id,
@@ -90,12 +115,20 @@ export async function sendInboxAgentOutboundMessage({
       content: body,
       metadata: initialMetadata,
     })
-    .select('*')
-    .single();
+      .select('*')
+      .single();
 
-  if (insertError) {
-    if (insertError.code === '23514') throw new HttpError(400, insertError.message || 'Message validation failed.');
-    throw new HttpError(500, insertError.message || 'Failed to create message.');
+    if (insertError) {
+      if (insertError.code === '23514') throw new HttpError(400, insertError.message || 'Message validation failed.');
+      throw new HttpError(500, insertError.message || 'Failed to create message.');
+    }
+    inserted = row;
+  } catch (e) {
+    await releaseAgentSendIdempotencyLock({
+      organizationId,
+      clientRequestId: activeClientRequestId,
+    });
+    throw e;
   }
 
   if (mentionIds.length) {
@@ -156,11 +189,21 @@ export async function sendInboxAgentOutboundMessage({
       },
     });
 
-    return {
+    const successPayload = {
       message: updated,
       outbound,
       deliveryStatus: 'sent',
     };
+
+    await commitAgentSendIdempotency({
+      organizationId,
+      clientRequestId: activeClientRequestId,
+      conversationId: conversation.id,
+      messageId: updated.id,
+      result: successPayload,
+    });
+
+    return successPayload;
   } catch (err) {
     await replaceMessageMetadataExact({
       organizationId: conversation.organization_id,
@@ -171,14 +214,35 @@ export async function sendInboxAgentOutboundMessage({
       },
     });
 
-    emitSupportEvent({
+    void recordOutboundDeliveryFailure({
       organizationId: conversation.organization_id,
-      eventType: 'message.outbound_failed',
-      entityType: 'message',
-      entityId: inserted.id,
-      actorMemberId: member.id,
+      conversationId: conversation.id,
+      messageId: inserted.id,
       channelType: conversation.channel_type ?? null,
-      payload: { conversation_id: conversation.id },
+      actorMemberId: member.id,
+      senderType: 'agent',
+      err,
+    });
+
+    const { data: failedRow } = await supabaseAdmin
+      .from('messages')
+      .select('*')
+      .eq('id', inserted.id)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    const failedPayload = {
+      message: failedRow ?? inserted,
+      deliveryStatus: 'failed',
+      idempotentReplay: false,
+    };
+
+    await commitAgentSendIdempotency({
+      organizationId,
+      clientRequestId: activeClientRequestId,
+      conversationId: conversation.id,
+      messageId: inserted.id,
+      result: failedPayload,
     });
 
     throw err;

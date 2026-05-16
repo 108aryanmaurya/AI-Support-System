@@ -49,7 +49,9 @@ flowchart TB
 |---------|---------|
 | Agent REST | JWT + active membership for `:orgId` |
 | Realtime | Same user session; RLS on tables |
-| Web incoming | Knows `orgId` in URL — protect with rate limits + optional channel secrets |
+| Web incoming | Knows `orgId` in URL — ingress rate limits (org + email), optional channel secrets |
+| Agent send | JWT + membership; per-org+user send rate limit |
+| Ops | `GET /api/internal/ops/rate-limits` requires `x-automation-cron-secret` |
 | Email webhook | Match `to` address to `channel_integrations` config |
 | Cron | `x-automation-cron-secret` header |
 | Service role key | Server env only; never `VITE_*` |

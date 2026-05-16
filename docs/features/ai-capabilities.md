@@ -6,7 +6,8 @@ The product is branded as an AI support copilot, but **no LLM provider is integr
 
 ## Capabilities today
 
-- `POST /api/ai/assist` — returns placeholder JSON
+- `POST /api/org/:orgId/ai/assist` — preferred org-scoped stub (rate limited per org + user)
+- `POST /api/ai/assist` — legacy global stub (per-user rate limit)
 - Inbox: Copilot tab label, AI bubble styles, `assigned_to_ai` assignment option in UI
 - Sidebar: “Fin AI Agent”, “Knowledge” — no routes
 - Reports AI tab — reads `ai_runs` when rows exist; otherwise “not configured”
@@ -32,7 +33,7 @@ flowchart TB
 
 | Layer | Path |
 |-------|------|
-| Stub API | `server/src/controllers/ai.controller.js`, `server/src/routes/ai.routes.js` |
+| Stub API | `server/src/controllers/ai.controller.js`, `server/src/routes/ai.routes.js`, `server/src/routes/orgAi.routes.js` |
 | Org settings | `shared/src/orgSettings.js`, `server/src/services/orgSettings.service.js`, `client/src/pages/OrgAiSettingsPage.jsx` |
 | UI | `client/src/pages/InboxPage.jsx`, `HoverSidebar.jsx` |
 | Reports | `client/src/pages/OrgReportsPage.jsx` (`AiTabPanel`) |
@@ -47,6 +48,7 @@ flowchart TB
 | [Multi-channel](./multi-channel.md) | Customer-visible AI sends must go through channel router |
 | [Support inbox](./support-inbox.md) | Copilot UX lives on inbox thread |
 | [Org AI settings](./org-ai-settings.md) | Feature flags and per-conversation defaults |
+| [Operational hardening](./operational-hardening.md) | AI rate limits and outbound failure events |
 | [Analytics](./analytics-and-reports.md) | `ai_runs` powers AI metrics tab |
 | [Notifications](./notifications-and-automation.md) | Future: AI queue distinct from `assigned_to_ai` UI-only state |
 

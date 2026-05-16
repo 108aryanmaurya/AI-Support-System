@@ -45,12 +45,18 @@ export async function sendInboxMessageController(req, res, next) {
       throw new HttpError(500, 'Organization scope missing (middleware misconfigured).');
     }
 
-    const { conversation_id: conversationId, content } = req.body ?? {};
+    const {
+      conversation_id: conversationId,
+      content,
+      client_request_id: clientRequestIdSnake,
+      clientRequestId: clientRequestIdCamel,
+    } = req.body ?? {};
     const result = await sendInboxAgentOutboundMessage({
       userId: req.userId ?? req.user.id,
       conversationId,
       rawContent: content,
       expectedOrganizationId: organizationId,
+      clientRequestId: clientRequestIdSnake ?? clientRequestIdCamel ?? null,
     });
     res.status(200).json(result);
   } catch (error) {

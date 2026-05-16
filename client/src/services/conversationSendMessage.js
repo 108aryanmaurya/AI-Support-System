@@ -125,6 +125,7 @@ export function createSendMessage(deps) {
         body: JSON.stringify({
           conversation_id: conversationId,
           content,
+          client_request_id: clientRequestId,
         }),
       })
 

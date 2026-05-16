@@ -115,6 +115,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Message sender types** — `customer`, `agent`, `system`, `ai`, `internal_note`
 - **Agent outbound send** — insert `pending` row → channel send → `sent` or `failed` on same row
 - **Dedicated send endpoint** — `POST /api/org/:orgId/messages/send`
+- **Send idempotency** — `client_request_id` + Redis lock/result cache + `agent_send_idempotency` table (no duplicate outbound on retry)
 - **Generic message create** — `POST /api/org/:orgId/messages` (supports internal notes, metadata)
 - **Internal notes** — distinct styling; not customer-visible
 - **@Mentions**
@@ -223,7 +224,20 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ---
 
-## 14. AI capabilities
+## 14. Operational hardening
+
+- **Rate limiting (Redis only)** — requires `REDIS_URL`; shared fixed-window counters via Lua; `X-RateLimit-*` headers; API exits if Redis unavailable at startup
+  - Public ingress: per-org and per-customer-email (`messages/incoming`)
+  - Email webhook: per recipient address
+  - AI: per-org + per-user on `POST .../ai/assist`; per-user on legacy `POST /api/ai/assist`
+  - Agent send: per-org+user on `POST .../messages/send`
+- **Outbound failure monitoring** — deduped JSON logs + always-on `message.outbound_failed` events (`error_code`, `error_message`)
+- **Ops diagnostics** — `GET /api/internal/ops/rate-limits` (cron secret)
+- **Docs** — [operational-hardening.md](./features/operational-hardening.md)
+
+---
+
+## 15. AI capabilities
 
 *(Mostly infrastructure and UI placeholders — no LLM provider integrated.)*
 
@@ -241,7 +255,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ---
 
-## 15. Developer utilities
+## 16. Developer utilities
 
 - **Test send message page** — `/test/send-message` for manual inbound/web testing
 - **Monitoring hooks** — `server/src/utils/monitoring.js` for incoming-message telemetry
@@ -249,7 +263,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ---
 
-## 16. Security & access control
+## 17. Security & access control
 
 - **Bearer JWT on protected routes**
 - **Org isolation** — all workspace data scoped by `organization_id`; URL param is source of truth for org scope

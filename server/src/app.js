@@ -10,6 +10,7 @@ import orgRoutes from './routes/org.routes.js';
 import orgWorkspaceRoutes from './routes/orgWorkspace.routes.js';
 import messagesIncomingRoutes from './routes/messagesIncoming.routes.js';
 import internalCronRoutes from './routes/internalCron.routes.js';
+import internalOpsRoutes from './routes/internalOps.routes.js';
 
 const app = express();
 
@@ -35,6 +36,7 @@ app.use('/api/org/:orgId', orgWorkspaceRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/webhooks', emailWebhookRoutes);
 app.use('/api/internal/cron', internalCronRoutes);
+app.use('/api/internal/ops', internalOpsRoutes);
 
 app.use(notFoundHandler);
 app.use(errorHandler);
