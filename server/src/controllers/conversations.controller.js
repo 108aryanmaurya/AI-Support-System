@@ -14,6 +14,7 @@ import {
 } from '../services/support.service.js';
 import { updateConversationFields } from '../services/conversationUpdate.service.js';
 import { scheduleAssignmentWithFallback } from '../services/automation/automationNotify.service.js';
+import { setConversationTags } from '../services/tags.service.js';
 
 function orgIdOrThrow(req) {
   const id = req.orgId ?? req.organizationId;
@@ -79,12 +80,18 @@ export async function getConversationsController(req, res, next) {
     const includeSpam =
       req.query.includeSpam === 'true' || req.query.includeSpam === '1';
 
+    const tagId =
+      typeof req.query.tagId === 'string' && req.query.tagId.trim()
+        ? req.query.tagId.trim()
+        : null;
+
     const pagination = getPagination(req.query);
     const result = await getFilteredConversations({
       filterType,
       currentUserId: req.userId ?? req.user.id,
       organizationId,
       includeSpam,
+      tagId,
       ...pagination,
     });
     res.json(result);
@@ -147,12 +154,26 @@ export async function patchConversationController(req, res, next) {
     const hasPriority = Object.prototype.hasOwnProperty.call(body, 'priority');
     const hasAssignmentType = Object.prototype.hasOwnProperty.call(body, 'assignmentType');
     const hasAiEnabled = Object.prototype.hasOwnProperty.call(body, 'aiEnabled');
+    const hasTagIds = Object.prototype.hasOwnProperty.call(body, 'tagIds');
 
-    if (!hasAssign && !hasStatus && !hasPriority && !hasAssignmentType && !hasAiEnabled) {
+    if (!hasAssign && !hasStatus && !hasPriority && !hasAssignmentType && !hasAiEnabled && !hasTagIds) {
       throw new HttpError(
         400,
-        'Provide at least one of: assignedToMemberId, status, priority, assignmentType, aiEnabled.',
+        'Provide at least one of: assignedToMemberId, status, priority, assignmentType, aiEnabled, tagIds.',
       );
+    }
+
+    if (hasTagIds) {
+      const tagResult = await setConversationTags({
+        organizationId,
+        conversationId,
+        actorUserId: req.userId ?? req.user.id,
+        tagIds: body.tagIds ?? [],
+      });
+      if (!hasAssign && !hasStatus && !hasPriority && !hasAssignmentType && !hasAiEnabled) {
+        res.json({ conversation: tagResult.conversation, tags: tagResult.tags });
+        return;
+      }
     }
 
     let assignedToMemberId = undefined;

@@ -42,6 +42,9 @@ export function InboxSidebar({
   mentionCue,
   autoAssignOnSelect,
   setAutoAssignOnSelect,
+  orgTags = [],
+  activeTagId = null,
+  onTagFilterChange,
 }) {
   const { orgId } = useParams()
   const navigate = useNavigate()
@@ -99,6 +102,23 @@ export function InboxSidebar({
           <div className="flex items-center justify-between rounded-md px-2 py-1.5 text-slate-400">
             <span>Dashboard</span>
           </div>
+          {orgTags.length > 0 && onTagFilterChange ? (
+            <label className="mt-2 block px-1 text-xs text-slate-500">
+              Filter by tag
+              <select
+                value={activeTagId ?? ''}
+                onChange={(e) => onTagFilterChange(e.target.value || null)}
+                className="mt-1 w-full rounded-md border border-[#334060] bg-[#0f1728] px-2 py-1.5 text-sm text-white outline-none"
+              >
+                <option value="">All tags</option>
+                {orgTags.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
         </div>
 
         <div className="mt-4 rounded-lg border border-[#27314a] bg-[#0f1728] p-2">

@@ -71,6 +71,8 @@ export const useInboxStore = create((set) => ({
   inboxSortMemberId: null,
   /** Active sidebar filter (drives list + refetch). */
   activeFilter: DEFAULT_INBOX_FILTER,
+  /** Optional conversation tag filter (Phase 2). */
+  activeTagId: null,
   /** Server bucket counts for sidebar badges. */
   filterCounts: {
     inbox: 0,
@@ -115,6 +117,8 @@ export const useInboxStore = create((set) => ({
     }),
 
   setActiveFilter: (activeFilter) => set({ activeFilter }),
+
+  setActiveTagId: (activeTagId) => set({ activeTagId: activeTagId || null }),
 
   setFilterCounts: (counts) =>
     set((state) => ({

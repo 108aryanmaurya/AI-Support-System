@@ -20,12 +20,14 @@ Per-feature implementation guides for the AI Support System monorepo. Each doc e
 | [operational-hardening.md](./features/operational-hardening.md) | Rate limits (ingress, AI, webhook) + outbound failure monitoring |
 | [search.md](./features/search.md) | Search page *(partial)* |
 | [ai-capabilities.md](./features/ai-capabilities.md) | AI stubs, schema hooks, roadmap link |
+| [knowledge-base.md](./features/knowledge-base.md) | Articles, search, file ingest (Phase 2) |
 | [security-and-access-control.md](./features/security-and-access-control.md) | RLS, org isolation, ingress security |
 
 **Also see**
 
 - [IMPLEMENTED-FEATURES.md](../IMPLEMENTED-FEATURES.md) — short bullet inventory of everything shipped
-- [AI-FEATURE-DESIGN.md](../AI-FEATURE-DESIGN.md) — AI roadmap and future phases
+- [AI-FEATURE-DESIGN.md](./ai-features/AI-FEATURE-DESIGN.md) — AI roadmap and future phases
+- [ai-features/README.md](./ai-features/README.md) — per-phase implementation status (Phase 1–2 shipped, Phase 3 partial)
 
 ## Doc template
 

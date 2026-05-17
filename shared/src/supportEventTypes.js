@@ -10,6 +10,11 @@ export const SUPPORT_EVENT_TYPES = Object.freeze([
   'conversation.priority_changed',
   'member.first_response',
   'sla.first_response_breach',
+  'knowledge.search',
+  'knowledge.article_viewed',
+  'knowledge.article_published',
+  'knowledge.ingest_completed',
+  'knowledge.ingest_failed',
 ]);
 
 /** @param {unknown} v */

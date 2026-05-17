@@ -35,3 +35,7 @@ export function fetchAnalyticsTeam(organizationId, range) {
 export function fetchAnalyticsAi(organizationId, range) {
   return apiFetch(withRange(`${orgAnalyticsBase(organizationId)}/ai`, range))
 }
+
+export function fetchAnalyticsKnowledge(organizationId, range) {
+  return apiFetch(withRange(`${orgAnalyticsBase(organizationId)}/knowledge`, range))
+}

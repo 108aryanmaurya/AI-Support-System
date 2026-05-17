@@ -1,6 +1,7 @@
 import {
   getAnalyticsAi,
   getAnalyticsConversations,
+  getAnalyticsKnowledge,
   getAnalyticsOverview,
   getAnalyticsTeam,
 } from '../services/analytics/overview.service.js';
@@ -39,6 +40,15 @@ export async function analyticsTeamController(req, res, next) {
 export async function analyticsAiController(req, res, next) {
   try {
     const data = await getAnalyticsAi(req.organizationId, req.query);
+    res.json(data);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function analyticsKnowledgeController(req, res, next) {
+  try {
+    const data = await getAnalyticsKnowledge(req.organizationId, req.query);
     res.json(data);
   } catch (e) {
     next(e);

@@ -179,6 +179,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
   - `notify.staff_inbound` — email staff when customer messages (with sync fallback if enqueue fails)
   - `notify.assignment` — email assignee on conversation assignment
   - `sla.scan_org` — detect first-response SLA breaches per org
+  - `knowledge.ingest_source` — file upload → article → publish → chunks
 - **Org automation settings** — JSON in `organizations.settings.automation` (SLA minutes, notify toggles); editable in AI settings UI
 - **Internal notification email** — optional Resend via `NOTIFICATION_RESEND_API_KEY` / `NOTIFICATION_EMAIL_FROM`
 - **Cron trigger** — `POST /api/internal/cron/sla-scan` (protected by `x-automation-cron-secret`)
@@ -198,8 +199,9 @@ Inventory of features **implemented in the codebase today** (client, server, sha
   - `GET .../analytics/conversations`
   - `GET .../analytics/team`
   - `GET .../analytics/ai`
+  - `GET .../analytics/knowledge`
 - **Reports UI** (`/org/:orgId/reports`)
-  - Tabs: Overview, Conversations, Team, AI
+  - Tabs: Overview, Conversations, Team, AI, Knowledge
   - KPI grid, line chart, breakdown bars
   - Date range selection
   - AI tab shows “not configured” when no `ai_runs` data
@@ -208,7 +210,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ## 12. Settings & workspace navigation
 
-- **Hover sidebar** — Inbox, Reports, Search, Settings; expandable labels
+- **Hover sidebar** — Inbox, Reports, Knowledge, Search, Settings; expandable labels
 - **Workspace navbar** — org branding and navigation
 - **Settings layout** — nested routes under `/org/:orgId/settings`
 - **Settings home** — card grid; Teammates and AI & Automation cards link to live pages *(other cards UI-only)*
@@ -230,6 +232,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
   - Public ingress: per-org and per-customer-email (`messages/incoming`)
   - Email webhook: per recipient address
   - AI: per-org + per-user on `POST .../ai/assist`; per-user on legacy `POST /api/ai/assist`
+  - Knowledge search + file upload: per-org and per-user caps
   - Agent send: per-org+user on `POST .../messages/send`
 - **Outbound failure monitoring** — deduped JSON logs + always-on `message.outbound_failed` events (`error_code`, `error_message`)
 - **Ops diagnostics** — `GET /api/internal/ops/rate-limits` (cron secret)
@@ -237,21 +240,37 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ---
 
-## 15. AI capabilities
+## 15. AI & knowledge (Phases 1–2 + stubs)
 
-*(Mostly infrastructure and UI placeholders — no LLM provider integrated.)*
+**Deep dives:** [ai-features/README.md](./ai-features/README.md)
+
+### 15.1 Phase 1 foundation (shipped)
 
 - **Org AI settings API + UI** — master AI switch, phase toggles (assist, auto-tag, auto-route, autonomous), default `conversations.ai_enabled`, model tier placeholder
 - **`conversations.ai_enabled`** — set on create from org default; patchable on conversation update; blocks `assigned_to_ai` when org AI off
-- **AI API stub** — `POST /api/ai/assist` returns placeholder JSON
-- **Database hooks (unused by app logic)**
-  - `conversations.ai_enabled`
-  - `messages.is_ai_generated`, `messages.parent_message_id`
-  - `messages.sender_type = 'ai'`
-  - `conversations.assignment_type = 'assigned_to_ai'`
-- **Inbox UI** — Copilot tab label; AI message bubble styling; assign-to-AI in assignment controls *(partial: no model worker)*
-- **Sidebar** — “Fin AI Agent”, “Knowledge” nav items *(no routes / pages)*
-- **Analytics AI tab** — reads `ai_runs` when present; otherwise shows setup message
+- **`support_events`** — lifecycle, outbound, SLA, knowledge events (`shared/src/supportEventTypes.js`)
+
+### 15.2 Knowledge base (Phase 2 — shipped)
+
+- **Articles** — CRUD, versions, publish, slug, visibility; soft-delete archive (`DELETE .../articles/:id`, ADMIN)
+- **Full-text search** — `GET .../knowledge/search` + `search_knowledge_chunks` RPC
+- **File ingest** — upload `.txt`/`.md`/`.pdf` (≤ 512 KB); worker job `knowledge.ingest_source`; source status on list page
+- **Retrieval helpers** — `retrieval.service.js`, `contextAssembly.service.js` *(future RAG; not wired to inbox copilot)*
+- **Client** — `/org/:orgId/knowledge`, editor, import, archive (ADMIN)
+- **Migrations** — `20260517150000_knowledge_base.sql`, `20260517160000_knowledge_search_rpc.sql`
+
+### 15.3 Conversation tags (Phase 2 — shipped)
+
+- **Tag definitions** — org-scoped CRUD (ADMIN mutations)
+- **Conversation tags** — assign on thread; inbox filter `?tagId=`
+- **Client** — `ConversationTagsPanel`, sidebar tag filter
+
+### 15.4 LLM / copilot (Phase 3 — not shipped)
+
+- **AI API stub** — `POST /api/org/:orgId/ai/assist` and legacy `POST /api/ai/assist` return placeholder JSON
+- **No** `LLM_*` env vars, provider SDK, `llm.client.js`, or `suggest-reply` / `summarize` endpoints
+- **`ai_runs`** — table exists; Reports AI tab reads when populated; **no server writes yet**
+- **Inbox UI** — Copilot tab; AI bubble styling; assign-to-AI *(no model integration)*
 
 ---
 
@@ -286,6 +305,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 | Accept invite | `/invite?token=…` |
 | Work inbox | `/org/:orgId/inbox` |
 | View reports | `/org/:orgId/reports` |
+| Knowledge base | `/org/:orgId/knowledge` |
 | Manage teammates | `/org/:orgId/settings/teammates` |
 | Configure AI & automation | `/org/:orgId/settings/ai` |
 | Customer email in | `POST /api/webhooks/email` |
@@ -293,4 +313,4 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ---
 
-*For per-feature architecture and cross-feature connections, see [docs/](./docs/). For the AI roadmap, see [AI-FEATURE-DESIGN.md](./AI-FEATURE-DESIGN.md).*
+*For per-feature architecture, see [docs/README.md](./README.md). AI roadmap: [ai-features/AI-FEATURE-DESIGN.md](./ai-features/AI-FEATURE-DESIGN.md); shipped phases: [ai-features/README.md](./ai-features/README.md).*

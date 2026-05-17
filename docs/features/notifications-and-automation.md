@@ -6,7 +6,7 @@ Side effects that must not block HTTP requests (staff email, SLA scanning) run t
 
 ## Capabilities
 
-- Job types: `notify.staff_inbound`, `notify.assignment`, `sla.scan_org`
+- Job types: `notify.staff_inbound`, `notify.assignment`, `sla.scan_org`, `knowledge.ingest_source`
 - Worker polls via `claim_automation_jobs` RPC
 - Org settings in `organizations.settings.automation` (SLA minutes, notify toggles) — edited via [org-ai-settings](./org-ai-settings.md)
 - Optional internal email via Resend env vars
@@ -45,6 +45,7 @@ flowchart LR
 | Customer inbound message | `notify.staff_inbound` (from `messages.controller`, `emailWebhook.service`) |
 | Conversation assigned | `notify.assignment` (from `conversations.controller` / `conversationUpdate.service`) |
 | Cron SLA scan | `sla.scan_org` per org → may emit `support_events` |
+| Knowledge file upload | `knowledge.ingest_source` → article publish + chunks |
 
 ## Connections
 
@@ -53,6 +54,7 @@ flowchart LR
 | [Messages](./messages.md) | Inbound path schedules staff notify |
 | [Support inbox](./support-inbox.md) | Assignment patch schedules assignment notify |
 | [Analytics](./analytics-and-reports.md) | SLA handler writes `sla.first_response_breach` events |
+| [Knowledge base](./knowledge-base.md) | Ingest jobs processed by same worker |
 | [Org AI settings](./org-ai-settings.md) | Automation toggles and SLA minutes |
 | [Multi-organization](./multi-organization.md) | Jobs include `organization_id` |
 | [Platform](./platform-and-monorepo.md) | Root `npm run dev` starts worker alongside API |

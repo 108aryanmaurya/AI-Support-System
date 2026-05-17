@@ -131,14 +131,15 @@ These exist so AI can plug in without schema refactors later:
 - **`messages.is_ai_generated`**, **`messages.parent_message_id`** — provenance and draft lineage
 - **`conversations.metadata`** — GIN index; comment in `20260510140000_conversation_inbox_filters.sql` mentions AI tags/classification (today used for mentions)
 
-### What is not in the repo
+### What is not in the repo (LLM / Phase 3+)
 
 - OpenAI / Anthropic / other model SDKs
-- `OPENAI_API_KEY` or `LLM_*` in `server/.env.example`
-- Knowledge base tables, chunking, embeddings, pgvector
-- Job queue / rules engine for automation
-- Unified analytics or `support_events` table
-- Client calls to `/api/ai/assist`
+- `OPENAI_API_KEY` or `LLM_*` in `server/.env.example` (see [ai-stubs-and-phase-3-prerequisites.md](./ai-stubs-and-phase-3-prerequisites.md))
+- `llm.client.js`, `suggest-reply`, `summarize`, writes to `ai_runs`
+- Vector embeddings / pgvector on knowledge chunks
+- Autonomous customer-visible AI sends (Phase 6)
+
+*Phase 1–2 infrastructure **is** in the repo: `support_events`, `automation_jobs`, knowledge base, tags, stub `/api/ai/assist`.*
 
 ---
 
@@ -188,6 +189,8 @@ Use this as a gate before any model integration:
 ## 4. Phase 2 — Knowledge & Search Layer
 
 **Goal:** Knowledge base, semantic-ready search, tagging, internal notes leverage, and document retrieval **infrastructure** (embeddings optional until Phase 5).
+
+> **Implementation status (2026-05-17):** **Shipped** — articles, FTS search, file ingest, conversation tags, Reports Knowledge tab. See [phase-2-knowledge-base.md](./phase-2-knowledge-base.md), [phase-2-conversation-tags.md](./phase-2-conversation-tags.md). **Not shipped:** embeddings, inbox “related articles”, customer help center.
 
 ### Prerequisites
 

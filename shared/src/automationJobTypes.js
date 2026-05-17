@@ -3,6 +3,7 @@ export const AUTOMATION_JOB_TYPES = Object.freeze([
   'notify.staff_inbound',
   'notify.assignment',
   'sla.scan_org',
+  'knowledge.ingest_source',
 ]);
 
 /** @param {unknown} v */

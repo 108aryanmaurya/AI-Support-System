@@ -7,6 +7,7 @@ import {
   defaultReportRange,
   fetchAnalyticsAi,
   fetchAnalyticsConversations,
+  fetchAnalyticsKnowledge,
   fetchAnalyticsOverview,
   fetchAnalyticsTeam,
 } from '../services/analyticsApi.js'
@@ -15,6 +16,7 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'conversations', label: 'Conversations' },
   { id: 'team', label: 'Team' },
+  { id: 'knowledge', label: 'Knowledge' },
   { id: 'ai', label: 'AI' },
 ]
 
@@ -104,21 +106,24 @@ export default function OrgReportsPage() {
   const [conversations, setConversations] = useState(null)
   const [team, setTeam] = useState(null)
   const [ai, setAi] = useState(null)
+  const [knowledge, setKnowledge] = useState(null)
 
   const load = useCallback(async () => {
     if (!orgId) return
     setLoading(true)
     setError(null)
     try {
-      const [ov, conv, tm, aiData] = await Promise.all([
+      const [ov, conv, tm, kb, aiData] = await Promise.all([
         fetchAnalyticsOverview(orgId, range),
         fetchAnalyticsConversations(orgId, range),
         fetchAnalyticsTeam(orgId, range),
+        fetchAnalyticsKnowledge(orgId, range),
         fetchAnalyticsAi(orgId, range),
       ])
       setOverview(ov)
       setConversations(conv)
       setTeam(tm)
+      setKnowledge(kb)
       setAi(aiData)
     } catch (e) {
       setError(e.message || 'Failed to load reports.')
@@ -318,7 +323,44 @@ export default function OrgReportsPage() {
           </section>
         )}
 
+        {tab === 'knowledge' && (
+          <KnowledgeTabPanel data={knowledge} loading={loading} error={error} />
+        )}
+
         {tab === 'ai' && <AiTabPanel data={ai} loading={loading} error={error} />}
+      </div>
+    </div>
+  )
+}
+
+function KnowledgeTabPanel({ data, loading, error }) {
+  if (loading) return <p className="text-sm text-slate-400">Loading knowledge metrics…</p>
+  if (error) return <p className="text-sm text-rose-400">{error}</p>
+  if (!data) return null
+
+  if (data.available === false) {
+    return (
+      <div className="rounded-xl border border-[#1d253a] bg-[#151b2e] p-6 text-sm text-slate-300">
+        {data.message || 'Knowledge metrics are unavailable until the knowledge base is configured.'}
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-6">
+      <ReportsKpiGrid kpis={data.kpis} />
+      <div className="rounded-xl border border-[#1d253a] bg-[#151b2e] p-4 text-sm text-slate-300">
+        <p>
+          Draft articles: <span className="text-white">{data.totals?.draftArticles ?? 0}</span>
+        </p>
+        <p className="mt-1">
+          Failed sources (total):{' '}
+          <span className="text-white">{data.totals?.sourcesFailed ?? 0}</span>
+        </p>
+        <p className="mt-1">
+          Successful ingestions in range:{' '}
+          <span className="text-white">{data.totals?.ingestCompletedInRange ?? 0}</span>
+        </p>
       </div>
     </div>
   )

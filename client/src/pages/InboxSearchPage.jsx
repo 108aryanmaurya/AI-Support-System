@@ -8,7 +8,6 @@ export default function InboxSearchPage() {
   const { orgId: orgFromRoute } = useParams()
   const organizationId =
     (typeof orgFromRoute === 'string' && orgFromRoute.trim()) ||
-    import.meta.env.VITE_TEST_ORGANIZATION_ID?.trim() ||
     ''
 
   const setLoadingNoop = useCallback(() => {}, [])
@@ -45,9 +44,7 @@ export default function InboxSearchPage() {
               Search
             </h1>
             <p className="mt-1 text-sm text-slate-400">
-              {organizationId
-                ? 'Search conversations in this workspace. (UI coming soon.)'
-                : 'Set VITE_TEST_ORGANIZATION_ID or open this page from an organization URL.'}
+              Search conversations in this workspace. (UI coming soon.)
             </p>
           </div>
           <div className="inbox-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain p-6 [scrollbar-gutter:stable]">

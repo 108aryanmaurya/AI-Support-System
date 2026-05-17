@@ -18,7 +18,7 @@ import { Logo } from './Logo'
 const topItems = [
   { label: 'Inbox', icon: Home, path: 'inbox' },
   { label: 'Fin AI Agent', icon: Bot },
-  { label: 'Knowledge', icon: BookOpen },
+  { label: 'Knowledge', icon: BookOpen, path: 'knowledge' },
   { label: 'Reports', icon: SquareChartGantt, path: 'reports' },
   { label: 'Outbound', icon: ArrowRight },
   { label: 'Contacts', icon: ContactRound },

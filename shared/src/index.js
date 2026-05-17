@@ -40,3 +40,23 @@ export {
   mergeOrgAiSettings,
   mergeOrgAutomationSettings,
 } from './orgSettings.js';
+
+export {
+  KNOWLEDGE_ALLOWED_UPLOAD_EXTENSIONS,
+  KNOWLEDGE_ALLOWED_UPLOAD_MIMES,
+  KNOWLEDGE_MAX_UPLOAD_BYTES,
+  isAllowedKnowledgeUploadMime,
+} from './knowledgeIngest.js';
+
+export {
+  KNOWLEDGE_ARTICLE_STATUSES,
+  KNOWLEDGE_ARTICLE_VISIBILITIES,
+  KNOWLEDGE_MAX_CHUNKS_PER_VERSION,
+  KNOWLEDGE_MAX_CONTENT_LENGTH,
+  KNOWLEDGE_SOURCE_STATUSES,
+  KNOWLEDGE_SOURCE_TYPES,
+  isKnowledgeArticleStatus,
+  isKnowledgeArticleVisibility,
+  isValidKnowledgeSlug,
+  normalizeKnowledgeSlug,
+} from './knowledgeArticle.js';

@@ -2,11 +2,13 @@ import { supabaseAdmin } from '../../config/supabase.js';
 import { handleNotifyAssignment } from './jobHandlers/notifyAssignment.js';
 import { handleNotifyStaffInbound } from './jobHandlers/notifyStaffInbound.js';
 import { handleSlaScanOrg } from './jobHandlers/slaScanOrg.js';
+import { handleKnowledgeIngestSource } from './jobHandlers/knowledgeIngestSource.js';
 
 const HANDLERS = {
   'notify.staff_inbound': handleNotifyStaffInbound,
   'notify.assignment': handleNotifyAssignment,
   'sla.scan_org': handleSlaScanOrg,
+  'knowledge.ingest_source': handleKnowledgeIngestSource,
 };
 
 function backoffSeconds(attempts) {
@@ -99,12 +101,28 @@ export async function processAutomationJobById(jobId) {
  * @param {object[]} jobs
  */
 export async function processClaimedJobs(jobs) {
+  let ok = 0;
+  let failed = 0;
+
   for (const job of jobs) {
     try {
       await runAutomationJob(job);
       await markJobCompleted(job.id);
+      ok += 1;
     } catch (e) {
-      await markJobFailed(job, e?.message ?? String(e));
+      const message = e?.message ?? String(e);
+      await markJobFailed(job, message);
+      failed += 1;
+      // eslint-disable-next-line no-console
+      console.error('[automation] job failed', {
+        jobId: job.id,
+        jobType: job.job_type,
+        organizationId: job.organization_id,
+        attempts: job.attempts,
+        message,
+      });
     }
   }
+
+  return { ok, failed };
 }

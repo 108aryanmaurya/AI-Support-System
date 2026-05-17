@@ -9,6 +9,7 @@ Keep **two layers** of docs accurate when you ship or materially change **user-f
 |-------|----------|---------|
 | Inventory | `IMPLEMENTED-FEATURES.md` (repo root) | Short bullet list of what exists |
 | Deep dive | `docs/features/<slug>.md` | How it is implemented and how it connects to other features |
+| Deep dive AI features | `docs/ai-features/<slug>.md` | How it is implemented and how it connects to other features |
 | Index | `docs/README.md` | Table of links to all feature docs |
 
 ## When to update

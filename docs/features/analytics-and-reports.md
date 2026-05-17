@@ -7,9 +7,10 @@ Product telemetry is stored in **`support_events`** (and future **`ai_runs`**). 
 ## Capabilities
 
 - Append-only `support_events` from server (`emitSupportEvent`)
-- Analytics endpoints: overview, conversations, team, AI
+- Analytics endpoints: overview, conversations, team, AI, **knowledge**
 - UI tabs with `ReportsKpiGrid`, `ReportsLineChart`, `ReportsBreakdownBars`
 - AI tab degrades gracefully when no `ai_runs` rows exist
+- Knowledge tab: article counts, search/ingest events from `support_events`
 - `analytics_daily_rollups` table scaffold for future pre-aggregation
 
 ## Architecture
@@ -45,6 +46,7 @@ flowchart LR
 | GET | `/api/org/:orgId/analytics/conversations` |
 | GET | `/api/org/:orgId/analytics/team` |
 | GET | `/api/org/:orgId/analytics/ai` |
+| GET | `/api/org/:orgId/analytics/knowledge` |
 
 Query params include date range (`from`, `to`) parsed in `dateRange.js`.
 
@@ -60,6 +62,7 @@ From `shared/src/supportEventTypes.js`: `message.inbound`, `message.outbound_sen
 | [Messages](./messages.md) | Outbound send success/failure events |
 | [Notifications](./notifications-and-automation.md) | SLA scan emits breach events |
 | [AI capabilities](./ai-capabilities.md) | AI tab reads `ai_runs` when populated |
+| [Knowledge base](./knowledge-base.md) | Knowledge tab + ingest/search events |
 | [Multi-organization](./multi-organization.md) | All queries filtered by org |
 
 ## Status

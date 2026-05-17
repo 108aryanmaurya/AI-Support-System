@@ -1,4 +1,5 @@
 import { deltaPercent, parseAnalyticsDateRange } from './dateRange.js';
+import { fetchKnowledgeMetrics } from './knowledgeMetrics.js';
 import { fetchAiMetrics, fetchProductMetrics } from './metricsQueries.js';
 
 function kpi(id, label, value, previous, unit = 'count') {
@@ -155,6 +156,45 @@ export async function getAnalyticsTeam(organizationId, query, membership) {
     range: { from: range.fromIso, to: range.toIso },
     role,
     members: team.members,
+  };
+}
+
+export async function getAnalyticsKnowledge(organizationId, query) {
+  const range = parseAnalyticsDateRange(query);
+  const [current, previous] = await Promise.all([
+    fetchKnowledgeMetrics(organizationId, range.fromDate, range.toExclusive),
+    fetchKnowledgeMetrics(organizationId, range.compareFrom, range.compareToExclusive),
+  ]);
+
+  if (current.available === false) {
+    return {
+      range: { from: range.fromIso, to: range.toIso },
+      available: false,
+      message: current.message,
+    };
+  }
+
+  return {
+    range: { from: range.fromIso, to: range.toIso },
+    compare: { from: range.compareFromIso, to: range.compareToIso },
+    available: true,
+    kpis: [
+      kpi('kb_published', 'Published articles', current.publishedArticles, previous.publishedArticles),
+      kpi('kb_searches', 'Knowledge searches', current.searchesInRange, previous.searchesInRange),
+      kpi('kb_views', 'Article views', current.articleViewsInRange, previous.articleViewsInRange),
+      kpi('kb_stale', `Stale (>${current.staleDays}d)`, current.staleArticles, previous.staleArticles),
+      kpi(
+        'kb_ingest_failed',
+        'Failed ingestions (range)',
+        current.ingestFailedInRange,
+        previous.ingestFailedInRange,
+      ),
+    ],
+    totals: {
+      draftArticles: current.draftArticles,
+      sourcesFailed: current.sourcesFailedTotal,
+      ingestCompletedInRange: current.ingestCompletedInRange,
+    },
   };
 }
 

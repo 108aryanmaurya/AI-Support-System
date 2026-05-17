@@ -16,6 +16,8 @@ import OrgTeammatesPage from './pages/OrgTeammatesPage.jsx'
 import OrgTeammatesSection from './pages/OrgTeammatesSection.jsx'
 import OrgInviteTeammatesPage from './pages/OrgInviteTeammatesPage.jsx'
 import OrgAiSettingsPage from './pages/OrgAiSettingsPage.jsx'
+import OrgKnowledgeListPage from './pages/OrgKnowledgeListPage.jsx'
+import OrgKnowledgeEditorPage from './pages/OrgKnowledgeEditorPage.jsx'
 import TeammatesInviteDeepLink from './pages/TeammatesInviteDeepLink.jsx'
 import { RequireAuth } from './components/ProtectedRoute.jsx'
 import { OrgWorkspaceLayout } from './layouts/OrgWorkspaceLayout.jsx'
@@ -27,6 +29,7 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<Register />} />
       <Route path="/invite" element={<InvitePage />} />
+      <Route path="/org/:orgId/test/send-message" element={<TestSendMessagePage />} />
 
       <Route element={<RequireAuth />}>
         <Route path="/continue" element={<PostAuthRedirect />} />
@@ -36,6 +39,9 @@ export default function App() {
 
         <Route path="/org/:orgId" element={<OrgWorkspaceLayout />}>
           <Route path="inbox" element={<InboxPage />} />
+          <Route path="knowledge" element={<OrgKnowledgeListPage />} />
+          <Route path="knowledge/new" element={<OrgKnowledgeEditorPage />} />
+          <Route path="knowledge/:articleId" element={<OrgKnowledgeEditorPage />} />
           <Route path="reports" element={<OrgReportsPage />} />
           <Route path="search" element={<InboxSearchPage />} />
           <Route path="settings" element={<OrgSettingsLayout />}>
@@ -53,7 +59,6 @@ export default function App() {
       <Route path="/dashboard" element={<Navigate to="/continue" replace />} />
       <Route path="/inbox" element={<Navigate to="/continue" replace />} />
 
-      <Route path="/test/send-message" element={<TestSendMessagePage />} />
 
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

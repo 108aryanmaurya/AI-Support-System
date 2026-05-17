@@ -13,9 +13,11 @@ async function tick() {
   try {
     const jobs = await claimPendingAutomationJobs(BATCH_SIZE);
     if (jobs.length > 0) {
-      await processClaimedJobs(jobs);
+      const { ok, failed } = await processClaimedJobs(jobs);
       // eslint-disable-next-line no-console
-      console.log(`[automation-worker] processed ${jobs.length} job(s)`);
+      console.log(
+        `[automation-worker] batch ${jobs.length} job(s): ${ok} completed, ${failed} failed (check last_error on automation_jobs)`,
+      );
     }
   } catch (e) {
     // eslint-disable-next-line no-console

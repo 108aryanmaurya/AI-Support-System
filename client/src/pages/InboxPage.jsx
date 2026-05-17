@@ -34,6 +34,8 @@ import { useInboxPeriodicSync } from '../hooks/useInboxPeriodicSync.js'
 import { useRealtimeInbox } from '../hooks/useRealtimeInbox.js'
 import { formatTypingIndicator, useTypingPresence } from '../hooks/useTypingPresence.js'
 import { InboxSidebar } from '../components/InboxSidebar.jsx'
+import { ConversationTagsPanel } from '../components/inbox/ConversationTagsPanel.jsx'
+import { fetchOrgTags } from '../services/tagsApi.js'
 import { useInboxSidebarActions } from '../hooks/useInboxSidebarActions.js'
 import {
   conversationCountsUrl,
@@ -108,6 +110,7 @@ function MessageContentRich({ text }) {
 }
 
 function toConversationViewModel(item) {
+  console.log(item)
   const channel = (item.source ?? 'chat').slice(0, 1).toUpperCase() || 'C'
   return {
     ...item,
@@ -165,7 +168,6 @@ export default function InboxPage() {
   const { orgId: orgFromRoute } = useParams()
   const organizationId =
     (typeof orgFromRoute === 'string' && orgFromRoute.trim()) ||
-    import.meta.env.VITE_TEST_ORGANIZATION_ID?.trim() ||
     ''
   const { user } = useAuth()
   const conversations = useInboxStore((state) => state.conversations)
@@ -188,6 +190,7 @@ export default function InboxPage() {
   const [draftMessage, setDraftMessage] = useState('')
   const [error, setError] = useState('')
   const [orgMembers, setOrgMembers] = useState([])
+  const [orgTags, setOrgTags] = useState([])
   const [assigningConversation, setAssigningConversation] = useState(false)
   const [assignMenuOpen, setAssignMenuOpen] = useState(false)
   const [conversationDetailSaving, setConversationDetailSaving] = useState(false)
@@ -201,8 +204,10 @@ export default function InboxPage() {
     runConversationQuery,
     loadFilterCounts,
     onSelectSidebarFilter,
+    onTagFilterChange,
     mentionCue,
     activeFilter,
+    activeTagId,
     filterCounts,
     autoAssignOnSelect,
     setAutoAssignOnSelect,
@@ -224,6 +229,25 @@ export default function InboxPage() {
         if (!cancelled) setOrgMembers(res?.members ?? [])
       } catch {
         if (!cancelled) setOrgMembers([])
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [organizationId])
+
+  useEffect(() => {
+    if (!organizationId) {
+      setOrgTags([])
+      return undefined
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const res = await fetchOrgTags(organizationId)
+        if (!cancelled) setOrgTags(res?.tags ?? [])
+      } catch {
+        if (!cancelled) setOrgTags([])
       }
     })()
     return () => {
@@ -593,6 +617,9 @@ export default function InboxPage() {
           mentionCue={mentionCue}
           autoAssignOnSelect={autoAssignOnSelect}
           setAutoAssignOnSelect={setAutoAssignOnSelect}
+          orgTags={orgTags}
+          activeTagId={activeTagId}
+          onTagFilterChange={onTagFilterChange}
         />
 
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-[#27314a] bg-[#101729]">
@@ -638,7 +665,7 @@ export default function InboxPage() {
               ))}
               {!loadingConversations && conversationView.length === 0 ? (
                 <div className="px-1 py-3 text-sm text-slate-400">
-                  {organizationId ? 'No conversations found.' : 'Set VITE_TEST_ORGANIZATION_ID to load conversations.'}
+                  No conversations found.
                 </div>
               ) : null}
             </div>
@@ -898,6 +925,13 @@ export default function InboxPage() {
                 ) : null}
               </div>
             </div>
+            <ConversationTagsPanel
+              organizationId={organizationId}
+              conversationId={activeConversationId}
+              onUpdated={(conv) => {
+                if (conv) upsertConversation(conv)
+              }}
+            />
             <div className="flex flex-col gap-2 border-t border-[#27314a] pt-3">
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Workspace</span>
               <label className="flex flex-col gap-1 text-xs text-slate-400">

@@ -20,6 +20,8 @@ export function useInboxSidebarActions(organizationId, handlers) {
   const cacheConversationFilterPage = useInboxStore((state) => state.cacheConversationFilterPage)
 
   const activeFilter = useInboxStore((state) => state.activeFilter)
+  const activeTagId = useInboxStore((state) => state.activeTagId)
+  const setActiveTagId = useInboxStore((state) => state.setActiveTagId)
   const filterCounts = useInboxStore((state) => state.filterCounts)
   const autoAssignOnSelect = useInboxStore((state) => state.autoAssignOnSelect)
   const setAutoAssignOnSelect = useInboxStore((state) => state.setAutoAssignOnSelect)
@@ -31,7 +33,10 @@ export function useInboxSidebarActions(organizationId, handlers) {
       if (!silent) setLoadingConversations(true)
       if (!silent) setError('')
       try {
-        const response = await apiFetch(conversationsListUrl(organizationId, filterType))
+        const tagId = useInboxStore.getState().activeTagId
+        const response = await apiFetch(
+          conversationsListUrl(organizationId, filterType, { tagId: tagId || undefined }),
+        )
         setConversationsPage({
           items: response?.items ?? [],
           pagination: response?.pagination,
@@ -96,12 +101,23 @@ export function useInboxSidebarActions(organizationId, handlers) {
     [setActiveFilter, setConversationsPage, debouncedRefetchFilter],
   )
 
+  const onTagFilterChange = useCallback(
+    (tagId) => {
+      setActiveTagId(tagId || null)
+      const filter = useInboxStore.getState().activeFilter
+      void runConversationQuery(filter)
+    },
+    [setActiveTagId, runConversationQuery],
+  )
+
   return {
     runConversationQuery,
     loadFilterCounts,
     onSelectSidebarFilter,
+    onTagFilterChange,
     mentionCue,
     activeFilter,
+    activeTagId,
     filterCounts,
     autoAssignOnSelect,
     setAutoAssignOnSelect,

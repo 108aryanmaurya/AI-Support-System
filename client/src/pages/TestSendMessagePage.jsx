@@ -5,6 +5,11 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MAX_MESSAGE_LENGTH = 4000
 
 export default function TestSendMessagePage() {
+  const { orgId: orgFromRoute } = useParams()
+  const organizationId =
+    (typeof orgFromRoute === 'string' && orgFromRoute.trim()) ||
+    ''
+
   const [email, setEmail] = useState('')
   const [name, setName] = useState('')
   const [message, setMessage] = useState('')
@@ -12,13 +17,11 @@ export default function TestSendMessagePage() {
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
 
-  const organizationId = import.meta.env.VITE_TEST_ORGANIZATION_ID?.trim() ?? ''
   const normalizedEmail = email.trim().toLowerCase()
   const normalizedName = name.trim()
   const normalizedMessage = message.trim()
 
   const validationError = useMemo(() => {
-    if (!organizationId) return 'Missing VITE_TEST_ORGANIZATION_ID in client env.'
     if (!normalizedEmail) return 'Email is required.'
     if (!EMAIL_REGEX.test(normalizedEmail)) return 'Email must be valid.'
     if (!normalizedName) return 'Name is required.'

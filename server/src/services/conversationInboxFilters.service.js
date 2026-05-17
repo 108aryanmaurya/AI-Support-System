@@ -171,6 +171,7 @@ export async function getFilteredConversations({
   from,
   to,
   includeSpam = false,
+  tagId = null,
 }) {
   if (!currentUserId) {
     throw new HttpError(400, 'currentUserId is required.');
@@ -181,6 +182,36 @@ export async function getFilteredConversations({
 
   const membership = await ensureOrgMembership(currentUserId, organizationId);
   const memberId = membership.id;
+
+  let tagConversationIds = null;
+  if (tagId) {
+    const { data: tagRows, error: tagErr } = await supabaseAdmin
+      .from('conversation_tags')
+      .select('conversation_id')
+      .eq('organization_id', organizationId)
+      .eq('tag_id', tagId);
+
+    if (tagErr) {
+      const missing =
+        tagErr.message?.includes('conversation_tags') ||
+        tagErr.code === '42P01' ||
+        tagErr.code === 'PGRST205';
+      if (missing) {
+        throw new HttpError(503, 'Conversation tags are not available. Apply database migrations.');
+      }
+      throw new HttpError(500, tagErr.message || 'Failed to filter by tag.');
+    }
+
+    tagConversationIds = (tagRows ?? []).map((r) => r.conversation_id).filter(Boolean);
+    if (tagConversationIds.length === 0) {
+      return {
+        items: [],
+        pagination: { page, pageSize, total: 0 },
+        filterType,
+        tagId,
+      };
+    }
+  }
 
   if (filterType === 'mentions') {
     const { data: idRows, error: rpcError } = await supabaseAdmin.rpc('conversation_ids_mentioning_user', {
@@ -206,6 +237,19 @@ export async function getFilteredConversations({
     }
 
     let query = supabaseAdmin.from('conversations').select('*', { count: 'exact' }).in('id', ids);
+    if (tagConversationIds) {
+      const allowed = new Set(tagConversationIds);
+      const filteredIds = ids.filter((id) => allowed.has(id));
+      if (filteredIds.length === 0) {
+        return {
+          items: [],
+          pagination: { page, pageSize, total: 0 },
+          filterType,
+          tagId,
+        };
+      }
+      query = query.in('id', filteredIds);
+    }
 
     const { data, error, count } = await query
       .order('last_message_at', { ascending: false })
@@ -233,6 +277,10 @@ export async function getFilteredConversations({
     includeSpam: Boolean(includeSpam),
   });
 
+  if (tagConversationIds) {
+    query = query.in('id', tagConversationIds);
+  }
+
   const { data, error, count } = await query
     .order('last_message_at', { ascending: false })
     .range(from, to);
@@ -246,5 +294,6 @@ export async function getFilteredConversations({
       total: count ?? 0,
     },
     filterType,
+    ...(tagId ? { tagId } : {}),
   };
 }
