@@ -7,7 +7,8 @@ Implementation guides for the AI roadmap ([AI-FEATURE-DESIGN.md](./AI-FEATURE-DE
 | [phase-1-foundation.md](./phase-1-foundation.md) | Events, automation, org AI settings, `ai_enabled`, reports shell | **Shipped** |
 | [phase-2-knowledge-base.md](./phase-2-knowledge-base.md) | Articles, chunks, FTS search, file ingest, analytics | **Shipped** |
 | [phase-2-conversation-tags.md](./phase-2-conversation-tags.md) | Tag definitions, inbox filters, conversation tagging | **Shipped** |
-| [ai-stubs-and-phase-3-prerequisites.md](./ai-stubs-and-phase-3-prerequisites.md) | Stub `/ai/assist`, `ai_runs` schema, rate limits, not-yet LLM | **Partial** |
+| [phase-3-prerequisites.md](./phase-3-prerequisites.md) | LLM client, env, `ai_runs`, copilot API endpoints | **Shipped** |
+| [ai-stubs-and-phase-3-prerequisites.md](./ai-stubs-and-phase-3-prerequisites.md) | Redirect to phase-3-prerequisites | — |
 | [phase-2-plan.md](./phase-2-plan.md) | Original sprint plan (historical) | Reference |
 
 **Also see**
@@ -17,4 +18,4 @@ Implementation guides for the AI roadmap ([AI-FEATURE-DESIGN.md](./AI-FEATURE-DE
 - [docs/features/ai-capabilities.md](../features/ai-capabilities.md) — AI stubs and schema hooks
 - [docs/features/org-ai-settings.md](../features/org-ai-settings.md) — org toggles and automation JSON
 
-**Last updated:** 2026-05-17
+**Last updated:** 2026-05-17 (Phase 3 prerequisites + copilot APIs)

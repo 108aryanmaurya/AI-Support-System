@@ -198,7 +198,29 @@ async function resolveExistingOpenEmailConversation({ organizationId, customerId
   return data ?? null;
 }
 
-async function createOrReuseEmailConversation({ organizationId, customerId, channelId }) {
+function resolveEmailConversationSubject(subject, normalizedSubject) {
+  const raw = typeof subject === 'string' ? subject.trim() : '';
+  if (raw) return raw;
+  const norm = typeof normalizedSubject === 'string' ? normalizedSubject.trim() : '';
+  if (norm) return norm;
+  return '(no subject)';
+}
+
+function resolveEmailConversationThreadKey(messageId, normalizedSubject) {
+  const mid = typeof messageId === 'string' ? messageId.trim() : '';
+  if (mid) return mid;
+  const subjectKey = typeof normalizedSubject === 'string' ? normalizedSubject.trim() : '';
+  if (subjectKey) return subjectKey;
+  return null;
+}
+
+async function createOrReuseEmailConversation({
+  organizationId,
+  customerId,
+  channelId,
+  subject,
+  threadKey,
+}) {
   try {
     return await createConversation({
       organizationId,
@@ -208,6 +230,8 @@ async function createOrReuseEmailConversation({ organizationId, customerId, chan
       channelId,
       metadata: { channel: 'email' },
       createdByUserId: null,
+      subject,
+      threadKey,
     });
   } catch (error) {
     if (!isOneOpenConversationConstraint(error)) throw error;
@@ -268,19 +292,22 @@ export async function findOrCreateEmailThread({
   }
 
   // New subject/no thread match => new conversation.
+  const conversationSubject = resolveEmailConversationSubject(subject, normalizedSubject);
+  const threadKey = resolveEmailConversationThreadKey(messageId, normalizedSubject) ?? subjectKey;
   const conversation = await createOrReuseEmailConversation({
     organizationId,
     customerId,
     channelId,
+    subject: conversationSubject,
+    threadKey,
   });
 
-  const threadKey = messageId || subjectKey;
   const savedThread = await ensureEmailThread({
     organizationId,
     customerId,
     conversationId: conversation.id,
-    threadKey,
-    subject,
+    threadKey: threadKey || conversation.thread_key,
+    subject: conversationSubject,
   });
 
   return {

@@ -33,6 +33,14 @@ export { SUPPORT_EVENT_TYPES, isSupportEventType } from './supportEventTypes.js'
 
 export { AUTOMATION_JOB_TYPES, isAutomationJobType } from './automationJobTypes.js';
 
+export { AI_FEATURES, isAiFeature } from './aiFeatures.js';
+
+export {
+  SUGGEST_REPLY_LENGTHS,
+  SUGGEST_REPLY_TONES,
+  SUMMARY_TYPES,
+} from './aiCopilot.js';
+
 export {
   ORG_AI_MODEL_TIERS,
   ORG_AI_SETTINGS_DEFAULTS,

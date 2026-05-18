@@ -265,12 +265,19 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Conversation tags** — assign on thread; inbox filter `?tagId=`
 - **Client** — `ConversationTagsPanel`, sidebar tag filter
 
-### 15.4 LLM / copilot (Phase 3 — not shipped)
+### 15.4 LLM / copilot (Phase 3 — Sprint 0–1 shipped)
 
-- **AI API stub** — `POST /api/org/:orgId/ai/assist` and legacy `POST /api/ai/assist` return placeholder JSON
-- **No** `LLM_*` env vars, provider SDK, `llm.client.js`, or `suggest-reply` / `summarize` endpoints
-- **`ai_runs`** — table exists; Reports AI tab reads when populated; **no server writes yet**
-- **Inbox UI** — Copilot tab; AI bubble styling; assign-to-AI *(no model integration)*
+- **LLM config** — `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `LLM_MAX_OUTPUT_TOKENS`, `LLM_MAX_PROMPT_CHARS` in `env.js` / `.env.example`
+- **Provider client** — `openai` package + `server/src/services/ai/llm.client.js` (OpenAI-compatible APIs)
+- **`ai_runs` logging** — `recordAiRun()` on success/failure for every model call
+- **Org AI routes** (rate limited on all `/ai/*`):
+  - `POST .../ai/assist`, `suggest-reply`, `summarize`, `translate`, `rewrite`
+  - `GET .../ai/health` (`llmConfigured`)
+- **Guards** — org `ai_enabled` + `assist_enabled`, conversation `ai_enabled`; **503** without API key
+- **RAG** — `suggest-reply` optional keyword retrieval from knowledge base
+- **Sprint 1** — JSON `suggest-reply` / `summarize` responses; `tone`/`length`/`type` options; PII scrub + transcript truncation; richer context (customer, channel, tags, org style guide)
+- **Inbox UI** — Copilot tab *(partial: wire to new APIs in client — Sprint 2)*
+- **Not shipped** — classification workers, auto-tag, autonomous customer AI (Phase 4–6)
 
 ---
 

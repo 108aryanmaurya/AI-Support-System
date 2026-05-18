@@ -8,6 +8,6 @@ const router = Router();
 router.get('/health', aiController.aiHealth);
 
 /** Legacy global route — prefer `POST /api/org/:orgId/ai/assist`. Per-user rate limit only. */
-router.post('/assist', requireAuth, globalAiUserRateLimit, aiController.aiAssist);
+router.post('/assist', requireAuth, globalAiUserRateLimit, aiController.aiAssistLegacy);
 
 export default router;

@@ -1,13 +1,172 @@
-export function aiHealth(req, res) {
-  res.json({ ok: true, scope: 'ai' });
+import { HttpError } from '../utils/httpError.js';
+import { isLlmConfigured } from '../services/ai/llm.client.js';
+import {
+  runGenericAssist,
+  runRewrite,
+  runSuggestReply,
+  runSummarize,
+  runTranslate,
+} from '../services/ai/assist.service.js';
+
+function orgIdOrThrow(req) {
+  const id = req.orgId ?? req.params?.orgId;
+  if (!id) throw new HttpError(400, 'organizationId is required.');
+  return id;
 }
 
-export function aiAssist(req, res) {
-  const organizationId = req.orgId ?? req.organizationId ?? req.params?.orgId ?? null;
+function actorUserIdOrThrow(req) {
+  const id = req.userId ?? req.user?.id;
+  if (!id) throw new HttpError(401, 'Authentication required.');
+  return id;
+}
+
+function parseUuid(value, fieldName) {
+  const s = typeof value === 'string' ? value.trim() : '';
+  if (!s) throw new HttpError(400, `${fieldName} is required.`);
+  return s;
+}
+
+export function aiHealth(req, res) {
+  const organizationId = req.orgId ?? req.params?.orgId ?? null;
   res.json({
-    message: 'AI assist placeholder — wire to your model / RAG pipeline',
-    userId: req.user?.id,
+    ok: true,
+    scope: 'ai',
     organizationId,
-    prompt: req.body?.prompt ?? null,
+    llmConfigured: isLlmConfigured(),
   });
+}
+
+export async function aiAssist(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const actorUserId = actorUserIdOrThrow(req);
+    const conversationId =
+      typeof req.body?.conversationId === 'string' ? req.body.conversationId.trim() : null;
+    const prompt = req.body?.prompt;
+
+    const result = await runGenericAssist({
+      organizationId,
+      actorUserId,
+      conversationId: conversationId || null,
+      prompt,
+    });
+
+    res.json({
+      message: result.text,
+      runId: result.runId,
+      model: result.model,
+      latencyMs: result.latencyMs,
+      usage: result.usage,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function aiSuggestReply(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const actorUserId = actorUserIdOrThrow(req);
+    const conversationId = parseUuid(req.body?.conversationId, 'conversationId');
+    const useKnowledge = req.body?.useKnowledge !== false;
+    const tone = req.body?.tone;
+    const length = req.body?.length;
+
+    const result = await runSuggestReply({
+      organizationId,
+      actorUserId,
+      conversationId,
+      useKnowledge,
+      tone,
+      length,
+    });
+
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function aiSummarize(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const actorUserId = actorUserIdOrThrow(req);
+    const conversationId = parseUuid(req.body?.conversationId, 'conversationId');
+    const type = req.body?.type;
+
+    const result = await runSummarize({
+      organizationId,
+      actorUserId,
+      conversationId,
+      type,
+    });
+
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function aiTranslate(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const actorUserId = actorUserIdOrThrow(req);
+    const text = req.body?.text;
+    const targetLanguage = req.body?.targetLanguage;
+
+    const result = await runTranslate({
+      organizationId,
+      actorUserId,
+      text,
+      targetLanguage,
+    });
+
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function aiRewrite(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const actorUserId = actorUserIdOrThrow(req);
+    const text = req.body?.text;
+    const tone = req.body?.tone;
+
+    const result = await runRewrite({
+      organizationId,
+      actorUserId,
+      text,
+      tone,
+    });
+
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+/** Legacy global assist — requires organizationId in body. */
+export async function aiAssistLegacy(req, res, next) {
+  try {
+    const organizationId =
+      typeof req.body?.organizationId === 'string'
+        ? req.body.organizationId.trim()
+        : typeof req.body?.orgId === 'string'
+          ? req.body.orgId.trim()
+          : null;
+
+    if (!organizationId) {
+      throw new HttpError(
+        400,
+        'organizationId is required. Prefer POST /api/org/:orgId/ai/assist.',
+      );
+    }
+
+    req.orgId = organizationId;
+    return aiAssist(req, res, next);
+  } catch (e) {
+    next(e);
+  }
 }

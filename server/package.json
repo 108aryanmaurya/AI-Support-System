@@ -7,7 +7,8 @@
     "dev": "node --watch src/server.js",
     "worker:automation": "node src/workers/automationWorker.js",
     "start": "NODE_ENV=production node src/server.js",
-    "build": "echo \"Server has no build step\""
+    "build": "echo \"Server has no build step\"",
+    "test": "node --test src/services/ai/**/*.test.js"
   },
   "dependencies": {
     "@ai-support/shared": "*",
@@ -17,6 +18,7 @@
     "express": "^5.1.0",
     "ioredis": "^5.6.1",
     "multer": "^2.0.2",
+    "openai": "^4.104.0",
     "pdf-parse": "^1.1.1"
   }
 }

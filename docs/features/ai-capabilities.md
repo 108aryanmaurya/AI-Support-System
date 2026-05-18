@@ -2,65 +2,84 @@
 
 ## Overview
 
-The product is branded as an AI support copilot. **Phase 1–2** infrastructure is shipped (events, settings, knowledge base, tags). **No LLM provider** is integrated yet—stub assist routes and `ai_runs` schema only. See [ai-features/README.md](../ai-features/README.md).
+**Phase 1–2** infrastructure and **Phase 3 prerequisites** are shipped: org settings, knowledge RAG source, OpenAI-compatible LLM client, `ai_runs` audit log, and copilot HTTP APIs. **Inbox Copilot UI** may still need client wiring to the new endpoints.
+
+See [ai-features/README.md](../ai-features/README.md) and [phase-3-prerequisites.md](../ai-features/phase-3-prerequisites.md).
 
 ## Capabilities today
 
-- `POST /api/org/:orgId/ai/assist` — org-scoped stub (rate limited per org + user)
-- `POST /api/ai/assist` — legacy global stub (per-user rate limit)
-- Inbox: Copilot tab label, AI bubble styles, `assigned_to_ai` assignment option in UI
-- Sidebar: **Knowledge** → `/org/:orgId/knowledge` (articles, search, file import)
-- Reports: **AI** tab (`ai_runs` when populated); **Knowledge** tab (ingest/search metrics)
-- Org AI settings: `GET/PATCH /api/org/:orgId/settings/ai`, Settings → AI & Automation UI
-- `conversations.ai_enabled` — default on create; patch on update; gates `assigned_to_ai`
-- Schema: `messages.is_ai_generated`, `messages.parent_message_id`, `ai_runs`, `ai_feedback`
-- **Knowledge base** — full Phase 2; see [knowledge-base.md](./knowledge-base.md)
+### Configuration & guards
 
-## Architecture (target)
+- `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` (server env)
+- Org `ai_enabled`, `assist_enabled`; per-conversation `ai_enabled`
+- **503** when LLM not configured
+
+### Org-scoped API (`/api/org/:orgId/ai/*`)
+
+All routes use Redis **per-org + per-user** rate limits.
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Health + `llmConfigured` |
+| POST | `/assist` | Generic agent prompt |
+| POST | `/suggest-reply` | Draft reply from thread (+ optional KB) |
+| POST | `/summarize` | Bullet summary of thread |
+| POST | `/translate` | Translate text |
+| POST | `/rewrite` | Rewrite text tone |
+
+Legacy: `POST /api/ai/assist` (requires `organizationId` in body; per-user limit only).
+
+### Data & analytics
+
+- Every model call writes **`ai_runs`** (`feature`, tokens, latency, `prompt_hash`, status)
+- Reports **AI** tab reads `ai_runs` when rows exist
+
+### UI (partial)
+
+- Inbox: Copilot tab label, AI styling, assign-to-AI
+- Knowledge sidebar route
+- Settings → AI & Automation
+
+## Architecture
 
 ```mermaid
 flowchart TB
-  subgraph shipped [Shipped]
-    KB[Knowledge + FTS]
-    Events[support_events]
-    Stub[ai/assist stub]
+  subgraph api [Express]
+    Routes[orgAi.routes]
+    Assist[assist.service]
+    LLM[llm.client]
+    Runs[aiRuns.service]
   end
-  subgraph future [Phase 3+]
-    LLM[llm.client.js]
-    Copilot[suggest-reply / summarize]
-    AutoAI[Autonomous customer AI]
-  end
-  KB --> Copilot
-  LLM --> Copilot
-  Copilot --> ai_runs[(ai_runs)]
-  AutoAI --> Messages[messages sender_type ai]
+  Routes --> Assist
+  Assist --> LLM
+  Assist --> Runs
+  Assist --> KB[knowledge retrieval]
+  Runs --> DB[(ai_runs)]
+  LLM --> Provider[OpenAI-compatible API]
 ```
 
 ## Key files
 
 | Layer | Path |
 |-------|------|
-| Stub API | `server/src/controllers/ai.controller.js`, `server/src/routes/ai.routes.js`, `server/src/routes/orgAi.routes.js` |
-| Org settings | `shared/src/orgSettings.js`, `server/src/services/orgSettings.service.js`, `client/src/pages/OrgAiSettingsPage.jsx` |
-| UI | `client/src/pages/InboxPage.jsx`, `HoverSidebar.jsx` |
-| Reports | `client/src/pages/OrgReportsPage.jsx` (`AiTabPanel`) |
-| Shared | `shared/src/messageSenderTypes.js` (`ai`) |
-| Schema | `20260507141500_minimal_future_schema_hooks.sql`, `20260516100000_analytics_tables.sql` |
+| LLM | `server/src/services/ai/llm.client.js` |
+| Orchestration | `server/src/services/ai/assist.service.js` |
+| Logging | `server/src/services/ai/aiRuns.service.js` |
+| API | `server/src/controllers/ai.controller.js`, `server/src/routes/orgAi.routes.js` |
+| Rate limits | `server/src/middleware/aiRateLimit.js` |
+| Shared | `shared/src/aiFeatures.js` |
+| Settings | `shared/src/orgSettings.js`, `OrgAiSettingsPage.jsx` |
 
 ## Connections
 
 | Feature | Relationship |
 |---------|----------------|
-| [Messages](./messages.md) | AI replies should use same outbound pipeline as agents |
-| [Multi-channel](./multi-channel.md) | Customer-visible AI sends must go through channel router |
-| [Support inbox](./support-inbox.md) | Copilot UX lives on inbox thread |
-| [Org AI settings](./org-ai-settings.md) | Feature flags and per-conversation defaults |
-| [Operational hardening](./operational-hardening.md) | AI rate limits and outbound failure events |
-| [Analytics](./analytics-and-reports.md) | `ai_runs` powers AI metrics tab |
-| [Knowledge base](./knowledge-base.md) | Phase 2 RAG source for future assist |
-| [Notifications](./notifications-and-automation.md) | Worker queue; future AI jobs |
-| [Phase 3 prerequisites](../ai-features/ai-stubs-and-phase-3-prerequisites.md) | What is missing before copilot |
+| [Knowledge base](./knowledge-base.md) | RAG for `suggest-reply` |
+| [Org AI settings](./org-ai-settings.md) | Feature flags |
+| [Operational hardening](./operational-hardening.md) | `RATE_LIMIT_AI_*` |
+| [Analytics](./analytics-and-reports.md) | AI tab metrics |
+| [Support inbox](./support-inbox.md) | Target UX for copilot |
 
 ## Status
 
-**Partial** — Phase 1–2 shipped; LLM copilot (Phase 3) not implemented. See [ai-stubs-and-phase-3-prerequisites.md](../ai-features/ai-stubs-and-phase-3-prerequisites.md).
+**Partial** — server copilot APIs and `ai_runs` logging are production-ready when `LLM_API_KEY` is set. Complete Phase 3 by wiring `InboxPage` Copilot to `suggest-reply` / `summarize` and adding classification automation.

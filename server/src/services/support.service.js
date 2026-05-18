@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { getDefaultConversationAiEnabled } from './orgSettings.service.js';
@@ -84,6 +85,8 @@ export async function createConversation({
   metadata = {},
   createdByUserId,
   aiEnabled = undefined,
+  subject = null,
+  threadKey = null,
 }) {
   const { data: customer, error: customerError } = await supabaseAdmin
     .from('customers')
@@ -99,21 +102,31 @@ export async function createConversation({
   const resolvedAiEnabled =
     aiEnabled !== undefined ? Boolean(aiEnabled) : await getDefaultConversationAiEnabled(organizationId);
 
+  const resolvedChannelType = channelType ?? (source === 'email' ? 'email' : 'web');
+  const insertRow = {
+    organization_id: organizationId,
+    customer_id: customerId,
+    assigned_to_member_id: assignedToMemberId ?? null,
+    assignment_type: assignedToMemberId ? 'assigned_to_agent' : 'unassigned',
+    source,
+    channel_type: resolvedChannelType,
+    channel_id: channelId ?? null,
+    priority: priority ?? 'medium',
+    created_by: createdByUserId,
+    metadata,
+    ai_enabled: Boolean(resolvedAiEnabled),
+  };
+
+  if (resolvedChannelType === 'email') {
+    const subj = typeof subject === 'string' ? subject.trim() : '';
+    const tk = typeof threadKey === 'string' ? threadKey.trim() : '';
+    insertRow.subject = subj || '(no subject)';
+    insertRow.thread_key = tk || randomUUID();
+  }
+
   const { data, error } = await supabaseAdmin
     .from('conversations')
-    .insert({
-      organization_id: organizationId,
-      customer_id: customerId,
-      assigned_to_member_id: assignedToMemberId ?? null,
-      assignment_type: assignedToMemberId ? 'assigned_to_agent' : 'unassigned',
-      source,
-      channel_type: channelType ?? (source === 'email' ? 'email' : 'web'),
-      channel_id: channelId ?? null,
-      priority: priority ?? 'medium',
-      created_by: createdByUserId,
-      metadata,
-      ai_enabled: Boolean(resolvedAiEnabled),
-    })
+    .insert(insertRow)
     .select('*')
     .single();
 

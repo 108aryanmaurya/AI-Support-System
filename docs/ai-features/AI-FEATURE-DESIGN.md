@@ -233,12 +233,14 @@ Use this as a gate before any model integration:
 
 ### Prerequisites
 
-- Phase 1 complete (events, settings, `ai_enabled` optional reads).
-- Phase 2 optional but improves suggestion quality.
-- Add to `server/package.json`: provider SDK or generic HTTP client.
-- Extend `server/src/config/env.js`: `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` (provider-agnostic).
-- Migration: `ai_runs` table (org, user, conversation, feature, model, tokens, latency, status, prompt_hash, error).
-- Org-scoped rate limits on `/api/org/:orgId/ai/*`.
+> **Status (2026-05-17):** [phase-3-prerequisites.md](./phase-3-prerequisites.md) — **shipped**.
+
+- [x] Phase 1 complete (events, settings, `ai_enabled` optional reads).
+- [x] Phase 2 optional but improves suggestion quality (knowledge RAG in `suggest-reply`).
+- [x] `openai` in `server/package.json` + `server/src/services/ai/llm.client.js`.
+- [x] `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` in `env.js` / `.env.example`.
+- [x] `ai_runs` migration + **`recordAiRun()`** on model calls.
+- [x] Org-scoped rate limits on **all** `/api/org/:orgId/ai/*` routes.
 
 ### Features and integration points
 

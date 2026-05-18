@@ -76,8 +76,13 @@ export function extractInboundEmailPayload(body) {
     payload.headers?.message_id,
     payload.messageId,
     eventData.message_id,
-    eventData.email_id,
   ]);
+  const resendReceivedEmailId = pickFirstString([
+    eventData.email_id,
+    payload.email_id,
+    payload.received_email_id,
+  ]);
+  const eventType = pickFirstString([payload.type]);
   const inReplyTo = pickFirstString([
     payload.in_reply_to,
     payload.headers?.in_reply_to,
@@ -93,6 +98,8 @@ export function extractInboundEmailPayload(body) {
     normalizedSubject: normalizeSubject(subject),
     textBody,
     messageId,
+    resendReceivedEmailId,
+    eventType,
     inReplyTo,
   };
 }

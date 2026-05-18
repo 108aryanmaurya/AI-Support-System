@@ -76,6 +76,23 @@ export const AUTOMATION_JOB_TYPES: readonly [
 
 export function isAutomationJobType(value: unknown): value is (typeof AUTOMATION_JOB_TYPES)[number];
 
+export const AI_FEATURES: readonly [
+  'assist',
+  'suggest_reply',
+  'summarize',
+  'translate',
+  'rewrite',
+  'classify',
+  'rag_ask',
+  'auto_reply',
+];
+
+export function isAiFeature(value: unknown): value is (typeof AI_FEATURES)[number];
+
+export const SUGGEST_REPLY_TONES: readonly ['professional', 'friendly', 'empathetic', 'concise'];
+export const SUGGEST_REPLY_LENGTHS: readonly ['short', 'medium', 'long'];
+export const SUMMARY_TYPES: readonly ['short', 'detailed', 'timeline'];
+
 export const ORG_AI_SETTINGS_DEFAULTS: {
   ai_enabled: boolean;
   assist_enabled: boolean;

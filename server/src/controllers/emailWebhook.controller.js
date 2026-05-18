@@ -1,13 +1,16 @@
 import { HttpError } from '../utils/httpError.js';
 import { extractInboundEmailPayload, isValidInboundEmail } from '../utils/emailWebhook.js';
+import { hydrateInboundEmailFromResend } from '../services/resendReceivedEmail.service.js';
 import { processInboundEmail } from '../services/emailWebhook.service.js';
 
 export async function receiveEmailWebhookController(req, res, next) {
   try {
-    const payload = extractInboundEmailPayload(req.body);
+    let payload = extractInboundEmailPayload(req.body);
     if (!isValidInboundEmail(payload)) {
       throw new HttpError(400, 'Invalid inbound email payload.');
     }
+
+    payload = await hydrateInboundEmailFromResend(payload, req.body);
 
     // Ignore empty message bodies to avoid creating empty customer messages.
     if (!payload.textBody) {
