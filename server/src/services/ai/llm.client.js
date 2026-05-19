@@ -1,29 +1,52 @@
-import OpenAI from 'openai';
-import { env } from '../../config/env.js';
 import { HttpError } from '../../utils/httpError.js';
+import { env } from '../../config/env.js';
+import {
+  isLlmConfigReady,
+  resolveLlmConfig,
+  validateLlmConfig,
+} from './llm.config.js';
+import { chatCompletionOpenAiCompatible } from './providers/openaiCompatible.provider.js';
 
-let cachedClient = null;
-
-export function isLlmConfigured() {
-  return Boolean(env.llmApiKey);
+/**
+ * @returns {import('./llm.config.js').ResolvedLlmConfig}
+ */
+function getConfig() {
+  return env.llm ?? resolveLlmConfig();
 }
 
-function getClient() {
-  if (!isLlmConfigured()) return null;
-  if (!cachedClient) {
-    cachedClient = new OpenAI({
-      apiKey: env.llmApiKey,
-      baseURL: env.llmBaseUrl.replace(/\/+$/, ''),
-      timeout: env.llmTimeoutMs,
-      maxRetries: 0,
-    });
-  }
-  return cachedClient;
+export function isLlmConfigured() {
+  return isLlmConfigReady(getConfig());
 }
 
 /**
- * OpenAI-compatible chat completion.
- *
+ * Public status for health checks and settings UI.
+ */
+export function getLlmStatus() {
+  const config = getConfig();
+  const issues = validateLlmConfig(config);
+  return {
+    configured: issues.length === 0,
+    provider: config.provider,
+    providerLabel: config.providerLabel,
+    model: config.model,
+    baseUrlHost: safeHost(config.baseUrl),
+    issues,
+  };
+}
+
+/**
+ * @param {string} url
+ */
+function safeHost(url) {
+  if (!url) return null;
+  try {
+    return new URL(url.startsWith('http') ? url : `https://${url}`).host;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * @param {object} params
  * @param {Array<{ role: 'system' | 'user' | 'assistant', content: string }>} params.messages
  * @param {number} [params.maxTokens]
@@ -36,50 +59,19 @@ export async function chatCompletion({
   temperature = 0.4,
   responseFormat = 'text',
 }) {
-  const client = getClient();
-  if (!client) {
-    throw new HttpError(
-      503,
-      'AI provider is not configured. Set LLM_API_KEY in server environment.',
-    );
+  const config = getConfig();
+  if (!isLlmConfigReady(config)) {
+    const hint = validateLlmConfig(config)[0] || 'Set LLM_API_KEY and LLM_PROVIDER in server environment.';
+    throw new HttpError(503, `AI provider is not configured. ${hint}`);
   }
 
-  const started = Date.now();
-
-  try {
-    const response = await client.chat.completions.create({
-      model: env.llmModel,
-      messages,
-      max_tokens: maxTokens ?? env.llmMaxOutputTokens,
-      temperature,
-      ...(responseFormat === 'json' ? { response_format: { type: 'json_object' } } : {}),
-    });
-
-    const content = String(response.choices?.[0]?.message?.content ?? '').trim();
-    if (!content) {
-      throw new HttpError(502, 'AI provider returned an empty response.');
-    }
-
-    return {
-      content,
-      model: String(response.model || env.llmModel),
-      inputTokens: response.usage?.prompt_tokens ?? null,
-      outputTokens: response.usage?.completion_tokens ?? null,
-      latencyMs: Date.now() - started,
-    };
-  } catch (e) {
-    if (e instanceof HttpError) throw e;
-
-    const status = e?.status;
-    if (status === 408 || e?.code === 'ETIMEDOUT' || e?.message?.includes('timed out')) {
-      const err = new HttpError(504, 'AI request timed out.');
-      err.code = 'timeout';
-      throw err;
-    }
-
-    const msg = e?.message || 'AI provider request failed.';
-    const err = new HttpError(status && status >= 500 ? 502 : 400, msg);
-    err.code = e?.code || 'provider_error';
-    throw err;
-  }
+  return chatCompletionOpenAiCompatible(config, {
+    messages,
+    maxTokens,
+    temperature,
+    responseFormat,
+  });
 }
+
+/** @deprecated Import from llm.providerErrors.js */
+export { mapLlmProviderError } from './llm.providerErrors.js';

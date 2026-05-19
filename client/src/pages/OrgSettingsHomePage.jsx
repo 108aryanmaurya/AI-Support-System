@@ -13,6 +13,7 @@ import {
   MessageSquare,
   Phone,
   ShieldCheck,
+  Tag,
   Users,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
@@ -156,6 +157,19 @@ export default function OrgSettingsHomePage() {
               iconClass="bg-emerald-700"
               title="Usage"
               description="View your billed usage and set usage alerts and limits."
+            />
+          </div>
+        </section>
+
+        <section className="mb-10">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Inbox</h2>
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <SettingsCard
+              to={`/org/${orgId}/settings/tags`}
+              icon={Tag}
+              iconClass="bg-emerald-700"
+              title="Conversation tags"
+              description="Create and manage tags for filtering conversations and AI auto-tagging."
             />
           </div>
         </section>

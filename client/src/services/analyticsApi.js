@@ -36,6 +36,28 @@ export function fetchAnalyticsAi(organizationId, range) {
   return apiFetch(withRange(`${orgAnalyticsBase(organizationId)}/ai`, range))
 }
 
+/**
+ * @param {string} organizationId
+ * @param {object} range
+ * @param {object} [opts]
+ * @param {number} [opts.page]
+ * @param {number} [opts.pageSize]
+ * @param {string} [opts.feature]
+ * @param {string} [opts.status]
+ */
+export function fetchAnalyticsAiRuns(organizationId, range, opts = {}) {
+  const params = new URLSearchParams()
+  if (range?.from) params.set('from', range.from)
+  if (range?.to) params.set('to', range.to)
+  if (opts.page) params.set('page', String(opts.page))
+  if (opts.pageSize) params.set('pageSize', String(opts.pageSize))
+  if (opts.feature) params.set('feature', opts.feature)
+  if (opts.status) params.set('status', opts.status)
+  const q = params.toString()
+  const path = `${orgAnalyticsBase(organizationId)}/ai/runs${q ? `?${q}` : ''}`
+  return apiFetch(path)
+}
+
 export function fetchAnalyticsKnowledge(organizationId, range) {
   return apiFetch(withRange(`${orgAnalyticsBase(organizationId)}/knowledge`, range))
 }

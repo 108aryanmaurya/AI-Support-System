@@ -36,10 +36,20 @@ export { AUTOMATION_JOB_TYPES, isAutomationJobType } from './automationJobTypes.
 export { AI_FEATURES, isAiFeature } from './aiFeatures.js';
 
 export {
+  AI_FEEDBACK_ACTIONS,
+  COMPOSER_REWRITE_TONES,
   SUGGEST_REPLY_LENGTHS,
   SUGGEST_REPLY_TONES,
   SUMMARY_TYPES,
+  isAiFeedbackAction,
 } from './aiCopilot.js';
+
+export {
+  CLASSIFICATION_INTENTS,
+  CLASSIFICATION_SENTIMENTS,
+  isClassificationIntent,
+  isClassificationSentiment,
+} from './aiClassification.js';
 
 export {
   ORG_AI_MODEL_TIERS,

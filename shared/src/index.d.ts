@@ -72,6 +72,7 @@ export const AUTOMATION_JOB_TYPES: readonly [
   'notify.assignment',
   'sla.scan_org',
   'knowledge.ingest_source',
+  'ai.classify_inbound',
 ];
 
 export function isAutomationJobType(value: unknown): value is (typeof AUTOMATION_JOB_TYPES)[number];

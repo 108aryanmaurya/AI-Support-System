@@ -45,6 +45,8 @@ flowchart LR
 
 Body shape (PATCH): `{ ai?: Partial<OrgAiSettings>, automation?: Partial<OrgAutomationSettings> }`
 
+**LLM health:** `GET /api/org/:orgId/ai/health` — `llmConfigured`, provider label, model (server env). Settings UI includes **Test AI connection**.
+
 ## Database
 
 - `organizations.settings` — JSONB; keys `ai`, `automation` (see migration `20260516110000_automation_jobs.sql`)

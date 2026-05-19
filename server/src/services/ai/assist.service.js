@@ -1,192 +1,24 @@
 import { HttpError } from '../../utils/httpError.js';
-import { assembleKnowledgeContext } from '../knowledge/contextAssembly.service.js';
-import { retrieveKnowledge } from '../knowledge/retrieval.service.js';
-import {
-  normalizeSuggestLength,
-  normalizeSuggestTone,
-  normalizeSummaryType,
-} from './ai.constants.js';
-import { aiParseError } from './ai.errors.js';
+import { normalizeSuggestLength, normalizeSuggestTone } from './ai.constants.js';
 import { assertAiAssistAllowed } from './aiGuards.service.js';
-import { recordAiRun } from './aiRuns.service.js';
 import {
   buildConversationPromptBlock,
   loadConversationTranscript,
   loadOrganizationPromptContext,
 } from './conversationContext.service.js';
-import { chatCompletion } from './llm.client.js';
-import { hashPrompt } from './promptHash.js';
+import { loadKnowledgeContextForAssist } from './context/knowledgeContext.js';
 import { parseSuggestReplyResponse } from './parsers/suggestion.parser.js';
-import { parseSummarizeResponse } from './parsers/summary.parser.js';
 import { buildRewriteMessages } from './prompts/rewrite.js';
 import { buildSuggestReplyMessages } from './prompts/suggestReply.js';
-import { buildSummarizeMessages } from './prompts/summarize.js';
 import { buildTranslateMessages } from './prompts/translate.js';
 import { scrubPii } from './utils/piiFilter.js';
+import { wrapUntrustedContext } from './utils/promptInjection.js';
+import {
+  runStructuredWithAiRunLogging,
+  runWithAiRunLogging,
+} from './assistRunLogging.service.js';
 
-function mapRunStatus(error) {
-  if (error?.code === 'timeout' || error?.status === 504) return 'timeout';
-  if (error?.status === 403) return 'blocked_policy';
-  if (error?.code === 'parse_failed') return 'error';
-  return 'error';
-}
-
-function promptHashFromMessages(messages) {
-  const promptText = messages.map((m) => `${m.role}: ${m.content}`).join('\n---\n');
-  return hashPrompt(promptText);
-}
-
-/**
- * @param {object} params
- * @param {string} params.organizationId
- * @param {string} params.actorUserId
- * @param {string} params.feature
- * @param {string | null} params.conversationId
- * @param {Array<{ role: string, content: string }>} params.messages
- * @param {string[] | null} [params.retrievalChunkIds]
- * @param {string} params.memberId
- */
-async function runWithAiRunLogging({
-  organizationId,
-  actorUserId,
-  feature,
-  conversationId,
-  messages,
-  retrievalChunkIds = null,
-  memberId,
-}) {
-  const promptHash = promptHashFromMessages(messages);
-
-  try {
-    const result = await chatCompletion({ messages });
-    const run = await recordAiRun({
-      organizationId,
-      conversationId,
-      triggeredByMemberId: memberId,
-      feature,
-      model: result.model,
-      status: 'success',
-      promptHash,
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
-      latencyMs: result.latencyMs,
-      retrievalChunkIds,
-    });
-
-    return {
-      text: result.content,
-      runId: run.id,
-      model: result.model,
-      latencyMs: result.latencyMs,
-      usage: {
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-      },
-    };
-  } catch (e) {
-    await recordAiRun({
-      organizationId,
-      conversationId,
-      triggeredByMemberId: memberId,
-      feature,
-      model: 'unknown',
-      status: mapRunStatus(e),
-      promptHash,
-      latencyMs: null,
-      retrievalChunkIds,
-      errorCode: e?.code || e?.message?.slice(0, 120) || 'error',
-    });
-    throw e;
-  }
-}
-
-/**
- * @param {object} params
- * @param {string} params.organizationId
- * @param {string} params.feature
- * @param {string | null} params.conversationId
- * @param {Array<{ role: string, content: string }>} params.messages
- * @param {string[] | null} [params.retrievalChunkIds]
- * @param {string} params.memberId
- * @param {(raw: string) => object} params.parse
- */
-async function runStructuredWithAiRunLogging({
-  organizationId,
-  feature,
-  conversationId,
-  messages,
-  retrievalChunkIds = null,
-  memberId,
-  parse,
-}) {
-  const promptHash = promptHashFromMessages(messages);
-
-  try {
-    const result = await chatCompletion({ messages, responseFormat: 'json' });
-
-    let structured;
-    try {
-      structured = parse(result.content);
-    } catch (parseErr) {
-      await recordAiRun({
-        organizationId,
-        conversationId,
-        triggeredByMemberId: memberId,
-        feature,
-        model: result.model,
-        status: 'error',
-        promptHash,
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-        latencyMs: result.latencyMs,
-        retrievalChunkIds,
-        errorCode: parseErr?.code || 'parse_failed',
-      });
-      throw parseErr instanceof HttpError ? parseErr : aiParseError();
-    }
-
-    const run = await recordAiRun({
-      organizationId,
-      conversationId,
-      triggeredByMemberId: memberId,
-      feature,
-      model: result.model,
-      status: 'success',
-      promptHash,
-      inputTokens: result.inputTokens,
-      outputTokens: result.outputTokens,
-      latencyMs: result.latencyMs,
-      retrievalChunkIds,
-    });
-
-    return {
-      ...structured,
-      runId: run.id,
-      model: result.model,
-      latencyMs: result.latencyMs,
-      usage: {
-        inputTokens: result.inputTokens,
-        outputTokens: result.outputTokens,
-      },
-    };
-  } catch (e) {
-    if (e?.code !== 'parse_failed' && !(e instanceof HttpError && e.status === 502)) {
-      await recordAiRun({
-        organizationId,
-        conversationId,
-        triggeredByMemberId: memberId,
-        feature,
-        model: 'unknown',
-        status: mapRunStatus(e),
-        promptHash,
-        latencyMs: null,
-        retrievalChunkIds,
-        errorCode: e?.code || e?.message?.slice(0, 120) || 'error',
-      });
-    }
-    throw e;
-  }
-}
+export { runSummarize } from './summary.service.js';
 
 /**
  * @param {object} params
@@ -210,14 +42,17 @@ export async function runGenericAssist({ organizationId, actorUserId, conversati
   const messages = [
     {
       role: 'system',
-      content: 'You are a concise support copilot for customer service agents.',
+      content:
+        'You are a concise support copilot for customer service agents. Never claim to be the company or promise refunds.',
     },
-    { role: 'user', content: userPrompt },
+    {
+      role: 'user',
+      content: wrapUntrustedContext('agent_prompt', userPrompt),
+    },
   ];
 
   return runWithAiRunLogging({
     organizationId,
-    actorUserId,
     feature: 'assist',
     conversationId: conversationId ?? null,
     messages,
@@ -274,18 +109,13 @@ export async function runSuggestReply({
     const lastCustomer = [...transcriptCtx.messages].reverse().find((m) => m.role === 'customer');
     const query = lastCustomer?.content || transcriptCtx.messages.at(-1)?.content;
     if (query?.trim()) {
-      const retrieval = await retrieveKnowledge({
+      const kb = await loadKnowledgeContextForAssist({
         organizationId,
         query: query.trim(),
-        mode: 'keyword',
-        limit: 5,
         memberId: member.id,
       });
-      if (retrieval.available && retrieval.results?.length) {
-        const assembled = assembleKnowledgeContext({ chunks: retrieval.results, maxTokens: 2000 });
-        knowledgeContext = scrubPii(assembled.text);
-        retrievalChunkIds = retrieval.results.map((r) => r.chunkId).filter(Boolean);
-      }
+      knowledgeContext = kb.text;
+      retrievalChunkIds = kb.chunkIds;
     }
   }
 
@@ -305,6 +135,8 @@ export async function runSuggestReply({
     retrievalChunkIds,
     memberId: member.id,
     parse: parseSuggestReplyResponse,
+    outputTextExtractor: (structured) =>
+      typeof structured?.reply === 'string' ? structured.reply : '',
   });
 
   return {
@@ -314,59 +146,6 @@ export async function runSuggestReply({
     suggestion: result.reply,
     tone: toneNorm,
     length: lengthNorm,
-    runId: result.runId,
-    model: result.model,
-    latencyMs: result.latencyMs,
-    usage: result.usage,
-  };
-}
-
-/**
- * @param {object} params
- * @param {string} params.organizationId
- * @param {string} params.actorUserId
- * @param {string} params.conversationId
- * @param {string} [params.type]
- */
-export async function runSummarize({
-  organizationId,
-  actorUserId,
-  conversationId,
-  type,
-}) {
-  const { member } = await assertAiAssistAllowed({
-    organizationId,
-    actorUserId,
-    conversationId,
-  });
-
-  const transcriptCtx = await loadConversationTranscript(organizationId, conversationId);
-  const { promptText } = buildConversationPromptBlock({
-    messages: transcriptCtx.messages,
-    conversation: transcriptCtx.conversation,
-    customer: transcriptCtx.customer,
-    tags: transcriptCtx.tags,
-  });
-
-  if (!promptText.trim()) {
-    throw new HttpError(400, 'Conversation has no messages to summarize.');
-  }
-
-  const summaryType = normalizeSummaryType(type);
-  const messages = buildSummarizeMessages({ conversationBlock: promptText, type: summaryType });
-
-  const result = await runStructuredWithAiRunLogging({
-    organizationId,
-    feature: 'summarize',
-    conversationId,
-    messages,
-    memberId: member.id,
-    parse: (raw) => parseSummarizeResponse(raw, summaryType),
-  });
-
-  return {
-    summary: result.summary,
-    type: summaryType,
     runId: result.runId,
     model: result.model,
     latencyMs: result.latencyMs,
@@ -403,7 +182,6 @@ export async function runTranslate({
 
   const result = await runWithAiRunLogging({
     organizationId,
-    actorUserId,
     feature: 'translate',
     conversationId: null,
     messages,
@@ -440,7 +218,6 @@ export async function runRewrite({
 
   const result = await runWithAiRunLogging({
     organizationId,
-    actorUserId,
     feature: 'rewrite',
     conversationId: null,
     messages,

@@ -21,7 +21,7 @@ export async function assertAiAssistAllowed({
   if (!isLlmConfigured()) {
     throw new HttpError(
       503,
-      'AI provider is not configured. Set LLM_API_KEY in server environment.',
+      'AI provider is not configured. Set LLM_PROVIDER and LLM_API_KEY in server environment.',
     );
   }
 

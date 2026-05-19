@@ -8,6 +8,9 @@ Implementation guides for the AI roadmap ([AI-FEATURE-DESIGN.md](./AI-FEATURE-DE
 | [phase-2-knowledge-base.md](./phase-2-knowledge-base.md) | Articles, chunks, FTS search, file ingest, analytics | **Shipped** |
 | [phase-2-conversation-tags.md](./phase-2-conversation-tags.md) | Tag definitions, inbox filters, conversation tagging | **Shipped** |
 | [phase-3-prerequisites.md](./phase-3-prerequisites.md) | LLM client, env, `ai_runs`, copilot API endpoints | **Shipped** |
+| [phase-3-sprints.md](./phase-3-sprints.md) | Sprint 0–6 breakdown (Copilot, classification, analytics, guardrails) | **Shipped** |
+| [ai-guardrails.md](./ai-guardrails.md) | Output policy, prompt injection, tests | **Shipped** |
+| [ai-streaming.md](./ai-streaming.md) | SSE suggest-reply (deferred) | Planned |
 | [ai-stubs-and-phase-3-prerequisites.md](./ai-stubs-and-phase-3-prerequisites.md) | Redirect to phase-3-prerequisites | — |
 | [phase-2-plan.md](./phase-2-plan.md) | Original sprint plan (historical) | Reference |
 

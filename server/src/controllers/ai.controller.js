@@ -1,5 +1,5 @@
 import { HttpError } from '../utils/httpError.js';
-import { isLlmConfigured } from '../services/ai/llm.client.js';
+import { getLlmStatus, isLlmConfigured } from '../services/ai/llm.client.js';
 import {
   runGenericAssist,
   runRewrite,
@@ -7,6 +7,8 @@ import {
   runSummarize,
   runTranslate,
 } from '../services/ai/assist.service.js';
+import { recordAiFeedback } from '../services/ai/aiFeedback.service.js';
+import { isAiStreamingEnabled } from '../services/ai/ai.streaming.js';
 
 function orgIdOrThrow(req) {
   const id = req.orgId ?? req.params?.orgId;
@@ -28,11 +30,19 @@ function parseUuid(value, fieldName) {
 
 export function aiHealth(req, res) {
   const organizationId = req.orgId ?? req.params?.orgId ?? null;
+  const llm = getLlmStatus();
   res.json({
     ok: true,
     scope: 'ai',
     organizationId,
     llmConfigured: isLlmConfigured(),
+    llmProvider: llm.provider,
+    llmProviderLabel: llm.providerLabel,
+    llmModel: llm.model,
+    llmBaseUrlHost: llm.baseUrlHost,
+    ...(llm.issues.length > 0 && process.env.NODE_ENV !== 'production'
+      ? { llmConfigIssues: llm.issues }
+      : {}),
   });
 }
 
@@ -58,6 +68,20 @@ export async function aiAssist(req, res, next) {
       latencyMs: result.latencyMs,
       usage: result.usage,
     });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export function aiSuggestReplyStream(req, res, next) {
+  try {
+    if (!isAiStreamingEnabled()) {
+      throw new HttpError(
+        501,
+        'AI streaming is not enabled. Set AI_STREAMING_ENABLED=true when implemented (see docs/ai-features/ai-streaming.md).',
+      );
+    }
+    throw new HttpError(501, 'AI streaming is not implemented yet.');
   } catch (e) {
     next(e);
   }
@@ -142,6 +166,30 @@ export async function aiRewrite(req, res, next) {
     });
 
     res.json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function aiFeedback(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const actorUserId = actorUserIdOrThrow(req);
+    const aiRunId = req.body?.aiRunId ?? req.body?.ai_run_id;
+    const messageId = req.body?.messageId ?? req.body?.message_id ?? null;
+    const action = req.body?.action;
+    const reason = req.body?.reason ?? null;
+
+    const result = await recordAiFeedback({
+      organizationId,
+      actorUserId,
+      aiRunId,
+      messageId,
+      action,
+      reason,
+    });
+
+    res.status(201).json(result);
   } catch (e) {
     next(e);
   }

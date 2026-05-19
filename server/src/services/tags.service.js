@@ -236,3 +236,82 @@ export async function setConversationTags({
 
   return { tags, conversation: updated };
 }
+
+/**
+ * Add tags to a conversation without removing existing assignments (automation / AI).
+ * @param {object} params
+ * @param {string} params.organizationId
+ * @param {string} params.conversationId
+ * @param {string[]} params.tagIdsToAdd
+ */
+export async function mergeConversationTagsByIds({
+  organizationId,
+  conversationId,
+  tagIdsToAdd,
+}) {
+  assertUuid(conversationId, 'conversationId');
+  const toAdd = [...new Set((tagIdsToAdd ?? []).map((id) => assertUuid(id, 'tagId')))];
+
+  if (toAdd.length === 0) return { tags: (await getConversationTags(organizationId, conversationId)).tags };
+
+  await loadConversation(organizationId, conversationId);
+
+  const { data: existingRows, error: existErr } = await supabaseAdmin
+    .from('conversation_tags')
+    .select('tag_id')
+    .eq('conversation_id', conversationId)
+    .eq('organization_id', organizationId);
+
+  if (existErr) {
+    throw new HttpError(500, existErr.message || 'Failed to load conversation tags.');
+  }
+
+  const existing = new Set((existingRows ?? []).map((r) => r.tag_id));
+  const merged = [...existing];
+  for (const id of toAdd) {
+    if (!existing.has(id)) merged.push(id);
+  }
+
+  if (merged.length > MAX_TAGS_PER_CONVERSATION) {
+    return { tags: (await getConversationTags(organizationId, conversationId)).tags };
+  }
+
+  if (toAdd.length > 0) {
+    const { data: defs, error: defErr } = await supabaseAdmin
+      .from('tag_definitions')
+      .select('id')
+      .eq('organization_id', organizationId)
+      .in('id', toAdd);
+
+    if (defErr) throw new HttpError(500, defErr.message || 'Failed to validate tags.');
+    if ((defs ?? []).length !== toAdd.length) {
+      return { tags: (await getConversationTags(organizationId, conversationId)).tags };
+    }
+  }
+
+  const newOnly = toAdd.filter((id) => !existing.has(id));
+  if (newOnly.length > 0) {
+    const rows = newOnly.map((tagId) => ({
+      conversation_id: conversationId,
+      tag_id: tagId,
+      organization_id: organizationId,
+    }));
+    const { error: insErr } = await supabaseAdmin.from('conversation_tags').insert(rows);
+    if (insErr) throw new HttpError(500, insErr.message || 'Failed to assign conversation tags.');
+  }
+
+  const { tags } = await getConversationTags(organizationId, conversationId);
+  const tagNames = tags.map((t) => t.name);
+
+  const conv = await loadConversation(organizationId, conversationId);
+  const meta = conv.metadata && typeof conv.metadata === 'object' ? { ...conv.metadata } : {};
+  meta.tags = tagNames;
+
+  await supabaseAdmin
+    .from('conversations')
+    .update({ metadata: meta })
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId);
+
+  return { tags };
+}

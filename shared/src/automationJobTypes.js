@@ -4,6 +4,7 @@ export const AUTOMATION_JOB_TYPES = Object.freeze([
   'notify.assignment',
   'sla.scan_org',
   'knowledge.ingest_source',
+  'ai.classify_inbound',
 ]);
 
 /** @param {unknown} v */

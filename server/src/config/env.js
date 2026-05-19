@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { resolveLlmConfig } from '../services/ai/llm.config.js';
 
 dotenv.config();
 
@@ -35,12 +36,9 @@ function loadEnv() {
     process.env.NOTIFICATION_RESEND_API_KEY?.trim() || process.env.RESEND_API_KEY?.trim() || '';
   const notificationEmailFrom = process.env.NOTIFICATION_EMAIL_FROM?.trim() || '';
 
-  const llmApiKey = process.env.LLM_API_KEY?.trim() || '';
-  const llmModel = process.env.LLM_MODEL?.trim() || 'gpt-4o-mini';
-  const llmBaseUrl = process.env.LLM_BASE_URL?.trim() || 'https://api.openai.com/v1';
-  const llmTimeoutMs = Number(process.env.LLM_TIMEOUT_MS) || 60_000;
-  const llmMaxOutputTokens = Number(process.env.LLM_MAX_OUTPUT_TOKENS) || 1024;
   const llmMaxPromptChars = Number(process.env.LLM_MAX_PROMPT_CHARS) || 32_000;
+
+  const llm = resolveLlmConfig();
 
   return {
     nodeEnv: process.env.NODE_ENV ?? 'development',
@@ -58,15 +56,18 @@ function loadEnv() {
     notificationResendApiKey,
     /** Verified sender for NOTIFICATION_RESEND_API_KEY (e.g. onboarding@resend.dev or your domain). */
     notificationEmailFrom,
-    /** OpenAI-compatible API key (server only). */
-    llmApiKey,
-    llmModel,
-    llmBaseUrl,
-    llmTimeoutMs: Number.isFinite(llmTimeoutMs) && llmTimeoutMs > 0 ? llmTimeoutMs : 60_000,
-    llmMaxOutputTokens:
-      Number.isFinite(llmMaxOutputTokens) && llmMaxOutputTokens > 0
-        ? Math.min(llmMaxOutputTokens, 16_384)
-        : 1024,
+    /** Resolved LLM provider config (see LLM_PROVIDER in .env.example). */
+    llm,
+    /** @deprecated Use env.llm.apiKey */
+    llmApiKey: llm.apiKey,
+    /** @deprecated Use env.llm.model */
+    llmModel: llm.model,
+    /** @deprecated Use env.llm.baseUrl */
+    llmBaseUrl: llm.baseUrl,
+    /** @deprecated Use env.llm.timeoutMs */
+    llmTimeoutMs: llm.timeoutMs,
+    /** @deprecated Use env.llm.maxOutputTokens */
+    llmMaxOutputTokens: llm.maxOutputTokens,
     llmMaxPromptChars:
       Number.isFinite(llmMaxPromptChars) && llmMaxPromptChars > 0
         ? Math.min(llmMaxPromptChars, 200_000)

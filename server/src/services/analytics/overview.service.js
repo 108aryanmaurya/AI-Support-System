@@ -1,6 +1,6 @@
 import { deltaPercent, parseAnalyticsDateRange } from './dateRange.js';
 import { fetchKnowledgeMetrics } from './knowledgeMetrics.js';
-import { fetchAiMetrics, fetchProductMetrics } from './metricsQueries.js';
+import { fetchAiMetrics, fetchAiRunsPaginated, fetchProductMetrics } from './metricsQueries.js';
 
 function kpi(id, label, value, previous, unit = 'count') {
   return {
@@ -96,6 +96,8 @@ export async function getAnalyticsOverview(organizationId, query) {
         totalRuns: ai.totalRuns,
         tokensInput: ai.tokensInput,
         tokensOutput: ai.tokensOutput,
+        tokensTotal: ai.tokensTotal,
+        acceptanceRate: ai.acceptanceRate,
         aiAssignedConversations: ai.aiAssignedConversations,
       } : null,
     },
@@ -145,7 +147,7 @@ export async function getAnalyticsTeam(organizationId, query, membership) {
   const role = membership?.role?.toUpperCase();
   const filterMemberId = role === 'AGENT' ? membership.id : null;
 
-  const team = await fetchTeamMetrics(
+  const team = await fetchAiMetrics(
     organizationId,
     range.fromDate,
     range.toExclusive,
@@ -206,6 +208,12 @@ export async function getAnalyticsAi(organizationId, query) {
     fetchProductMetrics(organizationId, range.fromDate, range.toExclusive),
   ]);
 
+  const prevAccept = previousAi.acceptanceRate;
+  const acceptDelta =
+    ai.acceptanceRate != null && prevAccept != null
+      ? Math.round((ai.acceptanceRate - prevAccept) * 10) / 10
+      : 0;
+
   return {
     range: { from: range.fromIso, to: range.toIso },
     compare: { from: range.compareFromIso, to: range.compareToIso },
@@ -214,9 +222,38 @@ export async function getAnalyticsAi(organizationId, query) {
       ai.totalRuns != null && previousAi.totalRuns != null
         ? deltaPercent(ai.totalRuns, previousAi.totalRuns)
         : 0,
+    acceptanceRateDelta: acceptDelta,
     productContext: {
       outboundAiMessages: product.outboundAiMessages,
       aiAssignedConversations: ai.aiAssignedConversations ?? 0,
     },
+  };
+}
+
+/**
+ * @param {string} organizationId
+ * @param {Record<string, unknown>} query
+ */
+export async function getAnalyticsAiRuns(organizationId, query) {
+  const range = parseAnalyticsDateRange(query);
+  const page = Number(query.page);
+  const pageSize = Number(query.pageSize);
+  const feature =
+    typeof query.feature === 'string' && query.feature.trim() ? query.feature.trim() : null;
+  const status =
+    typeof query.status === 'string' && query.status.trim() ? query.status.trim() : null;
+
+  const runs = await fetchAiRunsPaginated(organizationId, {
+    fromDate: range.fromDate,
+    toExclusive: range.toExclusive,
+    page: Number.isFinite(page) && page > 0 ? page : 1,
+    pageSize: Number.isFinite(pageSize) && pageSize > 0 ? pageSize : 20,
+    feature,
+    status,
+  });
+
+  return {
+    range: { from: range.fromIso, to: range.toIso },
+    ...runs,
   };
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { apiFetch } from '../services/api.js'
-
+import { useParams } from 'react-router-dom'
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const MAX_MESSAGE_LENGTH = 4000
 

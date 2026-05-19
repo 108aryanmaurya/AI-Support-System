@@ -8,7 +8,7 @@
     "worker:automation": "node src/workers/automationWorker.js",
     "start": "NODE_ENV=production node src/server.js",
     "build": "echo \"Server has no build step\"",
-    "test": "node --test src/services/ai/**/*.test.js"
+    "test": "node --test ./src/services/ai/**/*.test.js ./src/services/ai/*.test.js"
   },
   "dependencies": {
     "@ai-support/shared": "*",

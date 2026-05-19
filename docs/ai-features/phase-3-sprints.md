@@ -4,7 +4,7 @@
 Parent: [phase-3-plan.md](./phase-3-plan.md) | [AI-FEATURE-DESIGN.md](./AI-FEATURE-DESIGN.md) §5  
 Prerequisites: [phase-3-prerequisites.md](./phase-3-prerequisites.md) (Sprint 0 ✅)
 
-Last updated: 2026-05-18
+Last updated: 2026-05-19
 
 ---
 
@@ -21,14 +21,14 @@ Per [phase-3-prerequisites.md](docs/ai-features/phase-3-prerequisites.md) and th
 | Org rate limits on `/ai/*` | Done (`router.use(orgAiAssistRateLimit)`) |
 | Endpoints: assist, suggest-reply, summarize, translate, rewrite | Done (basic prompts, plain text responses) |
 | RAG in suggest-reply | Partial (keyword retrieval only) |
-| `messages.is_ai_generated`, `parent_message_id` | Schema only — **not wired on send** |
-| `ai_feedback` table | Schema only — **no API** |
-| Classification / sentiment / auto-tags | **Not started** |
-| Inbox Copilot UI | **Label only** — no API calls |
-| Structured JSON LLM outputs, guardrails, PII filter, token budget | **Not started** |
-| Streaming (SSE) | **Not started** |
-| Per-feature rate limits | Single org+user cap for all `/ai/*` |
-| Async classification jobs | **Not started** (plan §6.5–6.7) |
+| `messages.is_ai_generated`, `parent_message_id`, `ai_run_id` | Wired on inbox send (Sprint 3) |
+| `ai_feedback` table + `POST .../ai/feedback` | Done (Sprint 3) |
+| Classification / sentiment / auto-tags | Done (Sprint 4 async worker) |
+| Inbox Copilot UI | Done (Sprint 2 suggest/summarize; Sprint 3 composer translate/rewrite) |
+| Structured JSON LLM outputs, guardrails, PII filter, token budget | Done (Sprints 1 + 6) |
+| Streaming (SSE) | Deferred ([ai-streaming.md](./ai-streaming.md)); route returns 501 |
+| Per-feature rate limits | Done (Sprint 5 heavy vs composer tiers) |
+| Async classification jobs | Done (`ai.classify_inbound`, Sprint 4) |
 
 The plan’s folder layout (`context/`, `parsers/`, `classification.service.js`, etc.) is **aspirational**; you have a flatter `server/src/services/ai/` today. Sprints should **evolve** structure, not block on a big rename in Sprint 1.
 
@@ -68,7 +68,7 @@ The plan’s folder layout (`context/`, `parsers/`, `classification.service.js`,
 
 ---
 
-### Sprint 2 — Inbox Copilot MVP (suggest + summarize)
+### Sprint 2 — Inbox Copilot MVP (suggest + summarize) ✅
 
 **Goal:** Agents get value in the inbox without composer polish yet.
 
@@ -86,7 +86,7 @@ The plan’s folder layout (`context/`, `parsers/`, `classification.service.js`,
 
 ---
 
-### Sprint 3 — Composer AI actions (translate, rewrite, accept flow)
+### Sprint 3 — Composer AI actions (translate, rewrite, accept flow) ✅
 
 **Goal:** Complete plan §6.3–6.4 + §12 message lineage start.
 
@@ -102,7 +102,7 @@ The plan’s folder layout (`context/`, `parsers/`, `classification.service.js`,
 
 ---
 
-### Sprint 4 — Async classification (intent, sentiment, auto-tags)
+### Sprint 4 — Async classification (intent, sentiment, auto-tags) ✅
 
 **Goal:** Plan §6.5–6.7 without blocking inbound HTTP.
 
@@ -119,7 +119,7 @@ The plan’s folder layout (`context/`, `parsers/`, `classification.service.js`,
 
 ---
 
-### Sprint 5 — Observability, analytics & settings UX
+### Sprint 5 — Observability, analytics & settings UX ✅
 
 **Goal:** Plan §11–12, §14 (partial), production operability.
 
@@ -135,7 +135,7 @@ The plan’s folder layout (`context/`, `parsers/`, `classification.service.js`,
 
 ---
 
-### Sprint 6 — Production hardening (optional but “complete” Phase 3)
+### Sprint 6 — Production hardening (optional but “complete” Phase 3) ✅
 
 **Goal:** Plan §7 guardrails, §10 streaming, §13 queue posture — pick what fits timeline.
 

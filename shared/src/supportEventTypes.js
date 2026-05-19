@@ -15,6 +15,9 @@ export const SUPPORT_EVENT_TYPES = Object.freeze([
   'knowledge.article_published',
   'knowledge.ingest_completed',
   'knowledge.ingest_failed',
+  'ai.suggestion_accepted',
+  'ai.suggestion_rejected',
+  'ai.suggestion_edited',
 ]);
 
 /** @param {unknown} v */

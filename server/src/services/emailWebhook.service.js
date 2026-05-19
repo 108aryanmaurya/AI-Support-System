@@ -2,6 +2,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { createConversation, createMessage, findOrCreateCustomer } from './support.service.js';
 import { scheduleStaffInboundWithFallback } from './automation/automationNotify.service.js';
+import { scheduleInboundClassification } from './automation/enqueueClassifyInbound.service.js';
 import { CONVERSATION_ACTIVE_STATUSES } from '@ai-support/shared';
 
 function isMissingColumnError(error, column) {
@@ -393,6 +394,12 @@ export async function processInboundEmail(payload) {
   await updateConversationLastMessageAt(conversation.id, channel.organization_id, message.created_at);
 
   const externalId = payload.messageId ? String(payload.messageId) : message.id;
+  scheduleInboundClassification({
+    organizationId: channel.organization_id,
+    conversationId: conversation.id,
+    messageId: message.id,
+  });
+
   void scheduleStaffInboundWithFallback({
     organizationId: channel.organization_id,
     conversationId: conversation.id,

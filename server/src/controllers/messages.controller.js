@@ -13,6 +13,7 @@ import { emitIncomingMessageEvent } from '../utils/monitoring.js';
 import { sendInboxAgentOutboundMessage } from '../services/inboxAgentSend.service.js';
 import { isCustomerMessageFreshForNotification } from '../services/customerInboundNotification.service.js';
 import { scheduleStaffInboundWithFallback } from '../services/automation/automationNotify.service.js';
+import { scheduleInboundClassification } from '../services/automation/enqueueClassifyInbound.service.js';
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -50,6 +51,12 @@ export async function sendInboxMessageController(req, res, next) {
       content,
       client_request_id: clientRequestIdSnake,
       clientRequestId: clientRequestIdCamel,
+      is_ai_generated: isAiGeneratedSnake,
+      isAiGenerated: isAiGeneratedCamel,
+      ai_run_id: aiRunIdSnake,
+      aiRunId: aiRunIdCamel,
+      parent_message_id: parentMessageIdSnake,
+      parentMessageId: parentMessageIdCamel,
     } = req.body ?? {};
     const result = await sendInboxAgentOutboundMessage({
       userId: req.userId ?? req.user.id,
@@ -57,6 +64,9 @@ export async function sendInboxMessageController(req, res, next) {
       rawContent: content,
       expectedOrganizationId: organizationId,
       clientRequestId: clientRequestIdSnake ?? clientRequestIdCamel ?? null,
+      isAiGenerated: isAiGeneratedSnake ?? isAiGeneratedCamel ?? false,
+      aiRunId: aiRunIdSnake ?? aiRunIdCamel ?? null,
+      parentMessageId: parentMessageIdSnake ?? parentMessageIdCamel ?? null,
     });
     res.status(200).json(result);
   } catch (error) {
@@ -198,6 +208,12 @@ export async function createIncomingMessageController(req, res, next) {
 
     emitIncomingMessageEvent('request_succeeded', {
       ...safeLogPayload,
+      conversationId: row.conversation_id,
+      messageId: row.message_id,
+    });
+
+    scheduleInboundClassification({
+      organizationId,
       conversationId: row.conversation_id,
       messageId: row.message_id,
     });

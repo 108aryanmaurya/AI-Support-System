@@ -263,12 +263,12 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 - **Tag definitions** — org-scoped CRUD (ADMIN mutations)
 - **Conversation tags** — assign on thread; inbox filter `?tagId=`
-- **Client** — `ConversationTagsPanel`, sidebar tag filter
+- **Client** — `ConversationTagsPanel`, sidebar tag filter; **Settings → Conversation tags** (`/settings/tags`) for ADMIN CRUD on definitions
 
 ### 15.4 LLM / copilot (Phase 3 — Sprint 0–1 shipped)
 
-- **LLM config** — `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`, `LLM_TIMEOUT_MS`, `LLM_MAX_OUTPUT_TOKENS`, `LLM_MAX_PROMPT_CHARS` in `env.js` / `.env.example`
-- **Provider client** — `openai` package + `server/src/services/ai/llm.client.js` (OpenAI-compatible APIs)
+- **LLM config** — `LLM_PROVIDER` presets (`openai`, `gemini`, `groq`, `together`, `openrouter`, `custom`) + `LLM_API_KEY` / provider keys; `llm.config.js` + OpenAI-compatible adapter
+- **Provider client** — `openai` npm SDK against any compatible base URL (Gemini, Groq, etc.)
 - **`ai_runs` logging** — `recordAiRun()` on success/failure for every model call
 - **Org AI routes** (rate limited on all `/ai/*`):
   - `POST .../ai/assist`, `suggest-reply`, `summarize`, `translate`, `rewrite`
@@ -276,8 +276,12 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Guards** — org `ai_enabled` + `assist_enabled`, conversation `ai_enabled`; **503** without API key
 - **RAG** — `suggest-reply` optional keyword retrieval from knowledge base
 - **Sprint 1** — JSON `suggest-reply` / `summarize` responses; `tone`/`length`/`type` options; PII scrub + transcript truncation; richer context (customer, channel, tags, org style guide)
-- **Inbox UI** — Copilot tab *(partial: wire to new APIs in client — Sprint 2)*
-- **Not shipped** — classification workers, auto-tag, autonomous customer AI (Phase 4–6)
+- **Inbox Copilot UI** — sidebar tab: suggest reply (inserts composer draft), summarize thread, confidence + runId; gated by org/conversation AI settings
+- **Sprint 3** — Composer **AI** menu: translate (language picker) and rewrite tone; preview modal before replace; `POST .../ai/feedback` (accepted/edited/rejected); inbox send sets `is_ai_generated`, `ai_run_id`, `parent_message_id` when draft came from a copilot run
+- **Sprint 4** — Async `ai.classify_inbound` worker: intent/sentiment/language in `conversations.metadata.ai`; optional tag apply when `auto_tag_enabled`; Copilot shows thread signals (read-only)
+- **Sprint 5** — Per-feature AI rate limits (heavy vs composer); `GET .../analytics/ai/runs` drill-down; Reports acceptance rate + failed runs; Settings LLM health test; structured `ai.failure` JSON logs
+- **Sprint 6** — `ai.guardrails.js` (refund/impersonation/legal blocks → `blocked_policy`); UNTRUSTED_CONTEXT prompt wrapping; `knowledgeContext.js` + `summary.service.js` split; streaming deferred (`docs/ai-features/ai-streaming.md`)
+- **Not shipped** — autonomous customer AI (Phase 4–6)
 
 ---
 

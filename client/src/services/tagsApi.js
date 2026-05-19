@@ -15,6 +15,19 @@ export function createOrgTag(organizationId, { name, color }) {
   })
 }
 
+export function patchOrgTag(organizationId, tagId, { name, color }) {
+  return apiFetch(`${tagsBase(organizationId)}/${encodeURIComponent(tagId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name, color }),
+  })
+}
+
+export function deleteOrgTag(organizationId, tagId) {
+  return apiFetch(`${tagsBase(organizationId)}/${encodeURIComponent(tagId)}`, {
+    method: 'DELETE',
+  })
+}
+
 export function fetchConversationTags(organizationId, conversationId) {
   return apiFetch(
     `${tagsBase(organizationId)}/conversations/${encodeURIComponent(conversationId)}`,

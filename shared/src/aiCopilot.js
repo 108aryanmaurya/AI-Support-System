@@ -11,6 +11,21 @@ export const SUGGEST_REPLY_LENGTHS = Object.freeze(['short', 'medium', 'long']);
 
 export const SUMMARY_TYPES = Object.freeze(['short', 'detailed', 'timeline']);
 
+/** Composer rewrite tones (subset aligned with suggest-reply). */
+export const COMPOSER_REWRITE_TONES = Object.freeze([
+  'professional',
+  'friendly',
+  'empathetic',
+  'concise',
+]);
+
+export const AI_FEEDBACK_ACTIONS = Object.freeze(['accepted', 'rejected', 'edited']);
+
+/** @param {unknown} v */
+export function isAiFeedbackAction(v) {
+  return typeof v === 'string' && AI_FEEDBACK_ACTIONS.includes(v);
+}
+
 /**
  * @typedef {object} AiSuggestReplyResponse
  * @property {string} reply

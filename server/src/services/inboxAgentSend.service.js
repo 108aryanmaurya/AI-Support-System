@@ -39,12 +39,25 @@ async function patchConversationActivity(conversationId, organizationId, created
 /**
  * Inbox send: insert pending agent row → outbound send → mark sent/failed on same row.
  */
+function parseOptionalUuidField(value, fieldName) {
+  if (value == null || value === '') return null;
+  const s = typeof value === 'string' ? value.trim() : '';
+  if (!s) return null;
+  if (!UUID_V4_REGEX.test(s)) {
+    throw new HttpError(400, `${fieldName} must be a valid UUID.`);
+  }
+  return s;
+}
+
 export async function sendInboxAgentOutboundMessage({
   userId,
   conversationId: rawConversationId,
   rawContent,
   expectedOrganizationId = null,
   clientRequestId: rawClientRequestId = null,
+  isAiGenerated = false,
+  aiRunId: rawAiRunId = null,
+  parentMessageId: rawParentMessageId = null,
 }) {
   const conversationId =
     typeof rawConversationId === 'string' ? rawConversationId.trim() : '';
@@ -96,6 +109,46 @@ export async function sendInboxAgentOutboundMessage({
   }));
   const mentionIds = resolveMentionUserIdsFromContent(body, mentionMembers);
 
+  const aiGenerated = isAiGenerated === true;
+  const resolvedAiRunId = parseOptionalUuidField(rawAiRunId, 'ai_run_id');
+  const resolvedParentMessageId = parseOptionalUuidField(
+    rawParentMessageId,
+    'parent_message_id',
+  );
+
+  if (aiGenerated && !resolvedAiRunId) {
+    throw new HttpError(400, 'ai_run_id is required when is_ai_generated is true.');
+  }
+
+  if (resolvedAiRunId) {
+    const { data: run, error: runErr } = await supabaseAdmin
+      .from('ai_runs')
+      .select('id')
+      .eq('id', resolvedAiRunId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (runErr) throw new HttpError(500, runErr.message || 'Failed to validate AI run.');
+    if (!run) throw new HttpError(404, 'AI run not found in this organization.');
+  }
+
+  if (resolvedParentMessageId) {
+    const { data: parentMsg, error: parentErr } = await supabaseAdmin
+      .from('messages')
+      .select('id')
+      .eq('id', resolvedParentMessageId)
+      .eq('conversation_id', conversation.id)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (parentErr) {
+      throw new HttpError(500, parentErr.message || 'Failed to validate parent message.');
+    }
+    if (!parentMsg) {
+      throw new HttpError(404, 'parent_message_id not found in this conversation.');
+    }
+  }
+
   const initialMetadata = {
     status: 'pending',
     ...(activeClientRequestId ? { client_request_id: activeClientRequestId } : {}),
@@ -114,6 +167,9 @@ export async function sendInboxAgentOutboundMessage({
       sender_member_id: member.id,
       content: body,
       metadata: initialMetadata,
+      is_ai_generated: aiGenerated,
+      ai_run_id: resolvedAiRunId,
+      parent_message_id: resolvedParentMessageId,
     })
       .select('*')
       .single();

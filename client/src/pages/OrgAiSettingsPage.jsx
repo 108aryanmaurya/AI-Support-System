@@ -1,7 +1,8 @@
-import { Bot, Save } from 'lucide-react'
+import { Bot, Loader2, Save } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { getAiHealth } from '../services/aiApi.js'
 import { fetchOrgAiSettings, patchOrgAiSettings } from '../services/orgSettingsApi.js'
 
 function ToggleRow({ label, description, checked, onChange, disabled, phase }) {
@@ -45,6 +46,9 @@ export default function OrgAiSettingsPage() {
   const [saved, setSaved] = useState(false)
   const [ai, setAi] = useState(null)
   const [automation, setAutomation] = useState(null)
+  const [llmHealth, setLlmHealth] = useState(null)
+  const [healthLoading, setHealthLoading] = useState(false)
+  const [healthError, setHealthError] = useState('')
 
   const load = useCallback(async () => {
     if (!orgId) return
@@ -64,6 +68,21 @@ export default function OrgAiSettingsPage() {
   useEffect(() => {
     load()
   }, [load])
+
+  async function runHealthCheck() {
+    if (!orgId) return
+    setHealthLoading(true)
+    setHealthError('')
+    try {
+      const res = await getAiHealth(orgId)
+      setLlmHealth(res)
+    } catch (e) {
+      setLlmHealth(null)
+      setHealthError(e.message || 'Health check failed.')
+    } finally {
+      setHealthLoading(false)
+    }
+  }
 
   async function handleSave(e) {
     e.preventDefault()
@@ -125,6 +144,46 @@ export default function OrgAiSettingsPage() {
           <p className="text-sm text-slate-400">Loading settings…</p>
         ) : (
           <form onSubmit={handleSave} className="space-y-8">
+            <section className="rounded-xl border border-[#2b3858] bg-[#12192c] p-4">
+              <h2 className="mb-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                LLM provider (server)
+              </h2>
+              <p className="text-xs leading-relaxed text-slate-400">
+                Copilot and classification use API keys configured on the server, not in this UI.
+                Set <code className="text-slate-300">LLM_PROVIDER</code> and{' '}
+                <code className="text-slate-300">LLM_API_KEY</code> in{' '}
+                <code className="text-slate-300">server/.env</code> (see{' '}
+                <code className="text-slate-300">server/.env.example</code>).
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={healthLoading || !orgId}
+                  onClick={() => void runHealthCheck()}
+                  className="inline-flex items-center gap-2 rounded-lg border border-violet-500/40 bg-violet-950/40 px-3 py-1.5 text-xs font-medium text-violet-100 hover:bg-violet-950/60 disabled:opacity-40"
+                >
+                  {healthLoading ? (
+                    <Loader2 size={14} className="animate-spin" aria-hidden />
+                  ) : null}
+                  Test AI connection
+                </button>
+                {llmHealth?.llmConfigured ? (
+                  <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                    Configured
+                    {llmHealth.llmProviderLabel
+                      ? ` · ${llmHealth.llmProviderLabel}`
+                      : ''}
+                    {llmHealth.llmModel ? ` · ${llmHealth.llmModel}` : ''}
+                  </span>
+                ) : llmHealth && !llmHealth.llmConfigured ? (
+                  <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-200">
+                    Not configured on server
+                  </span>
+                ) : null}
+              </div>
+              {healthError ? <p className="mt-2 text-xs text-rose-300">{healthError}</p> : null}
+            </section>
+
             <section>
               <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
                 AI capabilities
@@ -147,7 +206,15 @@ export default function OrgAiSettingsPage() {
                 />
                 <ToggleRow
                   label="Auto-tag conversations"
-                  description="Classify intent and sentiment into conversation metadata after inbound messages."
+                  description={
+                    <>
+                      Apply AI-suggested labels to conversations when they match tag definitions.{' '}
+                      <Link to={`/org/${orgId}/settings/tags`} className="text-[#3ECF8E] hover:underline">
+                        Manage tags
+                      </Link>
+                      .
+                    </>
+                  }
                   phase="Phase 3–4"
                   checked={ai.auto_tag_enabled}
                   disabled={!isAdmin || masterOff}

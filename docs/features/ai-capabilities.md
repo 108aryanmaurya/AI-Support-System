@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Phase 1–2** infrastructure and **Phase 3 prerequisites** are shipped: org settings, knowledge RAG source, OpenAI-compatible LLM client, `ai_runs` audit log, and copilot HTTP APIs. **Inbox Copilot UI** may still need client wiring to the new endpoints.
+**Phase 1–2** infrastructure and **Phase 3 Sprint 0–2** are shipped: org settings, knowledge RAG source, OpenAI-compatible LLM client, `ai_runs` audit log, copilot HTTP APIs, and **Inbox Copilot** sidebar (suggest + summarize).
 
 See [ai-features/README.md](../ai-features/README.md) and [phase-3-prerequisites.md](../ai-features/phase-3-prerequisites.md).
 
@@ -82,4 +82,4 @@ flowchart TB
 
 ## Status
 
-**Partial** — server copilot APIs and `ai_runs` logging are production-ready when `LLM_API_KEY` is set. Complete Phase 3 by wiring `InboxPage` Copilot to `suggest-reply` / `summarize` and adding classification automation.
+**Shipped (Phase 3)** — Copilot, composer AI, classification, analytics, guardrails. Autonomous customer replies remain Phase 6.

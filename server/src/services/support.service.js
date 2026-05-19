@@ -146,6 +146,9 @@ export async function createMessage({
   senderMemberId,
   content,
   metadata = {},
+  isAiGenerated = false,
+  aiRunId = null,
+  parentMessageId = null,
 }) {
   const body = content?.trim();
   if (!body) throw new HttpError(400, 'Message content cannot be empty.');
@@ -171,6 +174,9 @@ export async function createMessage({
       sender_member_id: senderMemberId ?? null,
       content: body,
       metadata,
+      is_ai_generated: isAiGenerated === true,
+      ai_run_id: aiRunId ?? null,
+      parent_message_id: parentMessageId ?? null,
     })
     .select('*')
     .single();

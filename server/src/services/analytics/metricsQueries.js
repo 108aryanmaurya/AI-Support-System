@@ -241,34 +241,95 @@ export async function fetchTeamMetrics(organizationId, fromDate, toExclusive, fi
  * @param {Date} fromDate
  * @param {Date} toExclusive
  */
+function isMissingAiTable(error) {
+  return (
+    error?.message?.includes('ai_runs') ||
+    error?.message?.includes('ai_feedback') ||
+    error?.code === '42P01' ||
+    error?.code === 'PGRST205'
+  );
+}
+
+/**
+ * @param {string} organizationId
+ * @param {Date} fromDate
+ * @param {Date} toExclusive
+ */
 export async function fetchAiMetrics(organizationId, fromDate, toExclusive) {
   const fromIso = fromDate.toISOString();
   const toIso = toExclusive.toISOString();
 
-  const { data: runs, error, count } = await supabaseAdmin
+  const baseRuns = supabaseAdmin
     .from('ai_runs')
-    .select('feature, status, latency_ms, input_tokens, output_tokens', { count: 'exact' })
+    .select('id', { count: 'exact', head: true })
     .eq('organization_id', organizationId)
     .gte('created_at', fromIso)
     .lt('created_at', toIso);
 
-  if (error) {
-    const missing =
-      error.message?.includes('ai_runs') || error.code === '42P01' || error.code === 'PGRST205';
-    if (missing) {
+  const { count: totalRuns, error: countErr } = await baseRuns;
+
+  if (countErr) {
+    if (isMissingAiTable(countErr)) {
       return { available: false, totalRuns: 0, message: 'AI metrics appear after AI assist is configured.' };
     }
-    throw error;
+    throw countErr;
   }
 
-  const list = runs ?? [];
-  if (list.length === 0 && (count ?? 0) === 0) {
+  if ((totalRuns ?? 0) === 0) {
     return {
       available: true,
       totalRuns: 0,
       message: 'No AI activity in this period. Enable AI assist in Settings → AI & Automation.',
     };
   }
+
+  const [
+    { data: runs, error: runsErr },
+    { count: successRuns },
+    { count: failedRuns },
+    { data: feedbackRows, error: feedbackErr },
+    { count: aiConvCount },
+  ] = await Promise.all([
+    supabaseAdmin
+      .from('ai_runs')
+      .select('feature, status, latency_ms, input_tokens, output_tokens')
+      .eq('organization_id', organizationId)
+      .gte('created_at', fromIso)
+      .lt('created_at', toIso)
+      .limit(5000),
+    supabaseAdmin
+      .from('ai_runs')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', organizationId)
+      .eq('status', 'success')
+      .gte('created_at', fromIso)
+      .lt('created_at', toIso),
+    supabaseAdmin
+      .from('ai_runs')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', organizationId)
+      .neq('status', 'success')
+      .gte('created_at', fromIso)
+      .lt('created_at', toIso),
+    supabaseAdmin
+      .from('ai_feedback')
+      .select('action, rating')
+      .eq('organization_id', organizationId)
+      .gte('created_at', fromIso)
+      .lt('created_at', toIso)
+      .limit(5000),
+    supabaseAdmin
+      .from('conversations')
+      .select('id', { count: 'exact', head: true })
+      .eq('organization_id', organizationId)
+      .eq('assignment_type', 'assigned_to_ai')
+      .gte('created_at', fromIso)
+      .lt('created_at', toIso),
+  ]);
+
+  if (runsErr && !isMissingAiTable(runsErr)) throw runsErr;
+
+  const list = runs ?? [];
 
   /** @type {Record<string, number>} */
   const byFeature = {};
@@ -287,30 +348,118 @@ export async function fetchAiMetrics(organizationId, fromDate, toExclusive) {
   const p50 = latencies.length ? latencies[Math.floor(latencies.length * 0.5)] : null;
   const p95 = latencies.length ? latencies[Math.floor(latencies.length * 0.95)] : null;
 
-  const { count: aiConvCount } = await supabaseAdmin
-    .from('conversations')
-    .select('id', { count: 'exact', head: true })
-    .eq('organization_id', organizationId)
-    .eq('assignment_type', 'assigned_to_ai')
-    .gte('created_at', fromIso)
-    .lt('created_at', toIso);
+  let feedbackAccepted = 0;
+  let feedbackEdited = 0;
+  let feedbackRejected = 0;
 
-  const { count: feedbackCount } = await supabaseAdmin
-    .from('ai_feedback')
-    .select('id', { count: 'exact', head: true })
-    .eq('organization_id', organizationId)
-    .gte('created_at', fromIso)
-    .lt('created_at', toIso);
+  if (!feedbackErr && feedbackRows) {
+    for (const row of feedbackRows) {
+      const action = typeof row.action === 'string' ? row.action : null;
+      if (action === 'accepted') feedbackAccepted += 1;
+      else if (action === 'edited') feedbackEdited += 1;
+      else if (action === 'rejected') feedbackRejected += 1;
+      else if (row.rating === 1) feedbackAccepted += 1;
+      else if (row.rating === -1) feedbackRejected += 1;
+    }
+  }
+
+  const feedbackWithAction = feedbackAccepted + feedbackEdited + feedbackRejected;
+  const suggestionPositive = feedbackAccepted + feedbackEdited;
+  const acceptanceRate =
+    feedbackWithAction > 0
+      ? Math.round((suggestionPositive / feedbackWithAction) * 1000) / 10
+      : null;
 
   return {
     available: true,
-    totalRuns: count ?? list.length,
+    totalRuns: totalRuns ?? 0,
+    successRuns: successRuns ?? 0,
+    failedRuns: failedRuns ?? 0,
     byFeature: Object.entries(byFeature).map(([feature, runCount]) => ({ feature, runCount })),
     tokensInput: tokensIn,
     tokensOutput: tokensOut,
+    tokensTotal: tokensIn + tokensOut,
     latencyMsP50: p50,
     latencyMsP95: p95,
     aiAssignedConversations: aiConvCount ?? 0,
-    feedbackCount: feedbackCount ?? 0,
+    feedbackCount: feedbackWithAction,
+    feedbackAccepted,
+    feedbackEdited,
+    feedbackRejected,
+    acceptanceRate,
+  };
+}
+
+/**
+ * Paginated ai_runs for Reports drill-down.
+ * @param {string} organizationId
+ * @param {object} opts
+ * @param {Date} opts.fromDate
+ * @param {Date} opts.toExclusive
+ * @param {number} [opts.page]
+ * @param {number} [opts.pageSize]
+ * @param {string | null} [opts.feature]
+ * @param {string | null} [opts.status]
+ */
+export async function fetchAiRunsPaginated(
+  organizationId,
+  { fromDate, toExclusive, page = 1, pageSize = 20, feature = null, status = null },
+) {
+  const fromIso = fromDate.toISOString();
+  const toIso = toExclusive.toISOString();
+  const limit = Math.min(100, Math.max(1, Math.floor(pageSize)));
+  const pageNum = Math.max(1, Math.floor(page));
+  const offset = (pageNum - 1) * limit;
+
+  let q = supabaseAdmin
+    .from('ai_runs')
+    .select(
+      'id, feature, model, status, latency_ms, input_tokens, output_tokens, error_code, conversation_id, created_at',
+      { count: 'exact' },
+    )
+    .eq('organization_id', organizationId)
+    .gte('created_at', fromIso)
+    .lt('created_at', toIso)
+    .order('created_at', { ascending: false });
+
+  if (feature) q = q.eq('feature', feature);
+  if (status) q = q.eq('status', status);
+
+  const { data, error, count } = await q.range(offset, offset + limit - 1);
+
+  if (error) {
+    if (isMissingAiTable(error)) {
+      return {
+        available: false,
+        items: [],
+        pagination: { page: pageNum, pageSize: limit, total: 0, totalPages: 0 },
+      };
+    }
+    throw error;
+  }
+
+  const total = count ?? 0;
+  const totalPages = total > 0 ? Math.ceil(total / limit) : 0;
+
+  return {
+    available: true,
+    items: (data ?? []).map((row) => ({
+      id: row.id,
+      feature: row.feature,
+      model: row.model,
+      status: row.status,
+      latencyMs: row.latency_ms,
+      inputTokens: row.input_tokens,
+      outputTokens: row.output_tokens,
+      errorCode: row.error_code,
+      conversationId: row.conversation_id,
+      createdAt: row.created_at,
+    })),
+    pagination: {
+      page: pageNum,
+      pageSize: limit,
+      total,
+      totalPages,
+    },
   };
 }

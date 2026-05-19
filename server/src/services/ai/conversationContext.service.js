@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../config/supabase.js';
 import { HttpError } from '../../utils/httpError.js';
 import { scrubPii } from './utils/piiFilter.js';
+import { wrapUntrustedContext } from './utils/promptInjection.js';
 import { truncateConversation } from './utils/tokenBudget.js';
 
 const MAX_MESSAGES = 40;
@@ -173,7 +174,9 @@ export function buildConversationPromptBlock({
   const transcript = formatTranscriptForPrompt(trimmed);
   const parts = [];
   if (header.length) parts.push(header.join('\n'));
-  if (transcript) parts.push(`Conversation:\n${transcript}`);
+  if (transcript) {
+    parts.push(wrapUntrustedContext('conversation_transcript', transcript));
+  }
 
   return {
     promptText: parts.join('\n\n'),

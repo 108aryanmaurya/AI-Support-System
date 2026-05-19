@@ -3,12 +3,14 @@ import { handleNotifyAssignment } from './jobHandlers/notifyAssignment.js';
 import { handleNotifyStaffInbound } from './jobHandlers/notifyStaffInbound.js';
 import { handleSlaScanOrg } from './jobHandlers/slaScanOrg.js';
 import { handleKnowledgeIngestSource } from './jobHandlers/knowledgeIngestSource.js';
+import { handleClassifyInbound } from './jobHandlers/classifyInbound.js';
 
 const HANDLERS = {
   'notify.staff_inbound': handleNotifyStaffInbound,
   'notify.assignment': handleNotifyAssignment,
   'sla.scan_org': handleSlaScanOrg,
   'knowledge.ingest_source': handleKnowledgeIngestSource,
+  'ai.classify_inbound': handleClassifyInbound,
 };
 
 function backoffSeconds(attempts) {
@@ -61,37 +63,58 @@ export async function runAutomationJob(job) {
 }
 
 /**
- * Load and process one job by id (inline mode).
+ * Atomically claim a single job for inline processing (avoids duplicate runs when
+ * AUTOMATION_PROCESS_INLINE=true and the automation worker run concurrently in dev).
+ *
+ * @param {string} jobId
+ * @returns {Promise<object | null>}
  */
-export async function processAutomationJobById(jobId) {
-  const { data: job, error } = await supabaseAdmin
+async function claimJobForInlineProcessing(jobId) {
+  const { data: prior, error: readErr } = await supabaseAdmin
     .from('automation_jobs')
-    .select('*')
+    .select('id, status, attempts, max_attempts')
     .eq('id', jobId)
     .maybeSingle();
 
-  if (error || !job) return;
+  if (readErr || !prior || prior.status !== 'pending') {
+    return null;
+  }
 
-  if (job.status === 'completed') return;
+  const now = new Date().toISOString();
+  const nextAttempts = (prior.attempts ?? 0) + 1;
 
-  await supabaseAdmin
+  const { data: job, error: claimErr } = await supabaseAdmin
     .from('automation_jobs')
     .update({
       status: 'processing',
-      locked_at: new Date().toISOString(),
+      locked_at: now,
       locked_by: 'inline',
-      attempts: (job.attempts ?? 0) + 1,
+      attempts: nextAttempts,
     })
-    .eq('id', jobId);
+    .eq('id', jobId)
+    .eq('status', 'pending')
+    .select('*')
+    .maybeSingle();
+
+  if (claimErr || !job) {
+    return null;
+  }
+
+  return { ...job, attempts: nextAttempts, max_attempts: job.max_attempts ?? prior.max_attempts };
+}
+
+/**
+ * Load and process one job by id (inline mode).
+ */
+export async function processAutomationJobById(jobId) {
+  const job = await claimJobForInlineProcessing(jobId);
+  if (!job) return;
 
   try {
     await runAutomationJob(job);
     await markJobCompleted(jobId);
   } catch (e) {
-    await markJobFailed(
-      { ...job, attempts: (job.attempts ?? 0) + 1, max_attempts: job.max_attempts },
-      e?.message ?? String(e),
-    );
+    await markJobFailed(job, e?.message ?? String(e));
     throw e;
   }
 }

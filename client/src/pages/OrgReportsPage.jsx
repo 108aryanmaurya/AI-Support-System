@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
+import { AiRunsTable } from '../components/reports/AiRunsTable.jsx'
 import { ReportsBreakdownBars } from '../components/reports/ReportsBreakdownBars.jsx'
 import { ReportsKpiGrid } from '../components/reports/ReportsKpiGrid.jsx'
 import { ReportsLineChart } from '../components/reports/ReportsLineChart.jsx'
@@ -20,7 +21,7 @@ const TABS = [
   { id: 'ai', label: 'AI' },
 ]
 
-function AiTabPanel({ data, loading, error }) {
+function AiTabPanel({ data, loading, error, organizationId, range }) {
   if (loading) return <p className="text-sm text-slate-400">Loading AI metrics…</p>
   if (error) return <p className="text-sm text-rose-400">{error}</p>
   if (!data) return null
@@ -77,6 +78,20 @@ function AiTabPanel({ data, loading, error }) {
       deltaPercent: 0,
       unit: 'count',
     },
+    {
+      id: 'ai_acceptance',
+      label: 'Suggestion acceptance',
+      value: data.acceptanceRate != null ? `${data.acceptanceRate}%` : '—',
+      deltaPercent: data.acceptanceRateDelta ?? 0,
+      unit: 'percent',
+    },
+    {
+      id: 'ai_failed',
+      label: 'Failed runs',
+      value: data.failedRuns ?? 0,
+      deltaPercent: 0,
+      unit: 'count',
+    },
   ]
 
   return (
@@ -92,6 +107,13 @@ function AiTabPanel({ data, loading, error }) {
       {data.latencyMsP95 != null ? (
         <p className="text-xs text-slate-500">Latency p95: {data.latencyMsP95} ms</p>
       ) : null}
+      {(data.feedbackAccepted != null || data.feedbackEdited != null) && (
+        <p className="text-xs text-slate-500">
+          Feedback: {data.feedbackAccepted ?? 0} accepted, {data.feedbackEdited ?? 0} edited
+          {data.feedbackRejected != null ? `, ${data.feedbackRejected} rejected` : ''}
+        </p>
+      )}
+      {organizationId ? <AiRunsTable organizationId={organizationId} range={range} /> : null}
     </div>
   )
 }
@@ -327,7 +349,15 @@ export default function OrgReportsPage() {
           <KnowledgeTabPanel data={knowledge} loading={loading} error={error} />
         )}
 
-        {tab === 'ai' && <AiTabPanel data={ai} loading={loading} error={error} />}
+        {tab === 'ai' && (
+          <AiTabPanel
+            data={ai}
+            loading={loading}
+            error={error}
+            organizationId={orgId}
+            range={range}
+          />
+        )}
       </div>
     </div>
   )

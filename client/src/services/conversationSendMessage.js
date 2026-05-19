@@ -63,8 +63,11 @@ export function createSendMessage(deps) {
   /**
    * @param {string} conversationId
    * @param {string} rawContent
-   * @param {{ retryOfMessageId?: string }} [options]
-   * @returns {Promise<{ ok: true } | { ok: false; error?: string; skipped?: boolean }>}
+   * @param {{
+   *   retryOfMessageId?: string
+   *   aiLineage?: { isAiGenerated?: boolean; aiRunId?: string; parentMessageId?: string | null }
+   * }} [options]
+   * @returns {Promise<{ ok: true; message?: object } | { ok: false; error?: string; skipped?: boolean }>}
    */
   return async function sendMessage(conversationId, rawContent, options = {}) {
     const validated = validateOutboundMessage(rawContent)
@@ -78,6 +81,8 @@ export function createSendMessage(deps) {
 
     const content = validated.content
     const retryOfMessageId = typeof options.retryOfMessageId === 'string' ? options.retryOfMessageId : ''
+    const aiLineage =
+      options.aiLineage && typeof options.aiLineage === 'object' ? options.aiLineage : null
 
     const lockKey = conversationId
     if (!lockKey || inFlightByConversationId.get(lockKey)) {
@@ -120,13 +125,22 @@ export function createSendMessage(deps) {
     store.touchConversationWithMessage(conversationId, optimisticMessage)
 
     try {
+      const sendBody = {
+        conversation_id: conversationId,
+        content,
+        client_request_id: clientRequestId,
+      }
+      if (aiLineage?.isAiGenerated && aiLineage.aiRunId) {
+        sendBody.is_ai_generated = true
+        sendBody.ai_run_id = aiLineage.aiRunId
+        if (aiLineage.parentMessageId) {
+          sendBody.parent_message_id = aiLineage.parentMessageId
+        }
+      }
+
       const data = await apiFetch(`/api/org/${encodeURIComponent(organizationId)}/messages/send`, {
         method: 'POST',
-        body: JSON.stringify({
-          conversation_id: conversationId,
-          content,
-          client_request_id: clientRequestId,
-        }),
+        body: JSON.stringify(sendBody),
       })
 
       const serverMessage = data?.message
@@ -148,7 +162,7 @@ export function createSendMessage(deps) {
         store.touchConversationWithMessage(conversationId, merged)
       }
 
-      return { ok: true }
+      return { ok: true, message: serverMessage ?? null }
     } catch (err) {
       const list = useInboxStore.getState().messagesByConversationId[conversationId] ?? []
       const prev = list.find((m) => m.id === optimisticId)

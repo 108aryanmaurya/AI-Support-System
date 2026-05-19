@@ -49,7 +49,12 @@ export const rateLimitConfig = Object.freeze({
     userMax: parsePositiveInt(process.env.RATE_LIMIT_AI_USER_MAX, 30),
     orgWindowMs: parsePositiveInt(process.env.RATE_LIMIT_AI_ORG_WINDOW_MS, 60_000),
     orgMax: parsePositiveInt(process.env.RATE_LIMIT_AI_ORG_MAX, 60),
+    /** Default per-user cap when a route does not use heavy/composer tiers. */
     orgUserMax: parsePositiveInt(process.env.RATE_LIMIT_AI_ORG_USER_MAX, 20),
+    /** Suggest-reply / summarize (higher token cost). */
+    heavyUserMax: parsePositiveInt(process.env.RATE_LIMIT_AI_HEAVY_USER_MAX, 12),
+    /** Translate / rewrite / feedback (lighter). */
+    composerUserMax: parsePositiveInt(process.env.RATE_LIMIT_AI_COMPOSER_USER_MAX, 40),
   }),
 
   agentSend: Object.freeze({

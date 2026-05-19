@@ -1,5 +1,6 @@
 import {
   getAnalyticsAi,
+  getAnalyticsAiRuns,
   getAnalyticsConversations,
   getAnalyticsKnowledge,
   getAnalyticsOverview,
@@ -49,6 +50,15 @@ export async function analyticsAiController(req, res, next) {
 export async function analyticsKnowledgeController(req, res, next) {
   try {
     const data = await getAnalyticsKnowledge(req.organizationId, req.query);
+    res.json(data);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function analyticsAiRunsController(req, res, next) {
+  try {
+    const data = await getAnalyticsAiRuns(req.organizationId, req.query);
     res.json(data);
   } catch (e) {
     next(e);

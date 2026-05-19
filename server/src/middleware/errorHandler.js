@@ -15,18 +15,26 @@ export function errorHandler(err, req, res, next) {
   }
 
   const status = err.status ?? err.statusCode ?? 500;
+  const exposeClientMessage =
+    status < 500 || status === 502 || status === 503 || status === 504;
   const message =
-    status >= 500 && process.env.NODE_ENV === 'production'
+    !exposeClientMessage && process.env.NODE_ENV === 'production'
       ? 'Internal Server Error'
       : err.message ?? 'Internal Server Error';
 
-  if (status >= 500) {
+  if (status >= 500 && !exposeClientMessage) {
     // eslint-disable-next-line no-console
     console.error(err);
   }
 
+  if (err.retryAfterSeconds != null && Number.isFinite(err.retryAfterSeconds)) {
+    res.setHeader('Retry-After', String(Math.ceil(err.retryAfterSeconds)));
+  }
+
   res.status(status).json({
     error: message,
+    ...(err.code ? { code: err.code } : {}),
+    ...(err.retryAfterSeconds != null ? { retryAfterSeconds: err.retryAfterSeconds } : {}),
     ...(process.env.NODE_ENV !== 'production' && err.stack ? { stack: err.stack } : {}),
   });
 }

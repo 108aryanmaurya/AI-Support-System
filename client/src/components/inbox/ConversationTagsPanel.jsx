@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { fetchOrgTags, setConversationTags } from '../../services/tagsApi.js'
 import { apiFetch } from '../../services/api.js'
 
@@ -63,7 +64,16 @@ export function ConversationTagsPanel({ organizationId, conversationId, onUpdate
     <div className="flex flex-col gap-2">
       <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Tags</span>
       {allTags.length === 0 ? (
-        <p className="text-xs text-slate-500">No tags defined. Admins can create tags via API.</p>
+        <p className="text-xs text-slate-500">
+          No tags defined.{' '}
+          <Link
+            to={`/org/${organizationId}/settings/tags`}
+            className="text-[#3ECF8E] hover:underline"
+          >
+            Create tags in settings
+          </Link>
+          .
+        </p>
       ) : (
         <div className="flex flex-wrap gap-1.5">
           {allTags.map((tag) => {

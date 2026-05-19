@@ -6,11 +6,13 @@ Side effects that must not block HTTP requests (staff email, SLA scanning) run t
 
 ## Capabilities
 
-- Job types: `notify.staff_inbound`, `notify.assignment`, `sla.scan_org`, `knowledge.ingest_source`
+- Job types: `notify.staff_inbound`, `notify.assignment`, `sla.scan_org`, `knowledge.ingest_source`, `ai.classify_inbound`
 - Worker polls via `claim_automation_jobs` RPC
 - Org settings in `organizations.settings.automation` (SLA minutes, notify toggles) — edited via [org-ai-settings](./org-ai-settings.md)
 - Optional internal email via Resend env vars
 - Cron endpoint enqueues SLA scans for all orgs
+
+**Dev note:** `npm run dev` starts the automation worker. Set `AUTOMATION_PROCESS_INLINE=false` (default in `.env.example`) so assignment/inbound emails are not sent twice (inline API processing + worker). Inline enqueue uses an atomic `pending` claim so a race with the worker cannot double-send if both are enabled.
 
 ## Architecture
 
@@ -32,6 +34,7 @@ flowchart LR
 | Enqueue | `server/src/services/automation/enqueueJob.service.js` |
 | Notify facade | `server/src/services/automation/automationNotify.service.js` |
 | Handlers | `server/src/services/automation/jobHandlers/*.js` |
+| Classification | `server/src/services/ai/classification.service.js`, `jobHandlers/classifyInbound.js` |
 | Staff email | `server/src/services/customerInboundNotification.service.js`, `conversationAssignmentNotification.service.js`, `internalNotificationMail.service.js` |
 | Cron route | `server/src/routes/internalCron.routes.js` |
 | Shared types | `shared/src/automationJobTypes.js` |

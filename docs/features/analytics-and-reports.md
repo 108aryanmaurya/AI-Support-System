@@ -46,6 +46,7 @@ flowchart LR
 | GET | `/api/org/:orgId/analytics/conversations` |
 | GET | `/api/org/:orgId/analytics/team` |
 | GET | `/api/org/:orgId/analytics/ai` |
+| GET | `/api/org/:orgId/analytics/ai/runs` | Paginated `ai_runs` (`page`, `pageSize`, `feature`, `status`, date range) |
 | GET | `/api/org/:orgId/analytics/knowledge` |
 
 Query params include date range (`from`, `to`) parsed in `dateRange.js`.

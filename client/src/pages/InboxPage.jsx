@@ -35,6 +35,15 @@ import { useRealtimeInbox } from '../hooks/useRealtimeInbox.js'
 import { formatTypingIndicator, useTypingPresence } from '../hooks/useTypingPresence.js'
 import { InboxSidebar } from '../components/InboxSidebar.jsx'
 import { ConversationTagsPanel } from '../components/inbox/ConversationTagsPanel.jsx'
+import { InboxCopilotPanel } from '../components/inbox/InboxCopilotPanel.jsx'
+import { ComposerAiMenu } from '../components/inbox/ComposerAiMenu.jsx'
+import { ComposerAiPreviewModal } from '../components/inbox/ComposerAiPreviewModal.jsx'
+import { postAiFeedback, rewrite, translate } from '../services/aiApi.js'
+import {
+  findLastCustomerMessageId,
+  inferSuggestFeedbackAction,
+} from '../utils/inboxAiLineage.js'
+import { fetchOrgAiSettings } from '../services/orgSettingsApi.js'
 import { fetchOrgTags } from '../services/tagsApi.js'
 import { useInboxSidebarActions } from '../hooks/useInboxSidebarActions.js'
 import {
@@ -195,8 +204,15 @@ export default function InboxPage() {
   const [assignMenuOpen, setAssignMenuOpen] = useState(false)
   const [conversationDetailSaving, setConversationDetailSaving] = useState(false)
   const [spamUpdating, setSpamUpdating] = useState(false)
+  const [sidebarTab, setSidebarTab] = useState('details')
+  const [orgAiSettings, setOrgAiSettings] = useState(null)
+  /** @type {[{ runId: string, sourceText: string, parentMessageId: string | null } | null]} */
+  const [pendingSuggestLineage, setPendingSuggestLineage] = useState(null)
+  const [aiPreview, setAiPreview] = useState(null)
 
   const messagesScrollRef = useRef(null)
+  const composerTextareaRef = useRef(null)
+  const composerSelectionRef = useRef({ start: 0, end: 0 })
   const assignMenuRef = useRef(null)
   const stickToBottomRef = useRef(true)
 
@@ -254,6 +270,180 @@ export default function InboxPage() {
       cancelled = true
     }
   }, [organizationId])
+
+  useEffect(() => {
+    if (!organizationId) {
+      setOrgAiSettings(null)
+      return undefined
+    }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const data = await fetchOrgAiSettings(organizationId)
+        if (!cancelled) setOrgAiSettings(data?.ai ?? null)
+      } catch {
+        if (!cancelled) setOrgAiSettings(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [organizationId])
+
+  const activeMessages = messagesByConversationId[activeConversationId] ?? []
+
+  const handleCopilotInsertReply = useCallback(
+    (text, meta) => {
+      const next = typeof text === 'string' ? text.trim() : ''
+      if (!next) return
+      setDraftMessage(next)
+      if (meta?.runId) {
+        setPendingSuggestLineage({
+          runId: meta.runId,
+          sourceText: meta.sourceText ?? next,
+          parentMessageId: findLastCustomerMessageId(activeMessages),
+        })
+      }
+    },
+    [activeMessages],
+  )
+
+  useEffect(() => {
+    setPendingSuggestLineage(null)
+    setAiPreview(null)
+  }, [activeConversationId])
+
+  const activeConversationAiEnabled = useMemo(() => {
+    const row = conversations.find((item) => item.id === activeConversationId)
+    return row?.ai_enabled
+  }, [conversations, activeConversationId])
+
+  const composerAiDisabledReason = useMemo(() => {
+    if (!organizationId) return 'No organization selected.'
+    if (!activeConversationId) return 'Select a conversation first.'
+    if (orgAiSettings?.ai_enabled === false) return 'AI is disabled for this organization.'
+    if (orgAiSettings?.assist_enabled === false) return 'AI assist is turned off.'
+    if (activeConversationAiEnabled === false) return 'AI is disabled for this conversation.'
+    return null
+  }, [organizationId, activeConversationId, orgAiSettings, activeConversationAiEnabled])
+
+  const captureComposerSelection = useCallback(() => {
+    const el = composerTextareaRef.current
+    if (!el) {
+      composerSelectionRef.current = { start: 0, end: draftMessage.length }
+      return
+    }
+    composerSelectionRef.current = { start: el.selectionStart, end: el.selectionEnd }
+  }, [draftMessage.length])
+
+  const getComposerTargetText = useCallback(() => {
+    const { start, end } = composerSelectionRef.current
+    if (start !== end) return draftMessage.slice(start, end)
+    return draftMessage.trim()
+  }, [draftMessage])
+
+  const applyComposerAiReplace = useCallback(
+    (proposed, meta) => {
+      const text = typeof proposed === 'string' ? proposed : ''
+      if (!text.trim()) return
+      const { start, end } = composerSelectionRef.current
+      const full = draftMessage
+      const next =
+        start !== end ? `${full.slice(0, start)}${text}${full.slice(end)}` : text
+      setDraftMessage(next)
+      if (meta?.runId) {
+        setPendingSuggestLineage({
+          runId: meta.runId,
+          sourceText: meta.sourceText ?? text,
+          parentMessageId: findLastCustomerMessageId(activeMessages),
+        })
+      }
+    },
+    [draftMessage, activeMessages],
+  )
+
+  const runComposerTranslate = useCallback(
+    async (targetLanguage) => {
+      if (!organizationId || composerAiDisabledReason) return
+      captureComposerSelection()
+      const source = getComposerTargetText()
+      if (!source.trim()) {
+        setError('Type a message (or select text) before translating.')
+        return
+      }
+      setAiPreview({
+        mode: 'translate',
+        title: `Translate to ${targetLanguage}`,
+        original: source,
+        proposed: '',
+        loading: true,
+        runId: null,
+      })
+      setError('')
+      try {
+        const res = await translate(organizationId, { text: source, targetLanguage })
+        const proposed = res.translation ?? res.text ?? ''
+        setAiPreview((prev) =>
+          prev
+            ? {
+                ...prev,
+                proposed,
+                loading: false,
+                runId: res.runId ?? null,
+              }
+            : null,
+        )
+      } catch (err) {
+        setAiPreview(null)
+        setError(err?.message || 'Translation failed.')
+      }
+    },
+    [
+      organizationId,
+      composerAiDisabledReason,
+      captureComposerSelection,
+      getComposerTargetText,
+    ],
+  )
+
+  const runComposerRewrite = useCallback(
+    async (tone) => {
+      if (!organizationId || composerAiDisabledReason) return
+      captureComposerSelection()
+      const source = getComposerTargetText()
+      if (!source.trim()) {
+        setError('Type a message (or select text) before rewriting.')
+        return
+      }
+      setAiPreview({
+        mode: 'rewrite',
+        title: `Rewrite (${tone})`,
+        original: source,
+        proposed: '',
+        loading: true,
+        runId: null,
+      })
+      setError('')
+      try {
+        const res = await rewrite(organizationId, { text: source, tone })
+        const proposed = res.rewritten ?? res.text ?? ''
+        setAiPreview((prev) =>
+          prev
+            ? {
+                ...prev,
+                proposed,
+                loading: false,
+                runId: res.runId ?? null,
+              }
+            : null,
+        )
+      } catch (err) {
+        setAiPreview(null)
+        setError(err?.message || 'Rewrite failed.')
+      }
+    },
+    [organizationId, composerAiDisabledReason, captureComposerSelection, getComposerTargetText],
+  )
 
   const myMembership = useMemo(
     () => orgMembers.find((m) => m.userId === user?.id) ?? null,
@@ -560,22 +750,55 @@ export default function InboxPage() {
     stopTypingImmediately()
 
     const body = validated.content
+    const lineageSnapshot = pendingSuggestLineage
 
     setSendingMessage(true)
     setError('')
     setDraftMessage('')
+    setPendingSuggestLineage(null)
+
+    const sendOpts =
+      lineageSnapshot?.runId
+        ? {
+            aiLineage: {
+              isAiGenerated: true,
+              aiRunId: lineageSnapshot.runId,
+              parentMessageId: lineageSnapshot.parentMessageId,
+            },
+          }
+        : undefined
 
     try {
-      const result = await sendMessage(activeConversationId, body)
+      const result = await sendMessage(activeConversationId, body, sendOpts)
 
       if (!result.ok && !result.skipped) {
         setError(result.error || 'Failed to send message.')
         setDraftMessage(body)
+        if (lineageSnapshot) setPendingSuggestLineage(lineageSnapshot)
+      } else if (result.ok && lineageSnapshot?.runId) {
+        const action = inferSuggestFeedbackAction(body, lineageSnapshot.sourceText)
+        const messageId = result.message?.id ?? null
+        try {
+          await postAiFeedback(organizationId, {
+            aiRunId: lineageSnapshot.runId,
+            action,
+            ...(messageId ? { messageId } : {}),
+          })
+        } catch (feedbackErr) {
+          console.warn('[inbox] AI feedback failed:', feedbackErr?.message || feedbackErr)
+        }
       }
     } finally {
       setSendingMessage(false)
     }
-  }, [activeConversationId, draftMessage, organizationId, sendMessage, stopTypingImmediately])
+  }, [
+    activeConversationId,
+    draftMessage,
+    organizationId,
+    sendMessage,
+    stopTypingImmediately,
+    pendingSuggestLineage,
+  ])
 
   const handleRetryMessage = useCallback(
     async (message) => {
@@ -792,10 +1015,24 @@ export default function InboxPage() {
           </div>
 
           <div className="mx-3 mb-3 mt-auto shrink-0 rounded-xl border border-[#2b3652] bg-[#1a2338] p-3">
-            <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
-              <MessageSquare size={14} /> Reply <ChevronDown size={14} />
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-semibold">
+                <MessageSquare size={14} /> Reply
+              </div>
+              <ComposerAiMenu
+                disabled={Boolean(composerAiDisabledReason) || sendingMessage}
+                disabledReason={composerAiDisabledReason}
+                onTranslate={(lang) => void runComposerTranslate(lang)}
+                onRewrite={(tone) => void runComposerRewrite(tone)}
+              />
             </div>
+            {pendingSuggestLineage?.runId ? (
+              <p className="mb-2 text-[10px] text-violet-300/90">
+                AI-assisted draft — tracked when you send.
+              </p>
+            ) : null}
             <textarea
+              ref={composerTextareaRef}
               value={draftMessage}
               onChange={(event) => {
                 const next = event.target.value
@@ -804,6 +1041,7 @@ export default function InboxPage() {
                   onComposerActivity()
                 } else {
                   stopTypingImmediately()
+                  setPendingSuggestLineage(null)
                 }
               }}
               onKeyDown={onComposerKeyDown}
@@ -825,14 +1063,59 @@ export default function InboxPage() {
               </button>
             </div>
           </div>
+          <ComposerAiPreviewModal
+            open={Boolean(aiPreview)}
+            title={aiPreview?.title ?? 'AI preview'}
+            original={aiPreview?.original ?? ''}
+            proposed={aiPreview?.proposed ?? ''}
+            loading={Boolean(aiPreview?.loading)}
+            onCancel={() => setAiPreview(null)}
+            onReplace={() => {
+              if (!aiPreview?.proposed?.trim()) return
+              applyComposerAiReplace(aiPreview.proposed, {
+                runId: aiPreview.runId,
+                sourceText: aiPreview.proposed,
+              })
+              setAiPreview(null)
+            }}
+          />
         </section>
 
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#141b2d] text-sm">
           <div className="flex shrink-0 gap-4 border-b border-[#27314a] p-4">
-            <button className="text-lg text-white">Details</button>
-            <button className="text-lg text-slate-400">Copilot</button>
+            <button
+              type="button"
+              onClick={() => setSidebarTab('details')}
+              className={`text-lg ${sidebarTab === 'details' ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              Details
+            </button>
+            <button
+              type="button"
+              onClick={() => setSidebarTab('copilot')}
+              className={`text-lg ${sidebarTab === 'copilot' ? 'text-white' : 'text-slate-400 hover:text-slate-200'}`}
+            >
+              Copilot
+            </button>
           </div>
           <div className="inbox-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 text-slate-300 [scrollbar-gutter:stable]">
+            {sidebarTab === 'copilot' ? (
+              <InboxCopilotPanel
+                organizationId={organizationId}
+                conversationId={activeConversationId}
+                conversationAiEnabled={selectedConversation?.ai_enabled}
+                conversationClassification={
+                  selectedConversation?.metadata?.ai &&
+                  typeof selectedConversation.metadata.ai === 'object'
+                    ? selectedConversation.metadata.ai
+                    : null
+                }
+                orgAi={orgAiSettings}
+                onInsertReply={handleCopilotInsertReply}
+              />
+            ) : null}
+            {sidebarTab === 'details' ? (
+            <>
             <div className="flex flex-col gap-2">
               <div className="flex items-start justify-between gap-2">
                 <span className="shrink-0">Assignee</span>
@@ -1043,6 +1326,8 @@ export default function InboxPage() {
             <div className="flex items-center gap-2"><Bell size={14} /> Alerts</div>
             <div className="flex items-center gap-2"><Clock3 size={14} /> Last updated {getRelativeTimeLabel(selectedConversation?.last_message_at)}</div>
             <div className="flex items-center gap-2"><Phone size={14} /> Voice available</div>
+            </>
+            ) : null}
           </div>
         </aside>
       </div>

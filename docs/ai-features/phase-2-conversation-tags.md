@@ -10,6 +10,7 @@ Org-scoped **tag definitions** and **conversation tagging** for inbox organizati
 - List tags; get/set tags on a conversation
 - Inbox **tag filter** via `?tagId=` on conversation list API
 - UI: `ConversationTagsPanel` on active thread; tag filter in inbox sidebar
+- **Settings** — `OrgTagsSettingsPage` at `/org/:orgId/settings/tags` (create, edit, delete definitions; ADMIN mutations)
 - Patch conversation accepts `tagIds` array
 
 ## Architecture
@@ -32,7 +33,7 @@ flowchart LR
 | Controller | `server/src/controllers/tags.controller.js` |
 | Service | `server/src/services/tags.service.js` |
 | Inbox filter | `server/src/services/conversationInboxFilters.service.js` |
-| Client | `client/src/services/tagsApi.js`, `client/src/components/inbox/ConversationTagsPanel.jsx` |
+| Client | `client/src/services/tagsApi.js`, `client/src/components/inbox/ConversationTagsPanel.jsx`, `client/src/pages/OrgTagsSettingsPage.jsx` |
 | Migration | `20260517150000_knowledge_base.sql` (tag tables in same migration) |
 
 ## API
@@ -57,8 +58,9 @@ Conversations list: `GET .../conversations?tagId=<uuid>` (with existing filter p
 |---------|----------------|
 | [Support inbox](../features/support-inbox.md) | Filters and thread panel |
 | [Phase 2 knowledge](./phase-2-knowledge-base.md) | Same Phase 2 delivery; separate concern |
-| [AI stubs](./ai-stubs-and-phase-3-prerequisites.md) | Future `classification.service` may write tags |
+| [Org AI settings](../features/org-ai-settings.md) | `auto_tag_enabled` applies LLM labels only when names match definitions here |
+| [Phase 3 classification](./phase-3-sprints.md) | `ai.classify_inbound` may write `conversation_tags` when enabled |
 
 ## Status
 
-**Shipped.** AI-driven auto-tagging not implemented.
+**Shipped.** Tag definition management UI in workspace settings. AI auto-tagging applies matching definitions when `auto_tag_enabled` is on (see Phase 3).

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import {
   analyticsAiController,
+  analyticsAiRunsController,
   analyticsConversationsController,
   analyticsKnowledgeController,
   analyticsOverviewController,
@@ -13,6 +14,7 @@ router.get('/overview', analyticsOverviewController);
 router.get('/conversations', analyticsConversationsController);
 router.get('/team', analyticsTeamController);
 router.get('/ai', analyticsAiController);
+router.get('/ai/runs', analyticsAiRunsController);
 router.get('/knowledge', analyticsKnowledgeController);
 
 export default router;

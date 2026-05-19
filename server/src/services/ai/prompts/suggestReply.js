@@ -1,7 +1,9 @@
+import { PROMPT_INJECTION_SYSTEM_RULES } from '../utils/promptInjection.js';
+
 /**
  * @param {object} params
- * @param {string} params.conversationBlock
- * @param {string} [params.knowledgeContext]
+ * @param {string} params.conversationBlock — already wrapped untrusted transcript
+ * @param {string} [params.knowledgeContext] — wrapped knowledge excerpt
  * @param {string} [params.styleGuide]
  * @param {string} [params.tone]
  * @param {string} [params.length]
@@ -19,6 +21,7 @@ export function buildSuggestReplyMessages({
     'Never mention that you are an AI.',
     'Never fabricate policies, refunds, or legal commitments.',
     'If uncertain, suggest the agent ask for clarification.',
+    PROMPT_INJECTION_SYSTEM_RULES,
     styleGuide ? `Organization style: ${styleGuide}` : '',
     `Use a ${tone} tone.`,
     `Target reply length: ${length}.`,
@@ -28,11 +31,12 @@ export function buildSuggestReplyMessages({
     .filter(Boolean)
     .join(' ');
 
-  let user = conversationBlock;
+  const contextParts = [conversationBlock];
   if (knowledgeContext?.trim()) {
-    user += `\n\nRelevant knowledge:\n${knowledgeContext.trim()}`;
+    contextParts.push(knowledgeContext.trim());
   }
-  user += '\n\nGenerate a reply draft for the human agent in the required JSON schema.';
+
+  const user = `${contextParts.join('\n\n')}\n\nTask (outside UNTRUSTED_CONTEXT): Generate a reply draft for the human agent in the required JSON schema.`;
 
   return [
     { role: 'system', content: system },
