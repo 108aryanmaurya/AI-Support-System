@@ -6,7 +6,7 @@ Workspace admins configure org-level **AI feature flags** and **automation toggl
 
 ## Capabilities
 
-- View and edit AI master switch, phase-labeled toggles (assist, auto-tag, auto-route, autonomous replies), default per-conversation AI flag, model tier placeholder
+- View and edit AI master switch, phase-labeled toggles (assist, auto-tag, auto-route, workflow automation, autonomous replies), default per-conversation AI flag, model tier placeholder
 - View and edit automation: inbound/assignment email notifications, SLA enable + first-response minutes
 - Non-admins can view settings; only `ADMIN` can `PATCH`
 - Master AI off disables dependent toggles in the UI and blocks `assigned_to_ai` assignment server-side

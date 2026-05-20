@@ -27,7 +27,7 @@ Per-feature implementation guides for the AI Support System monorepo. Each doc e
 
 - [IMPLEMENTED-FEATURES.md](../IMPLEMENTED-FEATURES.md) — short bullet inventory of everything shipped
 - [AI-FEATURE-DESIGN.md](./ai-features/AI-FEATURE-DESIGN.md) — AI roadmap and future phases
-- [ai-features/README.md](./ai-features/README.md) — per-phase implementation status (Phase 1–2 shipped, Phase 3 partial)
+- [ai-features/README.md](./ai-features/README.md) — per-phase implementation status (Phase 1–2 shipped, Phase 3 partial; Phase 4 [sprint plan](./ai-features/phase-4-sprint.md))
 
 ## Doc template
 

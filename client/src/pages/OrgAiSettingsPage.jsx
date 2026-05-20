@@ -221,6 +221,14 @@ export default function OrgAiSettingsPage() {
                   onChange={(v) => setAi((prev) => ({ ...prev, auto_tag_enabled: v }))}
                 />
                 <ToggleRow
+                  label="Workflow automation"
+                  description="Run Phase 4 routing rules via the automation worker (inbound, tags, SLA triggers)."
+                  phase="Phase 4"
+                  checked={ai.workflow_automation_enabled}
+                  disabled={!isAdmin || masterOff}
+                  onChange={(v) => setAi((prev) => ({ ...prev, workflow_automation_enabled: v }))}
+                />
+                <ToggleRow
                   label="Auto-route to AI queue"
                   description="Assign unassigned conversations to the AI queue when rules match."
                   phase="Phase 4"

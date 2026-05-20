@@ -28,6 +28,7 @@ function buildAiPatch(body) {
     'assist_enabled',
     'auto_tag_enabled',
     'auto_route_to_ai',
+    'workflow_automation_enabled',
     'autonomous_replies_enabled',
     'default_conversation_ai_enabled',
   ];
@@ -88,6 +89,7 @@ export async function getOrgAiSettingsController(req, res, next) {
           assist: 'Phase 3',
           autoTag: 'Phase 3–4',
           autoRoute: 'Phase 4',
+          workflowAutomation: 'Phase 4',
           autonomous: 'Phase 6',
         },
       },

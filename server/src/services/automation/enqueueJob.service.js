@@ -1,12 +1,16 @@
-import { isAutomationJobType } from '@ai-support/shared';
+import { isAutomationJobType, isWorkflowAutomationJobType } from '@ai-support/shared';
 import { supabaseAdmin } from '../../config/supabase.js';
 import { getOrgAutomationSettings } from './orgAutomationSettings.service.js';
+import { getOrgAiSettings } from '../orgSettings.service.js';
 import { processAutomationJobById } from './processJob.service.js';
 
-function isJobTypeAllowedBySettings(jobType, settings) {
-  if (jobType === 'notify.staff_inbound') return settings.inbound_notify_enabled;
-  if (jobType === 'notify.assignment') return settings.assignment_notify_enabled;
-  if (jobType === 'sla.scan_org') return settings.sla_enabled;
+function isJobTypeAllowedBySettings(jobType, automationSettings, aiSettings) {
+  if (jobType === 'notify.staff_inbound') return automationSettings.inbound_notify_enabled;
+  if (jobType === 'notify.assignment') return automationSettings.assignment_notify_enabled;
+  if (jobType === 'sla.scan_org') return automationSettings.sla_enabled;
+  if (isWorkflowAutomationJobType(jobType)) {
+    return Boolean(aiSettings.ai_enabled && aiSettings.workflow_automation_enabled);
+  }
   return true;
 }
 
@@ -32,16 +36,23 @@ export async function enqueueAutomationJob({
     return { jobId: null, skipped: true, reason: 'unknown_job_type' };
   }
 
-  let settings;
+  let automationSettings;
+  let aiSettings;
   try {
-    settings = await getOrgAutomationSettings(organizationId);
+    automationSettings = await getOrgAutomationSettings(organizationId);
+    aiSettings = await getOrgAiSettings(organizationId);
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('[automation] settings load failed', e?.message);
-    settings = { inbound_notify_enabled: true, assignment_notify_enabled: true, sla_enabled: true };
+    automationSettings = {
+      inbound_notify_enabled: true,
+      assignment_notify_enabled: true,
+      sla_enabled: true,
+    };
+    aiSettings = { ai_enabled: false, workflow_automation_enabled: false };
   }
 
-  if (!isJobTypeAllowedBySettings(jobType, settings)) {
+  if (!isJobTypeAllowedBySettings(jobType, automationSettings, aiSettings)) {
     return { jobId: null, skipped: true, reason: 'disabled_by_org_settings' };
   }
 

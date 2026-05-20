@@ -33,6 +33,23 @@ export { SUPPORT_EVENT_TYPES, isSupportEventType } from './supportEventTypes.js'
 
 export { AUTOMATION_JOB_TYPES, isAutomationJobType } from './automationJobTypes.js';
 
+export {
+  WORKFLOW_AUTOMATION_JOB_TYPES,
+  isWorkflowAutomationJobType,
+} from './workflowAutomationJobTypes.js';
+
+export {
+  CONVERSATION_METADATA_AI_KEYS,
+  hasConversationMetadataAi,
+  parseConversationMetadataAi,
+} from './conversationMetadataAi.js';
+
+export {
+  workflowInboundIdempotencyKey,
+  workflowSlaWarningIdempotencyKey,
+  workflowTagAddedIdempotencyKey,
+} from './workflowIdempotencyKeys.js';
+
 export { AI_FEATURES, isAiFeature } from './aiFeatures.js';
 
 export {

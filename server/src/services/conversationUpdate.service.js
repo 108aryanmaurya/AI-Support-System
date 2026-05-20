@@ -129,14 +129,12 @@ export async function updateConversationFields({
   }
 
   if (assignment_type === 'assigned_to_ai') {
-    const { getOrgAiSettings } = await import('./orgSettings.service.js');
-    const orgAi = await getOrgAiSettings(organizationId);
-    if (!orgAi.ai_enabled) {
-      throw new HttpError(400, 'AI is disabled for this organization.');
-    }
-    if (!ai_enabled) {
-      throw new HttpError(400, 'Cannot assign to AI when conversation AI is disabled.');
-    }
+    const { assertCanAssignConversationToAi } = await import('./ai/workflowAiGates.service.js');
+    await assertCanAssignConversationToAi({
+      organizationId,
+      conversationId,
+      conversationAiEnabled: ai_enabled,
+    });
   }
 
   if (assigned_to_member_id) {

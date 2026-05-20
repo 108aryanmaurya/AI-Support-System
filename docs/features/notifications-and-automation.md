@@ -6,7 +6,7 @@ Side effects that must not block HTTP requests (staff email, SLA scanning) run t
 
 ## Capabilities
 
-- Job types: `notify.staff_inbound`, `notify.assignment`, `sla.scan_org`, `knowledge.ingest_source`, `ai.classify_inbound`
+- Job types: `notify.staff_inbound`, `notify.assignment`, `sla.scan_org`, `knowledge.ingest_source`, `ai.classify_inbound`, `ai.workflow_inbound`, `ai.workflow_tag_added`, `ai.workflow_sla` (Phase 4 stubs until Sprint 1+)
 - Worker polls via `claim_automation_jobs` RPC
 - Org settings in `organizations.settings.automation` (SLA minutes, notify toggles) — edited via [org-ai-settings](./org-ai-settings.md)
 - Optional internal email via Resend env vars

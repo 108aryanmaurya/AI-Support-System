@@ -73,6 +73,9 @@ export const AUTOMATION_JOB_TYPES: readonly [
   'sla.scan_org',
   'knowledge.ingest_source',
   'ai.classify_inbound',
+  'ai.workflow_inbound',
+  'ai.workflow_tag_added',
+  'ai.workflow_sla',
 ];
 
 export function isAutomationJobType(value: unknown): value is (typeof AUTOMATION_JOB_TYPES)[number];
@@ -99,6 +102,7 @@ export const ORG_AI_SETTINGS_DEFAULTS: {
   assist_enabled: boolean;
   auto_tag_enabled: boolean;
   auto_route_to_ai: boolean;
+  workflow_automation_enabled: boolean;
   autonomous_replies_enabled: boolean;
   default_conversation_ai_enabled: boolean;
   model_tier: string;

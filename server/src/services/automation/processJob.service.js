@@ -4,6 +4,9 @@ import { handleNotifyStaffInbound } from './jobHandlers/notifyStaffInbound.js';
 import { handleSlaScanOrg } from './jobHandlers/slaScanOrg.js';
 import { handleKnowledgeIngestSource } from './jobHandlers/knowledgeIngestSource.js';
 import { handleClassifyInbound } from './jobHandlers/classifyInbound.js';
+import { handleWorkflowInbound } from './jobHandlers/workflowInbound.js';
+import { handleWorkflowTagAdded } from './jobHandlers/workflowTagAdded.js';
+import { handleWorkflowSla } from './jobHandlers/workflowSla.js';
 
 const HANDLERS = {
   'notify.staff_inbound': handleNotifyStaffInbound,
@@ -11,6 +14,9 @@ const HANDLERS = {
   'sla.scan_org': handleSlaScanOrg,
   'knowledge.ingest_source': handleKnowledgeIngestSource,
   'ai.classify_inbound': handleClassifyInbound,
+  'ai.workflow_inbound': handleWorkflowInbound,
+  'ai.workflow_tag_added': handleWorkflowTagAdded,
+  'ai.workflow_sla': handleWorkflowSla,
 };
 
 function backoffSeconds(attempts) {

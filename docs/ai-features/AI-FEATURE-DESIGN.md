@@ -300,6 +300,8 @@ sequenceDiagram
 
 ## 6. Phase 4 — AI Workflow Automation
 
+**Sprint plan:** [phase-4-sprint.md](./phase-4-sprint.md) (Sprints 0–6).
+
 **Goal:** AI-based routing, priority detection, spam filtering, SLA-risk alerts, duplicate detection, and workflow-triggered automations—without full autonomous replies.
 
 ### Prerequisites

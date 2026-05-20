@@ -8,6 +8,8 @@ export const ORG_AI_SETTINGS_DEFAULTS = Object.freeze({
   auto_tag_enabled: false,
   /** Phase 4: route new conversations to AI queue when unassigned. */
   auto_route_to_ai: false,
+  /** Phase 4: master switch for workflow automation jobs (`ai.workflow_*`). */
+  workflow_automation_enabled: false,
   /** Phase 6: allow autonomous customer-visible AI replies. */
   autonomous_replies_enabled: false,
   /** Default for `conversations.ai_enabled` on new conversations. */
@@ -42,6 +44,8 @@ export function mergeOrgAiSettings(raw) {
     assist_enabled: src.assist_enabled ?? ORG_AI_SETTINGS_DEFAULTS.assist_enabled,
     auto_tag_enabled: src.auto_tag_enabled ?? ORG_AI_SETTINGS_DEFAULTS.auto_tag_enabled,
     auto_route_to_ai: src.auto_route_to_ai ?? ORG_AI_SETTINGS_DEFAULTS.auto_route_to_ai,
+    workflow_automation_enabled:
+      src.workflow_automation_enabled ?? ORG_AI_SETTINGS_DEFAULTS.workflow_automation_enabled,
     autonomous_replies_enabled:
       src.autonomous_replies_enabled ?? ORG_AI_SETTINGS_DEFAULTS.autonomous_replies_enabled,
     default_conversation_ai_enabled:
