@@ -54,6 +54,7 @@ import {
   patchConversationSpamUrl,
   patchConversationUrl,
 } from '../services/inboxApi.js'
+import { getConversationAutomationBadges } from '@ai-support/shared'
 import { DEFAULT_INBOX_FILTER, useInboxStore } from '../stores/inboxStore.js'
 import {
   CONVERSATION_ACTIVE_STATUSES,
@@ -119,7 +120,6 @@ function MessageContentRich({ text }) {
 }
 
 function toConversationViewModel(item) {
-  console.log(item)
   const channel = (item.source ?? 'chat').slice(0, 1).toUpperCase() || 'C'
   return {
     ...item,
@@ -127,11 +127,27 @@ function toConversationViewModel(item) {
     body: item.last_message_preview ?? 'No messages yet',
     time: getRelativeTimeLabel(item.last_message_at),
     channel,
+    automationBadges: getConversationAutomationBadges(item.metadata),
   }
 }
 
+const BADGE_TONE_CLASS = {
+  warning: 'border-amber-500/40 bg-amber-950/50 text-amber-200',
+  info: 'border-sky-500/40 bg-sky-950/50 text-sky-200',
+  neutral: 'border-[#3a4b6f] bg-[#18233b] text-slate-300',
+}
+
 const ConversationListRow = memo(
-  function ConversationListRow({ conversationId, title, body, timeLabel, channelLetter, isActive, onSelect }) {
+  function ConversationListRow({
+    conversationId,
+    title,
+    body,
+    timeLabel,
+    channelLetter,
+    automationBadges = [],
+    isActive,
+    onSelect,
+  }) {
     return (
       <article
         role="button"
@@ -157,6 +173,20 @@ const ConversationListRow = memo(
               {title.startsWith('Email') ? <Star size={14} className="fill-yellow-400 text-yellow-400" /> : null}
             </div>
             <p className="mt-1 truncate text-sm text-slate-300">{body}</p>
+            {automationBadges.length > 0 ? (
+              <div className="mt-1.5 flex flex-wrap gap-1">
+                {automationBadges.map((badge) => (
+                  <span
+                    key={badge.id}
+                    className={`rounded border px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide ${
+                      BADGE_TONE_CLASS[badge.tone] ?? BADGE_TONE_CLASS.neutral
+                    }`}
+                  >
+                    {badge.label}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
           <span className="text-xs text-slate-300">{timeLabel}</span>
         </div>
@@ -169,6 +199,10 @@ const ConversationListRow = memo(
     prev.body === next.body &&
     prev.timeLabel === next.timeLabel &&
     prev.channelLetter === next.channelLetter &&
+    (prev.automationBadges ?? [])
+      .map((b) => b.id)
+      .join(',') ===
+      (next.automationBadges ?? []).map((b) => b.id).join(',') &&
     prev.isActive === next.isActive &&
     prev.onSelect === next.onSelect,
 )
@@ -224,6 +258,8 @@ export default function InboxPage() {
     mentionCue,
     activeFilter,
     activeTagId,
+    activeAiIntent,
+    onAiIntentFilterChange,
     filterCounts,
     autoAssignOnSelect,
     setAutoAssignOnSelect,
@@ -843,6 +879,8 @@ export default function InboxPage() {
           orgTags={orgTags}
           activeTagId={activeTagId}
           onTagFilterChange={onTagFilterChange}
+          activeAiIntent={activeAiIntent}
+          onAiIntentFilterChange={onAiIntentFilterChange}
         />
 
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-[#27314a] bg-[#101729]">
@@ -882,6 +920,7 @@ export default function InboxPage() {
                   body={item.body}
                   timeLabel={item.time}
                   channelLetter={item.channel}
+                  automationBadges={item.automationBadges}
                   isActive={item.id === activeConversationId}
                   onSelect={handleSelectConversation}
                 />

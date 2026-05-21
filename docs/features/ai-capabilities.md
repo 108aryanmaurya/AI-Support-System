@@ -2,9 +2,9 @@
 
 ## Overview
 
-**Phase 1–2** infrastructure and **Phase 3 Sprint 0–2** are shipped: org settings, knowledge RAG source, OpenAI-compatible LLM client, `ai_runs` audit log, copilot HTTP APIs, and **Inbox Copilot** sidebar (suggest + summarize).
+**Phase 1–2** infrastructure, **Phase 3** copilot/classification, and **Phase 4** workflow automation are shipped: org settings, knowledge RAG, LLM client, `ai_runs`, copilot APIs, deterministic routing rules, and inbox automation segments.
 
-See [ai-features/README.md](../ai-features/README.md) and [phase-3-prerequisites.md](../ai-features/phase-3-prerequisites.md).
+See [ai-features/README.md](../ai-features/README.md), [phase-3-prerequisites.md](../ai-features/phase-3-prerequisites.md), and [workflow-automation.md](./workflow-automation.md).
 
 ## Capabilities today
 
@@ -26,6 +26,10 @@ All routes use Redis **per-org + per-user** rate limits.
 | POST | `/summarize` | Bullet summary of thread |
 | POST | `/translate` | Translate text |
 | POST | `/rewrite` | Rewrite text tone |
+| GET/PUT | `/workflows/rules` | Phase 4 workflow rules (PUT ADMIN) |
+| GET | `/workflows/metrics` | Queue depth + workflow event counts |
+| POST | `/workflows/dry-run` | Simulate rule match |
+| POST | `/workflows/test-notification` | Test staff notify (ADMIN) |
 
 Legacy: `POST /api/ai/assist` (requires `organizationId` in body; per-user limit only).
 
@@ -34,11 +38,18 @@ Legacy: `POST /api/ai/assist` (requires `organizationId` in body; per-user limit
 - Every model call writes **`ai_runs`** (`feature`, tokens, latency, `prompt_hash`, status)
 - Reports **AI** tab reads `ai_runs` when rows exist
 
-### UI (partial)
+### Workflow automation (Phase 4)
 
-- Inbox: Copilot tab label, AI styling, assign-to-AI
+- Rules engine on `automation_jobs` worker (`ai.workflow_*`)
+- Settings → **Workflow rules** (`/settings/workflows`): enable/order, dry-run, metrics, test email
+- `enqueue_phase6` action is always skipped (structured log + `workflow.action_skipped`)
+- See [workflow-automation.md](./workflow-automation.md)
+
+### UI
+
+- Inbox: Copilot, AI styling, assign-to-AI, automation badges, Phase 4 filters
 - Knowledge sidebar route
-- Settings → AI & Automation
+- Settings → AI & Automation, Workflow rules
 
 ## Architecture
 
@@ -69,6 +80,7 @@ flowchart TB
 | Rate limits | `server/src/middleware/aiRateLimit.js` |
 | Shared | `shared/src/aiFeatures.js` |
 | Settings | `shared/src/orgSettings.js`, `OrgAiSettingsPage.jsx` |
+| Workflows | `shared/src/workflowRules.js`, `workflowRules.service.js`, `OrgWorkflowSettingsPage.jsx` |
 
 ## Connections
 
@@ -78,8 +90,9 @@ flowchart TB
 | [Org AI settings](./org-ai-settings.md) | Feature flags |
 | [Operational hardening](./operational-hardening.md) | `RATE_LIMIT_AI_*` |
 | [Analytics](./analytics-and-reports.md) | AI tab metrics |
-| [Support inbox](./support-inbox.md) | Target UX for copilot |
+| [Support inbox](./support-inbox.md) | Copilot + Phase 4 inbox segments |
+| [Workflow automation](./workflow-automation.md) | Phase 4 rules and worker |
 
 ## Status
 
-**Shipped (Phase 3)** — Copilot, composer AI, classification, analytics, guardrails. Autonomous customer replies remain Phase 6.
+**Shipped (Phase 3–4)** — Copilot, classification, workflow automation, ingress policy, reports hooks. Autonomous customer replies remain Phase 6.

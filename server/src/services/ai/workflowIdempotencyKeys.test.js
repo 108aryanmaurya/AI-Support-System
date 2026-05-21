@@ -17,6 +17,9 @@ describe('workflow idempotency keys', () => {
       workflowTagAddedIdempotencyKey('org', 'conv', 'tag'),
       'workflow:tag:org:conv:tag',
     );
-    assert.equal(workflowSlaWarningIdempotencyKey('org', '2026-05-20'), 'workflow:sla:org:2026-05-20');
+    assert.equal(
+      workflowSlaWarningIdempotencyKey('org', 'conv', '2026-05-20'),
+      'workflow:sla:org:conv:2026-05-20',
+    );
   });
 });

@@ -73,6 +73,8 @@ export const useInboxStore = create((set) => ({
   activeFilter: DEFAULT_INBOX_FILTER,
   /** Optional conversation tag filter (Phase 2). */
   activeTagId: null,
+  /** Classification intent when `activeFilter` is `ai_intent` (Phase 4). */
+  activeAiIntent: null,
   /** Server bucket counts for sidebar badges. */
   filterCounts: {
     inbox: 0,
@@ -81,6 +83,8 @@ export const useInboxStore = create((set) => ({
     all: 0,
     unassigned: 0,
     spam: 0,
+    sla_risk: 0,
+    ingress_spam: 0,
     closed: 0,
   },
   /**
@@ -119,6 +123,8 @@ export const useInboxStore = create((set) => ({
   setActiveFilter: (activeFilter) => set({ activeFilter }),
 
   setActiveTagId: (activeTagId) => set({ activeTagId: activeTagId || null }),
+
+  setActiveAiIntent: (activeAiIntent) => set({ activeAiIntent: activeAiIntent || null }),
 
   setFilterCounts: (counts) =>
     set((state) => ({

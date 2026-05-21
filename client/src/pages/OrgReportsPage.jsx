@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { AiRunsTable } from '../components/reports/AiRunsTable.jsx'
 import { ReportsBreakdownBars } from '../components/reports/ReportsBreakdownBars.jsx'
 import { ReportsKpiGrid } from '../components/reports/ReportsKpiGrid.jsx'
@@ -253,6 +253,33 @@ export default function OrgReportsPage() {
                   {overview.ai.summary.totalRuns ?? 0}{' '}
                   <span className="text-sm font-normal text-slate-400">runs</span>
                 </p>
+              </section>
+            ) : null}
+            {overview?.workflow ? (
+              <section className="rounded-xl border border-emerald-900/30 bg-emerald-950/15 p-4">
+                <h3 className="text-sm font-semibold text-emerald-200">Workflow automation (7d)</h3>
+                <div className="mt-2 flex flex-wrap gap-6 text-sm text-slate-300">
+                  <span>
+                    Queue depth:{' '}
+                    <strong className="text-white">{overview.workflow.queueDepth ?? '—'}</strong>
+                  </span>
+                  <span>
+                    Actions applied:{' '}
+                    <strong className="text-white">{overview.workflow.actionsApplied ?? '—'}</strong>
+                  </span>
+                  <span>
+                    Rules enabled:{' '}
+                    <strong className="text-white">{overview.workflow.rulesEnabled ?? 0}</strong>
+                  </span>
+                </div>
+                {overview.workflow.settingsPath ? (
+                  <Link
+                    to={overview.workflow.settingsPath}
+                    className="mt-2 inline-block text-xs text-[#3ECF8E] hover:underline"
+                  >
+                    Manage workflow rules →
+                  </Link>
+                ) : null}
               </section>
             ) : null}
           </div>

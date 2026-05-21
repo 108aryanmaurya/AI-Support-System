@@ -23,9 +23,17 @@ export async function receiveEmailWebhookController(req, res, next) {
     if (result.status === 'duplicate') {
       res.status(200).json({
         status: 'ignored',
-        reason: 'duplicate_webhook',
+        reason: result.reason ?? 'duplicate_webhook',
         conversationId: result.duplicate.conversation_id,
         messageId: result.duplicate.id,
+      });
+      return;
+    }
+
+    if (result.status === 'spam_rejected') {
+      res.status(422).json({
+        status: 'rejected',
+        reason: 'ingress_spam_policy',
       });
       return;
     }

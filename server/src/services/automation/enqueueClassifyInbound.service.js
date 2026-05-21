@@ -1,8 +1,10 @@
 import { emitAutomationJob } from './enqueueJob.service.js';
 import { canEnqueueInboundClassification } from '../ai/classification.service.js';
+import { scheduleInboundWorkflow } from './enqueueWorkflowInbound.service.js';
 
 /**
  * Fire-and-forget: queue async LLM classification after a customer message is stored.
+ * When classification is not queued, schedules a delayed workflow job as fallback.
  *
  * @param {object} params
  * @param {string} params.organizationId
@@ -13,14 +15,22 @@ export function scheduleInboundClassification({ organizationId, conversationId, 
   void (async () => {
     try {
       const allowed = await canEnqueueInboundClassification(organizationId, conversationId);
-      if (!allowed) return;
+      if (allowed) {
+        emitAutomationJob({
+          organizationId,
+          jobType: 'ai.classify_inbound',
+          payload: { conversationId, messageId },
+          idempotencyKey: `classify:${organizationId}:${messageId}`,
+          maxAttempts: 4,
+        });
+        return;
+      }
 
-      emitAutomationJob({
+      scheduleInboundWorkflow({
         organizationId,
-        jobType: 'ai.classify_inbound',
-        payload: { conversationId, messageId },
-        idempotencyKey: `classify:${organizationId}:${messageId}`,
-        maxAttempts: 4,
+        conversationId,
+        messageId,
+        runAtDelayMs: 0,
       });
     } catch (e) {
       // eslint-disable-next-line no-console

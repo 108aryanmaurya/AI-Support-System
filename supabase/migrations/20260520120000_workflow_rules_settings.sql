@@ -1,0 +1,37 @@
+-- Phase 4 workflow rules live in organizations.settings.workflow (JSONB).
+-- No new table in Sprint 1; schema documented for operators and migrations.
+--
+-- Example shape:
+-- {
+--   "workflow": {
+--     "schema_version": 1,
+--     "updated_at": "2026-05-20T12:00:00.000Z",
+--     "rules": [
+--       {
+--         "id": "uuid",
+--         "name": "Escalate billing frustration",
+--         "enabled": true,
+--         "trigger": "inbound_message",
+--         "sortOrder": 0,
+--         "conditions": {
+--           "op": "all",
+--           "conditions": [
+--             { "field": "intent", "op": "eq", "value": "billing_issue" },
+--             { "field": "sentiment", "op": "in", "value": ["frustrated", "angry"] }
+--           ]
+--         },
+--         "actions": [
+--           { "type": "set_priority", "priority": "high" },
+--           { "type": "notify", "channel": "staff" }
+--         ]
+--       }
+--     ]
+--   }
+-- }
+--
+-- Triggers: inbound_message | sla_warning | tag_added | schedule
+-- Actions: set_assignment | set_priority | add_tag | notify | assign_to_ai | enqueue_phase6
+-- API: GET/PUT /api/org/:orgId/ai/workflows/rules, POST .../dry-run
+
+comment on column public.organizations.settings is
+  'Org JSON settings: ai, automation, workflow (Phase 4 rules), etc.';

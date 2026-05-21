@@ -17,6 +17,7 @@ Per-feature implementation guides for the AI Support System monorepo. Each doc e
 | [analytics-and-reports.md](./features/analytics-and-reports.md) | support_events, reports API & UI |
 | [settings-and-navigation.md](./features/settings-and-navigation.md) | Sidebar, settings shell, routes |
 | [org-ai-settings.md](./features/org-ai-settings.md) | Org AI & automation toggles, `ai_enabled` defaults |
+| [workflow-automation.md](./features/workflow-automation.md) | Phase 4 rules engine, worker jobs, inbox segments, admin UI |
 | [operational-hardening.md](./features/operational-hardening.md) | Rate limits (ingress, AI, webhook) + outbound failure monitoring |
 | [search.md](./features/search.md) | Search page *(partial)* |
 | [ai-capabilities.md](./features/ai-capabilities.md) | AI stubs, schema hooks, roadmap link |

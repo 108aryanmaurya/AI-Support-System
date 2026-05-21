@@ -1,5 +1,6 @@
 import { parseAutomationJobPayload } from '../jobPayload.js';
 import { runInboundClassification } from '../../ai/classification.service.js';
+import { scheduleInboundWorkflow } from '../enqueueWorkflowInbound.service.js';
 
 /**
  * @param {object} job
@@ -36,6 +37,15 @@ export async function handleClassifyInbound(job) {
       conversation_id: conversationId,
       message_id: messageId,
       reason: result.reason,
+    });
+  }
+
+  const skipWorkflow = result.skipped && result.reason === 'not_customer_message';
+  if (!skipWorkflow) {
+    scheduleInboundWorkflow({
+      organizationId: job.organization_id,
+      conversationId,
+      messageId,
     });
   }
 }

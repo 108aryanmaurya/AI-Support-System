@@ -46,9 +46,30 @@ export {
 
 export {
   workflowInboundIdempotencyKey,
+  workflowScheduleScanIdempotencyKey,
   workflowSlaWarningIdempotencyKey,
   workflowTagAddedIdempotencyKey,
 } from './workflowIdempotencyKeys.js';
+
+export {
+  WORKFLOW_SCHEDULE_DEFAULTS,
+  isValidWorkflowTimeHHMM,
+  mergeWorkflowSchedule,
+} from './workflowSchedule.js';
+
+export { getConversationAutomationBadges } from './conversationAutomationBadges.js';
+
+export {
+  WORKFLOW_ACTION_TYPES,
+  WORKFLOW_CONDITION_FIELDS,
+  WORKFLOW_CONDITION_OPS,
+  WORKFLOW_RULES_LIMITS,
+  WORKFLOW_TRIGGERS,
+  mergeOrgWorkflowSettings,
+  validateWorkflowRule,
+  validateWorkflowRules,
+  isWorkflowTrigger,
+} from './workflowRules.js';
 
 export { AI_FEATURES, isAiFeature } from './aiFeatures.js';
 
@@ -75,6 +96,13 @@ export {
   mergeOrgAiSettings,
   mergeOrgAutomationSettings,
 } from './orgSettings.js';
+
+export {
+  INGRESS_DUPLICATE_ACTIONS,
+  INGRESS_SPAM_ACTIONS,
+  ORG_INGRESS_POLICY_DEFAULTS,
+  mergeOrgIngressPolicy,
+} from './ingressPolicy.js';
 
 export {
   KNOWLEDGE_ALLOWED_UPLOAD_EXTENSIONS,

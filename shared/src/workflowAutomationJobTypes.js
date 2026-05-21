@@ -3,6 +3,7 @@ export const WORKFLOW_AUTOMATION_JOB_TYPES = Object.freeze([
   'ai.workflow_inbound',
   'ai.workflow_tag_added',
   'ai.workflow_sla',
+  'ai.workflow_schedule_org',
 ]);
 
 /** @param {unknown} v */

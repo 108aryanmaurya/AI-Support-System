@@ -1,6 +1,9 @@
 import { parseAutomationJobPayload } from '../jobPayload.js';
+import { runSlaWarningWorkflowAutomation } from '../../ai/workflowRules.service.js';
 
 /**
+ * Apply workflow rules for `sla_warning` trigger (enqueued from SLA scan).
+ *
  * @param {object} job
  */
 export async function handleWorkflowSla(job) {
@@ -16,10 +19,11 @@ export async function handleWorkflowSla(job) {
     throw new Error('ai.workflow_sla payload requires conversationId');
   }
 
-  // eslint-disable-next-line no-console
-  console.info('[workflow] ai.workflow_sla stub (Sprint 4+)', {
-    organization_id: job.organization_id,
-    conversation_id: conversationId,
-    job_id: job.id,
+  const slaMinutes = Number(p.slaMinutes ?? p.sla_minutes);
+
+  await runSlaWarningWorkflowAutomation({
+    organizationId: job.organization_id,
+    conversationId,
+    slaMinutes: Number.isFinite(slaMinutes) ? slaMinutes : undefined,
   });
 }

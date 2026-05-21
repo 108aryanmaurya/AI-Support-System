@@ -2,7 +2,14 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { createConversation, createMessage, findOrCreateCustomer } from './support.service.js';
 import { scheduleStaffInboundWithFallback } from './automation/automationNotify.service.js';
-import { scheduleInboundClassification } from './automation/enqueueClassifyInbound.service.js';
+import { scheduleInboundPostCustomerMessage } from './automation/inboundAutomation.service.js';
+import { emitSupportEvent } from './analytics/supportEvents.service.js';
+import {
+  applyInboundIngressPostInsert,
+  evaluateInboundIngressPolicy,
+  logIngressDecision,
+  shouldSkipPostInboundAutomation,
+} from './ingress/ingressPolicy.service.js';
 import { CONVERSATION_ACTIVE_STATUSES } from '@ai-support/shared';
 
 function isMissingColumnError(error, column) {
@@ -341,6 +348,54 @@ export async function processInboundEmail(payload) {
     return { status: 'duplicate', duplicate, organizationId: channel.organization_id };
   }
 
+  const ingressEval = await evaluateInboundIngressPolicy({
+    organizationId: channel.organization_id,
+    channel: 'email',
+    email: payload.fromEmail,
+    message: payload.textBody,
+    externalMessageId: payload.messageId,
+  });
+  logIngressDecision(ingressEval, channel.organization_id);
+
+  if (ingressEval.decision === 'reject_spam') {
+    emitSupportEvent({
+      organizationId: channel.organization_id,
+      eventType: 'ingress.spam_rejected',
+      entityType: 'conversation',
+      entityId: channel.organization_id,
+      channelType: 'email',
+      payload: {
+        email: payload.fromEmail,
+        score: ingressEval.spam?.score,
+        signals: ingressEval.spam?.signals,
+      },
+    });
+    return { status: 'spam_rejected', organizationId: channel.organization_id };
+  }
+
+  if (ingressEval.decision === 'suppress_duplicate' && ingressEval.duplicate) {
+    emitSupportEvent({
+      organizationId: channel.organization_id,
+      eventType: 'ingress.duplicate_suppressed',
+      entityType: 'conversation',
+      entityId: ingressEval.duplicate.conversationId,
+      channelType: 'email',
+      payload: {
+        message_id: ingressEval.duplicate.messageId,
+        email: payload.fromEmail,
+      },
+    });
+    return {
+      status: 'duplicate',
+      duplicate: {
+        id: ingressEval.duplicate.messageId,
+        conversation_id: ingressEval.duplicate.conversationId,
+      },
+      organizationId: channel.organization_id,
+      reason: 'duplicate_content',
+    };
+  }
+
   const { customer } = await findOrCreateCustomer({
     organizationId: channel.organization_id,
     email: payload.fromEmail,
@@ -394,11 +449,21 @@ export async function processInboundEmail(payload) {
   await updateConversationLastMessageAt(conversation.id, channel.organization_id, message.created_at);
 
   const externalId = payload.messageId ? String(payload.messageId) : message.id;
-  scheduleInboundClassification({
+  const ingressPost = await applyInboundIngressPostInsert({
     organizationId: channel.organization_id,
     conversationId: conversation.id,
     messageId: message.id,
+    message: payload.textBody,
+    evaluation: ingressEval,
   });
+
+  if (!shouldSkipPostInboundAutomation(ingressEval) && !ingressPost.flagged) {
+    scheduleInboundPostCustomerMessage({
+      organizationId: channel.organization_id,
+      conversationId: conversation.id,
+      messageId: message.id,
+    });
+  }
 
   void scheduleStaffInboundWithFallback({
     organizationId: channel.organization_id,

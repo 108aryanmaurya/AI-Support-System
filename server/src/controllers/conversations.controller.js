@@ -85,6 +85,11 @@ export async function getConversationsController(req, res, next) {
         ? req.query.tagId.trim()
         : null;
 
+    const aiIntent =
+      typeof req.query.aiIntent === 'string' && req.query.aiIntent.trim()
+        ? req.query.aiIntent.trim()
+        : null;
+
     const pagination = getPagination(req.query);
     const result = await getFilteredConversations({
       filterType,
@@ -92,6 +97,7 @@ export async function getConversationsController(req, res, next) {
       organizationId,
       includeSpam,
       tagId,
+      aiIntent,
       ...pagination,
     });
     res.json(result);

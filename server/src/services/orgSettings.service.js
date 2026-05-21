@@ -1,6 +1,7 @@
 import {
   mergeOrgAiSettings,
   mergeOrgAutomationSettings,
+  mergeOrgIngressPolicy,
 } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
@@ -53,7 +54,17 @@ export async function getOrgAiAndAutomationSettings(organizationId) {
   return {
     ai: mergeOrgAiSettings(settings.ai),
     automation: mergeOrgAutomationSettings(settings.automation),
+    ingress: mergeOrgIngressPolicy(settings.ingress),
   };
+}
+
+/**
+ * @param {string} organizationId
+ */
+export async function getOrgIngressPolicy(organizationId) {
+  const row = await loadSettingsRow(organizationId);
+  const settings = row.settings && typeof row.settings === 'object' ? row.settings : {};
+  return mergeOrgIngressPolicy(settings.ingress);
 }
 
 /**
@@ -77,6 +88,12 @@ export async function patchOrgSettings(organizationId, patch = {}) {
       ...patch.automation,
     };
   }
+  if (patch.ingress && typeof patch.ingress === 'object') {
+    next.ingress = {
+      ...(prior.ingress && typeof prior.ingress === 'object' ? prior.ingress : {}),
+      ...patch.ingress,
+    };
+  }
 
   const { error } = await supabaseAdmin
     .from('organizations')
@@ -90,6 +107,7 @@ export async function patchOrgSettings(organizationId, patch = {}) {
   return {
     ai: mergeOrgAiSettings(next.ai),
     automation: mergeOrgAutomationSettings(next.automation),
+    ingress: mergeOrgIngressPolicy(next.ingress),
   };
 }
 

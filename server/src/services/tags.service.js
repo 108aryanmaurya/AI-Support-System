@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { ensureOrgMembership } from './support.service.js';
+import { scheduleWorkflowTagsAdded } from './automation/enqueueWorkflowTagAdded.service.js';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -186,6 +187,13 @@ export async function setConversationTags({
 
   await loadConversation(organizationId, conversationId);
 
+  const { data: priorRows } = await supabaseAdmin
+    .from('conversation_tags')
+    .select('tag_id')
+    .eq('conversation_id', conversationId)
+    .eq('organization_id', organizationId);
+  const priorTagIds = new Set((priorRows ?? []).map((r) => r.tag_id));
+
   if (normalizedIds.length > 0) {
     const { data: defs, error: defErr } = await supabaseAdmin
       .from('tag_definitions')
@@ -233,6 +241,9 @@ export async function setConversationTags({
     .single();
 
   if (updErr) throw new HttpError(500, updErr.message || 'Failed to sync conversation metadata.');
+
+  const addedTagIds = normalizedIds.filter((id) => !priorTagIds.has(id));
+  scheduleWorkflowTagsAdded({ organizationId, conversationId, tagIdsAdded: addedTagIds });
 
   return { tags, conversation: updated };
 }
@@ -312,6 +323,8 @@ export async function mergeConversationTagsByIds({
     .update({ metadata: meta })
     .eq('id', conversationId)
     .eq('organization_id', organizationId);
+
+  scheduleWorkflowTagsAdded({ organizationId, conversationId, tagIdsAdded: newOnly });
 
   return { tags };
 }

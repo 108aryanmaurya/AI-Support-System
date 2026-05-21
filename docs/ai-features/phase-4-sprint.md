@@ -82,92 +82,93 @@ Sprints 2–3 can **partially parallelize** once Sprint 1 defines the rule paylo
 
 ---
 
-## Sprint 1 — Rules storage & evaluation core
+## Sprint 1 — Rules storage & evaluation core ✅ (2026-05-20)
 
 **Goal:** Persist workflow rules per org and evaluate conditions deterministically (no LLM required for evaluation).
 
 **Scope**
 
-- **Storage:** `organizations.settings` JSON subtree **or** dedicated table (preferred if versioning/audit matters) — schemas documented in a migration comment.
-- **Rule shape:** validates triggers, condition tree (intent/priority/channel/business_hours), ordered actions with safe caps (max actions per run).
-- **Services:** `workflowRules.service.js` (load + validate), `workflowEvaluate.service.js` (pure evaluator + unit tests).
-- **API (org-scoped):** `GET/PATCH .../settings/ai` extension **or** `GET/POST/PATCH .../ai/workflows/rules` — **never** trust body `organizationId`; use `:orgId` + `requireOrgAccess`.
-- **Logging:** structured logs with `organization_id`, `conversation_id`, `rule_id`, `action` — no raw message bodies in production.
+- [x] **Storage:** `organizations.settings.workflow` — schema in `supabase/migrations/20260520120000_workflow_rules_settings.sql`
+- [x] **Rule shape:** `shared/src/workflowRules.js` — triggers, condition tree, actions, caps
+- [x] **Services:** `workflowRules.service.js`, `workflowEvaluate.service.js`, `workflowLog.service.js`
+- [x] **API:** `GET/PUT /api/org/:orgId/ai/workflows/rules` (PUT **ADMIN**), `POST .../workflows/dry-run`
+- [x] **Logging:** JSON `logWorkflowEvent` (org/conversation/rule_id; no message bodies)
+- [x] **Worker:** `ai.workflow_inbound` evaluates rules (match only; actions in Sprint 2)
 
-**Exit:** Rules can be saved and evaluated in isolation (dry-run endpoint or worker-only first is acceptable).
+**Exit:** Rules saved via API; dry-run returns `matched`; inbound worker logs matches.
 
 ---
 
-## Sprint 2 — `inbound_message` workflows (worker-driven)
+## Sprint 2 — `inbound_message` workflows (worker-driven) ✅ (2026-05-20)
 
 **Goal:** Apply rules **after** a customer message is stored, without blocking the HTTP ingress path.
 
 **Scope**
 
-- New job type(s), e.g. `ai.workflow_inbound` (name to match repo conventions), enqueued from `messages.controller.js` / `emailWebhook.service.js` after successful insert — **fire-and-forget enqueue** with safe `catch`.
-- Worker handler pipeline: load rules → evaluate → apply actions via **`conversationUpdate.service.js`** (assignment, priority, tags, notifications).
-- **Guardrails:** fail closed on auth errors; degrade on missing settings (defaults + single warn); never infinite retry on bad rule payloads (`dead` state + reason).
-- **`assign_to_ai`:** only when org + conversation AI gates allow; respect DB constraint (`assigned_to_member_id` null).
+- [x] Enqueue via `scheduleInboundPostCustomerMessage` from `messages.controller.js` / `emailWebhook.service.js` (chains classify → workflow)
+- [x] `workflowApply.service.js` + `updateConversationFromAutomation` — priority, assignment, tags, notify, `assign_to_ai` gates
+- [x] `WorkflowFatalError` → job `dead` (no infinite retry on bad payloads)
+- [x] `support_events`: `workflow.action_applied`, `workflow.action_skipped`, `workflow.action_failed`
 
-**Emit:** `support_events` for automation applied / skipped / failed where product analytics need it (Reports alignment).
-
-**Exit:** Configured org sees assignment/priority/tag changes shortly after inbound message, observable in inbox + events.
+**Exit:** Inbound customer message → worker applies matching rules; inbox + events reflect changes.
 
 ---
 
-## Sprint 3 — Spam & duplicate handling at ingress
+## Sprint 3 — Spam & duplicate handling at ingress ✅ (2026-05-20)
 
 **Goal:** Reduce noise and merges obvious duplicates **before or at** ingestion, aligned with design “spam / duplicate block” rows.
 
 **Scope**
 
-- **Spam:** policy signal (provider, heuristic, or lightweight classifier job result); actions = reject with 4xx **or** accept with flagged `metadata` + segment route (prefer non-destructive default until org opts into hard reject).
-- **Duplicate:** fuzzy match on thread keys / recent conversation correlation; link or suppress per org policy.
-- **Integration:** `emailWebhook.service.js` and web ingress in `messages.controller.js` share a small **`ingressPolicy.service.js`** or similar.
-- **Idempotency & rate limits:** public ingress stays bounded; duplicates must not amplify queue depth.
+- [x] **Spam:** heuristics in `ingressHeuristics.js`; default `flag` → `metadata.ingress.spam_suspected` (Spam inbox filter); optional `reject` → HTTP 422
+- [x] **Duplicate:** content hash + window in `ingressDuplicate.js`; `suppress` returns existing ids (no RPC / no automation enqueue)
+- [x] **Integration:** `ingressPolicy.service.js` used by `messages.controller.js` + `emailWebhook.service.js`
+- [x] **Settings:** `organizations.settings.ingress` + UI on org AI settings page
+- [x] **Events:** `ingress.spam_flagged`, `ingress.spam_rejected`, `ingress.duplicate_suppressed`
 
-**Exit:** Measurable drop in spam/duplicate tickets or clear operator visibility (badge/filter) — pick one primary success metric per org policy.
+**Exit:** Flagged spam visible in Spam sidebar; duplicates suppressed without extra queue jobs.
 
 ---
 
-## Sprint 4 — `sla_warning` & `schedule` triggers
+## Sprint 4 — `sla_warning` & `schedule` triggers ✅ (2026-05-20)
 
 **Goal:** Close the SLA-risk alerting loop using existing SLA/cron posture (Phase 1 automation).
 
 **Scope**
 
-- **`sla_warning`:** hook where SLA breach/near-breach is already detected → enqueue workflow job → `notify` + optional `set_priority` / `set_assignment`.
-- **`schedule`:** time-window rules (e.g. business hours routing, nightly digests if product requires) — start with **one** cron-style evaluator that loads orgs with schedules enabled to avoid scan storms.
-- **Secrets:** cron/scheduler auth (`AUTOMATION_CRON_SECRET`) unchanged; document new cron entry if needed.
+- [x] **`sla_warning`:** `sla.scan_org` enqueues `ai.workflow_sla` per breached conversation → rules applied (`notify`, priority, etc.)
+- [x] **`schedule`:** `POST /api/internal/cron/workflow-schedule-scan` → `ai.workflow_schedule_org` for orgs with `workflow.schedule.enabled` + `schedule` rules
+- [x] **Business hours:** `workflow.schedule` + `businessHours.service.js`; condition field `business_hours`
+- [x] **Visibility:** `metadata.ingress.sla_at_risk`; Spam filter includes SLA-risk rows; `workflow.sla_warning_applied` event
 
-**Exit:** SLA-risk path emits notifications + audit events; at least one schedule-based rule path demonstrable in staging.
+**Exit:** SLA breach triggers workflow actions; schedule cron path runs business-hours rules on unassigned active conversations.
 
 ---
 
-## Sprint 5 — `tag_added` triggers, inbox segments, operator UX
+## Sprint 5 — `tag_added` triggers, inbox segments, operator UX ✅ (2026-05-20)
 
 **Goal:** Completing the trigger matrix (`tag_added`) and making automation **visible** in the inbox.
 
 **Scope**
 
-- **`tag_added`:** when tags change on a conversation (service layer hook), enqueue evaluation with dedupe semantics.
-- **Filters:** extend `conversationInboxFilters.service.js` + `inboxFilters.js` for segments driven by automation metadata (“SLA risk”, “spam flagged”, “auto-routed intent=X”).
-- **Client:** badge or segment labels consistent with Reports/event naming.
+- [x] **`tag_added`:** `tags.service.js` → `scheduleWorkflowTagsAdded` → `ai.workflow_tag_added` → `runTagAddedWorkflowAutomation` (`workflow.tag_added_applied` event)
+- [x] **Filters:** `sla_risk`, `ingress_spam`, `ai_intent` (+ `aiIntent` query) in `conversationInboxFilters.service.js`; sidebar in `inboxFilters.js`
+- [x] **Client:** list badges via `getConversationAutomationBadges`; intent picker when `ai_intent` filter active
 
 **Exit:** Agents can slice inbox by Phase 4–driven fields; tag-triggered workflows run reliably.
 
 ---
 
-## Sprint 6 — Production hardening & boundaries
+## Sprint 6 — Production hardening & boundaries ✅ (2026-05-20)
 
 **Goal:** Operational safety, observability, and crisp separation from Phase 6.
 
 **Scope**
 
-- **Settings UI:** org admin manages rules toggles order, simulation/dry-run, test notification.
-- **`enqueue_phase6`:** noop or guarded stub that logs “not enabled” until Phase 6 approvals exist — prevents accidental autonomous sends.
-- **Metrics:** queue depth / job failures / actions per org; link to Reports if event types exist.
-- **Documentation:** update [IMPLEMENTED-FEATURES.md](../../IMPLEMENTED-FEATURES.md) + [docs/features/ai-capabilities.md](../features/ai-capabilities.md) (or dedicated feature doc when behavior lands).
+- [x] **Settings UI:** `OrgWorkflowSettingsPage` — rule enable/order, schedule, dry-run, test notification, metrics panel
+- [x] **`enqueue_phase6`:** guarded skip + `logWorkflowEvent(phase6_enqueue_blocked)`; checks `autonomous_replies_enabled` but never sends
+- [x] **Metrics:** `GET .../ai/workflows/metrics`; Reports overview includes workflow KPIs
+- [x] **Documentation:** [workflow-automation.md](../features/workflow-automation.md), [IMPLEMENTED-FEATURES.md](../IMPLEMENTED-FEATURES.md), [ai-capabilities.md](../features/ai-capabilities.md)
 
 **Exit:** Phase 4 is observable, rate-safe, multi-tenant correct, and **cannot** silently send customer-visible AI mail (still Phase 6).
 

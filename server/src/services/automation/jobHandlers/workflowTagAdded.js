@@ -1,6 +1,9 @@
 import { parseAutomationJobPayload } from '../jobPayload.js';
+import { runTagAddedWorkflowAutomation } from '../../ai/workflowRules.service.js';
 
 /**
+ * Apply workflow rules for `tag_added` trigger.
+ *
  * @param {object} job
  */
 export async function handleWorkflowTagAdded(job) {
@@ -18,11 +21,9 @@ export async function handleWorkflowTagAdded(job) {
     throw new Error('ai.workflow_tag_added payload requires conversationId and tagId');
   }
 
-  // eslint-disable-next-line no-console
-  console.info('[workflow] ai.workflow_tag_added stub (Sprint 5+)', {
-    organization_id: job.organization_id,
-    conversation_id: conversationId,
-    tag_id: tagId,
-    job_id: job.id,
+  await runTagAddedWorkflowAutomation({
+    organizationId: job.organization_id,
+    conversationId,
+    tagId,
   });
 }

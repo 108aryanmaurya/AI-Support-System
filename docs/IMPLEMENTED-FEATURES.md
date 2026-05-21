@@ -94,7 +94,10 @@ Inventory of features **implemented in the codebase today** (client, server, sha
   - All
   - Unassigned
   - Spam
+  - SLA risk, Spam flagged (ingress metadata)
+  - AI intent (`?filter=ai_intent&aiIntent=…`)
   - Closed
+- **Automation list badges** — spam flagged, SLA risk, AI intent on conversation rows (Phase 4 metadata)
 - **Filter counts** — `GET .../conversations/counts`
 - **Conversation workspace fields**
   - Status: `open`, `pending`, `waiting_customer`, `resolved`, `closed`, `spam`
@@ -281,7 +284,17 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Sprint 4** — Async `ai.classify_inbound` worker: intent/sentiment/language in `conversations.metadata.ai`; optional tag apply when `auto_tag_enabled`; Copilot shows thread signals (read-only)
 - **Sprint 5** — Per-feature AI rate limits (heavy vs composer); `GET .../analytics/ai/runs` drill-down; Reports acceptance rate + failed runs; Settings LLM health test; structured `ai.failure` JSON logs
 - **Sprint 6** — `ai.guardrails.js` (refund/impersonation/legal blocks → `blocked_policy`); UNTRUSTED_CONTEXT prompt wrapping; `knowledgeContext.js` + `summary.service.js` split; streaming deferred (`docs/ai-features/ai-streaming.md`)
-- **Not shipped** — autonomous customer AI (Phase 4–6)
+
+### 15.5 Workflow automation (Phase 4 — shipped)
+
+- **Rules engine** — `organizations.settings.workflow`; triggers `inbound_message`, `sla_warning`, `tag_added`, `schedule`; worker jobs `ai.workflow_*`
+- **Actions** — assignment, priority, tags, staff notify, `assign_to_ai` (gated); `enqueue_phase6` skipped with audit log
+- **Ingress** — spam/duplicate policy on web + email; org ingress settings UI
+- **Inbox** — SLA risk / spam flagged / AI intent filters; automation badges on list rows
+- **Admin UI** — Settings → Workflow rules: enable/reorder, JSON edit, dry-run, test notification, metrics
+- **API** — `GET/PUT .../ai/workflows/rules`, `GET .../metrics`, `POST .../dry-run`, `POST .../test-notification`
+- **Reports** — Overview tab workflow KPIs (queue depth, actions applied)
+- **Not shipped** — autonomous customer-visible AI replies (Phase 6)
 
 ---
 

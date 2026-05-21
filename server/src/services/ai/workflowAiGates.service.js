@@ -14,6 +14,17 @@ export async function isWorkflowAutomationEnabled(organizationId) {
 }
 
 /**
+ * Phase 6 gate: customer-visible autonomous AI sends (not available in Phase 4).
+ *
+ * @param {string} organizationId
+ */
+export async function isPhase6AutonomousSendEnabled(organizationId) {
+  if (!(await isOrgAiMasterEnabled(organizationId))) return false;
+  const ai = await getOrgAiSettings(organizationId);
+  return Boolean(ai.autonomous_replies_enabled);
+}
+
+/**
  * @param {object} params
  * @param {string} params.organizationId
  * @param {string} [params.conversationId] — when set, loads `ai_enabled` from DB

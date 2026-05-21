@@ -3,6 +3,8 @@ import { supabaseAdmin } from '../../../config/supabase.js';
 import { emitSupportEvent } from '../../analytics/supportEvents.service.js';
 import { getOrgAutomationSettings } from '../orgAutomationSettings.service.js';
 import { enqueueAutomationJob } from '../enqueueJob.service.js';
+import { workflowSlaWarningIdempotencyKey } from '@ai-support/shared';
+import { isWorkflowAutomationEnabled } from '../../ai/workflowAiGates.service.js';
 
 /**
  * Find open conversations past first-response SLA without an agent reply; emit support_events.
@@ -72,6 +74,20 @@ export async function handleSlaScanOrg(job) {
         first_customer_at: firstCustomer.created_at,
       },
     });
+
+    if (await isWorkflowAutomationEnabled(organizationId)) {
+      const day = new Date().toISOString().slice(0, 10);
+      await enqueueAutomationJob({
+        organizationId,
+        jobType: 'ai.workflow_sla',
+        payload: {
+          conversationId: conv.id,
+          slaMinutes: settings.first_response_sla_minutes,
+        },
+        idempotencyKey: workflowSlaWarningIdempotencyKey(organizationId, conv.id, day),
+        maxAttempts: 4,
+      });
+    }
   }
 }
 

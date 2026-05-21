@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { apiFetch } from '../services/api.js'
-import { CONVERSATION_FILTER_CACHE_MS, FILTER_REFETCH_DEBOUNCE_MS } from '../config/inboxFilters.js'
+import {
+  CONVERSATION_FILTER_CACHE_MS,
+  FILTER_REFETCH_DEBOUNCE_MS,
+  INBOX_AI_INTENT_OPTIONS,
+} from '../config/inboxFilters.js'
 import { useDebouncedCallback } from '../hooks/useDebouncedCallback.js'
 import { conversationCountsUrl, conversationsListUrl } from '../services/inboxApi.js'
 import { useInboxStore } from '../stores/inboxStore.js'
@@ -22,6 +26,8 @@ export function useInboxSidebarActions(organizationId, handlers) {
   const activeFilter = useInboxStore((state) => state.activeFilter)
   const activeTagId = useInboxStore((state) => state.activeTagId)
   const setActiveTagId = useInboxStore((state) => state.setActiveTagId)
+  const activeAiIntent = useInboxStore((state) => state.activeAiIntent)
+  const setActiveAiIntent = useInboxStore((state) => state.setActiveAiIntent)
   const filterCounts = useInboxStore((state) => state.filterCounts)
   const autoAssignOnSelect = useInboxStore((state) => state.autoAssignOnSelect)
   const setAutoAssignOnSelect = useInboxStore((state) => state.setAutoAssignOnSelect)
@@ -33,9 +39,12 @@ export function useInboxSidebarActions(organizationId, handlers) {
       if (!silent) setLoadingConversations(true)
       if (!silent) setError('')
       try {
-        const tagId = useInboxStore.getState().activeTagId
+        const { activeTagId: tagId, activeAiIntent: aiIntent } = useInboxStore.getState()
         const response = await apiFetch(
-          conversationsListUrl(organizationId, filterType, { tagId: tagId || undefined }),
+          conversationsListUrl(organizationId, filterType, {
+            tagId: tagId || undefined,
+            aiIntent: filterType === 'ai_intent' ? aiIntent || undefined : undefined,
+          }),
         )
         setConversationsPage({
           items: response?.items ?? [],
@@ -88,6 +97,9 @@ export function useInboxSidebarActions(organizationId, handlers) {
   const onSelectSidebarFilter = useCallback(
     (filterType) => {
       setActiveFilter(filterType)
+      if (filterType === 'ai_intent' && !useInboxStore.getState().activeAiIntent) {
+        setActiveAiIntent(INBOX_AI_INTENT_OPTIONS[0]?.value ?? 'general_inquiry')
+      }
       const cached = useInboxStore.getState().conversationFilterCache[filterType]
       const fresh = cached && Date.now() - cached.fetchedAt < CONVERSATION_FILTER_CACHE_MS
       if (fresh) {
@@ -98,7 +110,18 @@ export function useInboxSidebarActions(organizationId, handlers) {
       }
       debouncedRefetchFilter(filterType)
     },
-    [setActiveFilter, setConversationsPage, debouncedRefetchFilter],
+    [setActiveFilter, setActiveAiIntent, setConversationsPage, debouncedRefetchFilter],
+  )
+
+  const onAiIntentFilterChange = useCallback(
+    (intent) => {
+      setActiveAiIntent(intent || null)
+      const filter = useInboxStore.getState().activeFilter
+      if (filter === 'ai_intent') {
+        void runConversationQuery(filter)
+      }
+    },
+    [setActiveAiIntent, runConversationQuery],
   )
 
   const onTagFilterChange = useCallback(
@@ -118,6 +141,8 @@ export function useInboxSidebarActions(organizationId, handlers) {
     mentionCue,
     activeFilter,
     activeTagId,
+    activeAiIntent,
+    onAiIntentFilterChange,
     filterCounts,
     autoAssignOnSelect,
     setAutoAssignOnSelect,

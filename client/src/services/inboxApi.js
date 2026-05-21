@@ -7,7 +7,7 @@ function orgBase(organizationId) {
 }
 
 export function conversationsListUrl(organizationId, filterType, options = {}) {
-  const { page = 1, pageSize = 50, includeSpam = false, tagId = null } = options;
+  const { page = 1, pageSize = 50, includeSpam = false, tagId = null, aiIntent = null } = options;
   const params = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
@@ -15,6 +15,7 @@ export function conversationsListUrl(organizationId, filterType, options = {}) {
   });
   if (includeSpam) params.set('includeSpam', 'true');
   if (tagId) params.set('tagId', tagId);
+  if (aiIntent) params.set('aiIntent', aiIntent);
   return `${orgBase(organizationId)}/conversations?${params}`;
 }
 

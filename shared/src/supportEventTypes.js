@@ -18,6 +18,14 @@ export const SUPPORT_EVENT_TYPES = Object.freeze([
   'ai.suggestion_accepted',
   'ai.suggestion_rejected',
   'ai.suggestion_edited',
+  'workflow.action_applied',
+  'workflow.action_skipped',
+  'workflow.action_failed',
+  'ingress.spam_flagged',
+  'ingress.spam_rejected',
+  'ingress.duplicate_suppressed',
+  'workflow.sla_warning_applied',
+  'workflow.tag_added_applied',
 ]);
 
 /** @param {unknown} v */

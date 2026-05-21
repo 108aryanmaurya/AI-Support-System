@@ -3,17 +3,26 @@ import { emitAutomationJob } from './enqueueJob.service.js';
 import { isWorkflowAutomationEnabled } from '../ai/workflowAiGates.service.js';
 
 /**
- * Fire-and-forget: queue Phase 4 inbound workflow evaluation (Sprint 1+ implements handler logic).
+ * Fire-and-forget: queue Phase 4 inbound workflow evaluation + action apply.
  *
  * @param {object} params
  * @param {string} params.organizationId
  * @param {string} params.conversationId
  * @param {string} params.messageId
+ * @param {number} [params.runAtDelayMs] — defer (e.g. fallback after classification path)
  */
-export function scheduleInboundWorkflow({ organizationId, conversationId, messageId }) {
+export function scheduleInboundWorkflow({
+  organizationId,
+  conversationId,
+  messageId,
+  runAtDelayMs = 0,
+}) {
   void (async () => {
     try {
       if (!(await isWorkflowAutomationEnabled(organizationId))) return;
+
+      const runAt =
+        runAtDelayMs > 0 ? new Date(Date.now() + runAtDelayMs).toISOString() : null;
 
       emitAutomationJob({
         organizationId,
@@ -21,6 +30,7 @@ export function scheduleInboundWorkflow({ organizationId, conversationId, messag
         payload: { conversationId, messageId },
         idempotencyKey: workflowInboundIdempotencyKey(organizationId, messageId),
         maxAttempts: 5,
+        runAt,
       });
     } catch (e) {
       // eslint-disable-next-line no-console

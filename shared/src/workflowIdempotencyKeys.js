@@ -25,11 +25,22 @@ export function workflowTagAddedIdempotencyKey(organizationId, conversationId, t
 }
 
 /**
- * One SLA-warning workflow run per org per calendar day (aligns with sla.scan pattern).
+ * One SLA-warning workflow run per conversation per calendar day.
  *
  * @param {string} organizationId
+ * @param {string} conversationId
  * @param {string} dayKey — e.g. `YYYY-MM-DD`
  */
-export function workflowSlaWarningIdempotencyKey(organizationId, dayKey) {
-  return `workflow:sla:${organizationId}:${dayKey}`;
+export function workflowSlaWarningIdempotencyKey(organizationId, conversationId, dayKey) {
+  return `workflow:sla:${organizationId}:${conversationId}:${dayKey}`;
+}
+
+/**
+ * One schedule workflow scan per org per hour bucket.
+ *
+ * @param {string} organizationId
+ * @param {string} hourKey — e.g. `YYYY-MM-DDTHH`
+ */
+export function workflowScheduleScanIdempotencyKey(organizationId, hourKey) {
+  return `workflow:schedule:${organizationId}:${hourKey}`;
 }

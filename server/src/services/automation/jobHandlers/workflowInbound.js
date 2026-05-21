@@ -1,8 +1,8 @@
 import { parseAutomationJobPayload } from '../jobPayload.js';
+import { runInboundWorkflowAutomation } from '../../ai/workflowRules.service.js';
 
 /**
- * Phase 4 Sprint 1+ evaluates rules and mutates conversation state.
- * Sprint 0 registers the handler and validates payload shape.
+ * Evaluate and apply inbound_message workflow rules.
  *
  * @param {object} job
  */
@@ -25,11 +25,9 @@ export async function handleWorkflowInbound(job) {
     throw new Error('ai.workflow_inbound payload requires conversationId and messageId');
   }
 
-  // eslint-disable-next-line no-console
-  console.info('[workflow] ai.workflow_inbound stub (Sprint 1+)', {
-    organization_id: job.organization_id,
-    conversation_id: conversationId,
-    message_id: messageId,
-    job_id: job.id,
+  await runInboundWorkflowAutomation({
+    organizationId: job.organization_id,
+    conversationId,
+    messageId,
   });
 }

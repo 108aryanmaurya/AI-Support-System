@@ -1,4 +1,4 @@
-import { ORG_AI_MODEL_TIERS } from '@ai-support/shared';
+import { INGRESS_DUPLICATE_ACTIONS, INGRESS_SPAM_ACTIONS, ORG_AI_MODEL_TIERS } from '@ai-support/shared';
 import { HttpError } from '../utils/httpError.js';
 import {
   getOrgAiAndAutomationSettings,
@@ -76,6 +76,53 @@ function buildAutomationPatch(body) {
   return Object.keys(patch).length ? patch : null;
 }
 
+function buildIngressPatch(body) {
+  if (!body || typeof body !== 'object') return null;
+  const ingressBody = body.ingress;
+  if (!ingressBody || typeof ingressBody !== 'object') return null;
+
+  /** @type {Record<string, unknown>} */
+  const patch = {};
+  if (Object.prototype.hasOwnProperty.call(ingressBody, 'spam_enabled')) {
+    patch.spam_enabled = parseBool(ingressBody.spam_enabled, 'ingress.spam_enabled');
+  }
+  if (Object.prototype.hasOwnProperty.call(ingressBody, 'duplicate_enabled')) {
+    patch.duplicate_enabled = parseBool(ingressBody.duplicate_enabled, 'ingress.duplicate_enabled');
+  }
+  if (Object.prototype.hasOwnProperty.call(ingressBody, 'spam_action')) {
+    const action = typeof ingressBody.spam_action === 'string' ? ingressBody.spam_action.trim() : '';
+    if (!INGRESS_SPAM_ACTIONS.includes(action)) {
+      throw new HttpError(400, `ingress.spam_action must be one of: ${INGRESS_SPAM_ACTIONS.join(', ')}.`);
+    }
+    patch.spam_action = action;
+  }
+  if (Object.prototype.hasOwnProperty.call(ingressBody, 'duplicate_action')) {
+    const action =
+      typeof ingressBody.duplicate_action === 'string' ? ingressBody.duplicate_action.trim() : '';
+    if (!INGRESS_DUPLICATE_ACTIONS.includes(action)) {
+      throw new HttpError(
+        400,
+        `ingress.duplicate_action must be one of: ${INGRESS_DUPLICATE_ACTIONS.join(', ')}.`,
+      );
+    }
+    patch.duplicate_action = action;
+  }
+  if (Object.prototype.hasOwnProperty.call(ingressBody, 'duplicate_window_minutes')) {
+    const n = Number(ingressBody.duplicate_window_minutes);
+    if (!Number.isFinite(n) || n < 1 || n > 1440) {
+      throw new HttpError(400, 'ingress.duplicate_window_minutes must be between 1 and 1440.');
+    }
+    patch.duplicate_window_minutes = Math.round(n);
+  }
+  if (Object.prototype.hasOwnProperty.call(ingressBody, 'blocklist')) {
+    if (!Array.isArray(ingressBody.blocklist)) {
+      throw new HttpError(400, 'ingress.blocklist must be an array of strings.');
+    }
+    patch.blocklist = ingressBody.blocklist;
+  }
+  return Object.keys(patch).length ? patch : null;
+}
+
 export async function getOrgAiSettingsController(req, res, next) {
   try {
     const organizationId = orgIdOrThrow(req);
@@ -104,14 +151,16 @@ export async function patchOrgAiSettingsController(req, res, next) {
     const organizationId = orgIdOrThrow(req);
     const aiPatch = buildAiPatch(req.body);
     const automationPatch = buildAutomationPatch(req.body);
+    const ingressPatch = buildIngressPatch(req.body);
 
-    if (!aiPatch && !automationPatch) {
-      throw new HttpError(400, 'Provide ai and/or automation fields to update.');
+    if (!aiPatch && !automationPatch && !ingressPatch) {
+      throw new HttpError(400, 'Provide ai, automation, and/or ingress fields to update.');
     }
 
     const saved = await patchOrgSettings(organizationId, {
       ...(aiPatch ? { ai: aiPatch } : {}),
       ...(automationPatch ? { automation: automationPatch } : {}),
+      ...(ingressPatch ? { ingress: ingressPatch } : {}),
     });
 
     res.json({

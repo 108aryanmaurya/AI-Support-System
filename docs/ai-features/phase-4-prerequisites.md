@@ -11,7 +11,7 @@ Parent: [phase-4-sprint.md](./phase-4-sprint.md) | [AI-FEATURE-DESIGN.md](./AI-F
 | Item | Status | Evidence |
 |------|--------|----------|
 | `conversations.metadata.ai` for workflow conditions | Done | `ai.classify_inbound` writes `metadata.ai`; `parseConversationMetadataAi` in `@ai-support/shared` |
-| `automation_jobs` Phase 4 job types + handlers | Done | `ai.workflow_inbound`, `ai.workflow_tag_added`, `ai.workflow_sla` in `AUTOMATION_JOB_TYPES`; stubs in `processJob.service.js` |
+| `automation_jobs` Phase 4 job types + handlers | Done | `ai.workflow_inbound`, `ai.workflow_tag_added`, `ai.workflow_sla`, `ai.workflow_schedule_org`; tag hook in `tags.service.js` → `enqueueWorkflowTagAdded.service.js` |
 | Idempotency keys for workflow jobs | Done | `workflow*IdempotencyKey` in `shared/src/workflowIdempotencyKeys.js`; unique index on `(organization_id, idempotency_key)` |
 | AuthZ for org workflow settings | Done | `PATCH /api/org/:orgId/settings/ai` requires `ADMIN` (`orgSettings.routes.js`); Sprint 1+ rule routes must use same |
 | Feature flags (`assign_to_ai`, workflow jobs) | Done | `workflowAiGates.service.js`; `workflow_automation_enabled` org toggle (default `false`) |
@@ -72,9 +72,55 @@ Patch via `PATCH /api/org/:orgId/settings/ai` (**ADMIN** only). Body: `{ "ai": {
 
 ---
 
-## Enqueue helper (not wired to ingress until Sprint 2)
+## Workflow rules API (Sprint 1)
 
-`scheduleInboundWorkflow({ organizationId, conversationId, messageId })` in `enqueueWorkflowInbound.service.js` — call from ingress after Sprint 2.
+| Method | Path | Auth |
+|--------|------|------|
+| `GET` | `/api/org/:orgId/ai/workflows/rules` | Org member |
+| `PUT` | `/api/org/:orgId/ai/workflows/rules` | `ADMIN` — body `{ rules: [...] }` |
+| `POST` | `/api/org/:orgId/ai/workflows/dry-run` | Org member — body `{ conversationId, trigger, tagId?, isBusinessHours? }` |
+| `GET` | `/api/org/:orgId/ai/workflows/metrics` | Org member — queue depth + `workflow.*` event counts |
+| `POST` | `/api/org/:orgId/ai/workflows/test-notification` | `ADMIN` — test staff email delivery |
+
+Storage: `organizations.settings.workflow.rules`.
+
+## Ingress policy (Sprint 3)
+
+Settings: `organizations.settings.ingress` (see `shared/src/ingressPolicy.js`).
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `spam_enabled` | `true` | Heuristic spam scoring |
+| `spam_action` | `flag` | `flag` or `reject` (422) |
+| `duplicate_enabled` | `true` | Content-hash duplicate window |
+| `duplicate_window_minutes` | `30` | Lookback for duplicate suppress |
+
+Service: `server/src/services/ingress/ingressPolicy.service.js`.
+
+## SLA & schedule workflows (Sprint 4)
+
+- **SLA:** `sla.scan_org` detects breach → enqueues `ai.workflow_sla` (idempotency per conv/day) → `sla_warning` rules + `workflow.sla_warning_applied`
+- **Schedule:** Cron `POST /api/internal/cron/workflow-schedule-scan` with `x-automation-cron-secret`
+- **Settings:** `PUT .../ai/workflows/rules` body may include `schedule: { enabled, timezone, start, end, days }`
+
+Example schedule rule (business hours only):
+
+```json
+{
+  "name": "After-hours bump",
+  "trigger": "schedule",
+  "conditions": { "op": "all", "conditions": [{ "field": "business_hours", "op": "eq", "value": false }] },
+  "actions": [{ "type": "set_priority", "priority": "high" }]
+}
+```
+
+## Inbound automation chain (Sprint 2)
+
+`scheduleInboundPostCustomerMessage()` in `inboundAutomation.service.js` — called from web ingress + email webhook.
+
+1. `ai.classify_inbound` when LLM + org/conversation AI allow (updates `metadata.ai`)
+2. `ai.workflow_inbound` after classification (or immediately when classification is not queued)
+3. Worker applies matched rule actions via `workflowApply.service.js`
 
 ---
 

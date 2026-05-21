@@ -43,7 +43,9 @@ flowchart LR
 | `GET` | `/api/org/:orgId/settings/ai` | Org member |
 | `PATCH` | `/api/org/:orgId/settings/ai` | `ADMIN` |
 
-Body shape (PATCH): `{ ai?: Partial<OrgAiSettings>, automation?: Partial<OrgAutomationSettings> }`
+Body shape (PATCH): `{ ai?: Partial<OrgAiSettings>, automation?: Partial<OrgAutomationSettings>, ingress?: Partial<OrgIngressPolicy> }`
+
+**Ingress policy (Phase 4 Sprint 3):** spam heuristics (`flag` / `reject`) and duplicate suppression — see `server/src/services/ingress/ingressPolicy.service.js`.
 
 **LLM health:** `GET /api/org/:orgId/ai/health` — `llmConfigured`, provider label, model (server env). Settings UI includes **Test AI connection**.
 
@@ -60,8 +62,9 @@ Body shape (PATCH): `{ ai?: Partial<OrgAiSettings>, automation?: Partial<OrgAuto
 | [AI capabilities](./ai-capabilities.md) | Toggles gate future LLM phases; no model calls yet |
 | [Notifications & automation](./notifications-and-automation.md) | Worker reads `settings.automation` for notify/SLA jobs |
 | [Support inbox](./support-inbox.md) | Per-conversation `ai_enabled` on create/update |
+| [Workflow automation](./workflow-automation.md) | `workflow_automation_enabled`; link to `/settings/workflows` |
 | [AI-FEATURE-DESIGN.md](../AI-FEATURE-DESIGN.md) | Phase 1 checklist: org settings + `ai_enabled` wiring |
 
 ## Status
 
-**Complete (Phase 1 scope)** — API, UI, persistence, and `conversations.ai_enabled` defaults/updates wired. Phase 3+ features respect toggles in UI; server enforces org master switch for AI assignment only until LLM workers exist.
+**Complete** — API, UI, ingress policy, Phase 3 copilot toggles, and Phase 4 workflow master switch. Rule editing lives on [Workflow automation](./workflow-automation.md) settings page.

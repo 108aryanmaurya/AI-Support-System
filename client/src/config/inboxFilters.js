@@ -6,7 +6,21 @@ export const INBOX_SIDEBAR_FILTERS = Object.freeze([
   { id: 'all', label: 'All' },
   { id: 'unassigned', label: 'Unassigned' },
   { id: 'spam', label: 'Spam' },
+  { id: 'sla_risk', label: 'SLA risk' },
+  { id: 'ingress_spam', label: 'Spam flagged' },
+  { id: 'ai_intent', label: 'AI intent', requiresIntent: true },
   { id: 'closed', label: 'Closed' },
+])
+
+/** Shown when `ai_intent` filter is active — must match server `isClassificationIntent`. */
+export const INBOX_AI_INTENT_OPTIONS = Object.freeze([
+  { value: 'billing_issue', label: 'Billing' },
+  { value: 'refund_request', label: 'Refund' },
+  { value: 'technical_support', label: 'Technical' },
+  { value: 'shipping_delivery', label: 'Shipping' },
+  { value: 'complaint', label: 'Complaint' },
+  { value: 'general_inquiry', label: 'General' },
+  { value: 'other', label: 'Other' },
 ])
 
 /** How long a cached first-page result stays fresh when switching filters (ms). */

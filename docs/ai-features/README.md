@@ -9,8 +9,9 @@ Implementation guides for the AI roadmap ([AI-FEATURE-DESIGN.md](./AI-FEATURE-DE
 | [phase-2-conversation-tags.md](./phase-2-conversation-tags.md) | Tag definitions, inbox filters, conversation tagging | **Shipped** |
 | [phase-3-prerequisites.md](./phase-3-prerequisites.md) | LLM client, env, `ai_runs`, copilot API endpoints | **Shipped** |
 | [phase-3-sprints.md](./phase-3-sprints.md) | Sprint 0–6 breakdown (Copilot, classification, analytics, guardrails) | **Shipped** |
-| [phase-4-sprint.md](./phase-4-sprint.md) | Phase 4 workflow automation: sprints 0–6 (rules engine, ingress, SLA, UX) | **Planned** |
+| [phase-4-sprint.md](./phase-4-sprint.md) | Phase 4 workflow automation: sprints 0–6 (rules engine, ingress, SLA, UX) | **Shipped** |
 | [phase-4-prerequisites.md](./phase-4-prerequisites.md) | Sprint 0 gate: metadata, jobs, idempotency, authz, flags | **Shipped** |
+| [workflow-automation.md](../features/workflow-automation.md) | Feature deep dive (API, UI, ops) | **Shipped** |
 | [ai-guardrails.md](./ai-guardrails.md) | Output policy, prompt injection, tests | **Shipped** |
 | [ai-streaming.md](./ai-streaming.md) | SSE suggest-reply (deferred) | Planned |
 | [ai-stubs-and-phase-3-prerequisites.md](./ai-stubs-and-phase-3-prerequisites.md) | Redirect to phase-3-prerequisites | — |
@@ -20,7 +21,8 @@ Implementation guides for the AI roadmap ([AI-FEATURE-DESIGN.md](./AI-FEATURE-DE
 
 - [IMPLEMENTED-FEATURES.md](../../IMPLEMENTED-FEATURES.md) — full product inventory
 - [docs/features/knowledge-base.md](../features/knowledge-base.md) — knowledge feature (connections to inbox/reports)
-- [docs/features/ai-capabilities.md](../features/ai-capabilities.md) — AI stubs and schema hooks
+- [docs/features/ai-capabilities.md](../features/ai-capabilities.md) — AI + Phase 4 workflow APIs
+- [docs/features/workflow-automation.md](../features/workflow-automation.md) — Phase 4 rules engine
 - [docs/features/org-ai-settings.md](../features/org-ai-settings.md) — org toggles and automation JSON
 
 **Last updated:** 2026-05-20 (Phase 4 sprint plan)

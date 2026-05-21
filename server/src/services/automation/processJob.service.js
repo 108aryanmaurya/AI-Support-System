@@ -7,6 +7,11 @@ import { handleClassifyInbound } from './jobHandlers/classifyInbound.js';
 import { handleWorkflowInbound } from './jobHandlers/workflowInbound.js';
 import { handleWorkflowTagAdded } from './jobHandlers/workflowTagAdded.js';
 import { handleWorkflowSla } from './jobHandlers/workflowSla.js';
+import { handleWorkflowScheduleOrg } from './jobHandlers/workflowScheduleOrg.js';
+
+function isWorkflowFatalError(e) {
+  return e?.fatal === true || e?.name === 'WorkflowFatalError';
+}
 
 const HANDLERS = {
   'notify.staff_inbound': handleNotifyStaffInbound,
@@ -17,6 +22,7 @@ const HANDLERS = {
   'ai.workflow_inbound': handleWorkflowInbound,
   'ai.workflow_tag_added': handleWorkflowTagAdded,
   'ai.workflow_sla': handleWorkflowSla,
+  'ai.workflow_schedule_org': handleWorkflowScheduleOrg,
 };
 
 function backoffSeconds(attempts) {
@@ -36,10 +42,10 @@ async function markJobCompleted(jobId) {
     .eq('id', jobId);
 }
 
-async function markJobFailed(job, errorMessage) {
+async function markJobFailed(job, errorMessage, { forceDead = false } = {}) {
   const attempts = job.attempts ?? 1;
   const max = job.max_attempts ?? 5;
-  const dead = attempts >= max;
+  const dead = forceDead || attempts >= max;
 
   const patch = {
     status: dead ? 'dead' : 'pending',
@@ -120,7 +126,7 @@ export async function processAutomationJobById(jobId) {
     await runAutomationJob(job);
     await markJobCompleted(jobId);
   } catch (e) {
-    await markJobFailed(job, e?.message ?? String(e));
+    await markJobFailed(job, e?.message ?? String(e), { forceDead: isWorkflowFatalError(e) });
     throw e;
   }
 }
@@ -140,7 +146,7 @@ export async function processClaimedJobs(jobs) {
       ok += 1;
     } catch (e) {
       const message = e?.message ?? String(e);
-      await markJobFailed(job, message);
+      await markJobFailed(job, message, { forceDead: isWorkflowFatalError(e) });
       failed += 1;
       // eslint-disable-next-line no-console
       console.error('[automation] job failed', {

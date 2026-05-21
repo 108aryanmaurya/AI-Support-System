@@ -24,8 +24,12 @@ export async function updateConversationFields({
   priority: priorityPatch = undefined,
   assignmentType: assignmentTypePatch = undefined,
   aiEnabled: aiEnabledPatch = undefined,
+  automationSource = false,
+  workflowMeta = undefined,
 }) {
-  const actorMember = await ensureOrgMembership(actorUserId, organizationId);
+  const actorMember = automationSource
+    ? null
+    : await ensureOrgMembership(actorUserId, organizationId);
 
   const { data: prior, error: priorErr } = await supabaseAdmin
     .from('conversations')
@@ -203,6 +207,13 @@ export async function updateConversationFields({
     prior.assignment_type !== data.assignment_type ||
     prior.assigned_to_member_id !== data.assigned_to_member_id
   ) {
+    const assignmentPayload = {
+      assignment_type: data.assignment_type,
+      assigned_to_member_id: data.assigned_to_member_id,
+    };
+    if (workflowMeta && typeof workflowMeta === 'object') {
+      assignmentPayload.workflow = workflowMeta;
+    }
     emitSupportEvent({
       organizationId,
       eventType: 'conversation.assigned',
@@ -210,14 +221,15 @@ export async function updateConversationFields({
       entityId: conversationId,
       actorMemberId: actorMember?.id ?? null,
       channelType: data.channel_type ?? null,
-      payload: {
-        assignment_type: data.assignment_type,
-        assigned_to_member_id: data.assigned_to_member_id,
-      },
+      payload: assignmentPayload,
     });
   }
 
   if (prior.priority !== data.priority) {
+    const priorityPayload = { priority: data.priority };
+    if (workflowMeta && typeof workflowMeta === 'object') {
+      priorityPayload.workflow = workflowMeta;
+    }
     emitSupportEvent({
       organizationId,
       eventType: 'conversation.priority_changed',
@@ -225,9 +237,36 @@ export async function updateConversationFields({
       entityId: conversationId,
       actorMemberId: actorMember?.id ?? null,
       channelType: data.channel_type ?? null,
-      payload: { priority: data.priority },
+      payload: priorityPayload,
     });
   }
 
   return { conversation: data, priorAssignedToMemberId };
+}
+
+/**
+ * Phase 4 workflow automation — no human actor; same validation as agent updates.
+ */
+export async function updateConversationFromAutomation({
+  organizationId,
+  conversationId,
+  assignedToMemberId = undefined,
+  status = undefined,
+  priority = undefined,
+  assignmentType = undefined,
+  aiEnabled = undefined,
+  workflowMeta = undefined,
+}) {
+  return updateConversationFields({
+    organizationId,
+    conversationId,
+    actorUserId: null,
+    assignedToMemberId,
+    status,
+    priority,
+    assignmentType,
+    aiEnabled,
+    automationSource: true,
+    workflowMeta,
+  });
 }

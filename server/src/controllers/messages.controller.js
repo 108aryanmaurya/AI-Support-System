@@ -13,7 +13,14 @@ import { emitIncomingMessageEvent } from '../utils/monitoring.js';
 import { sendInboxAgentOutboundMessage } from '../services/inboxAgentSend.service.js';
 import { isCustomerMessageFreshForNotification } from '../services/customerInboundNotification.service.js';
 import { scheduleStaffInboundWithFallback } from '../services/automation/automationNotify.service.js';
-import { scheduleInboundClassification } from '../services/automation/enqueueClassifyInbound.service.js';
+import { scheduleInboundPostCustomerMessage } from '../services/automation/inboundAutomation.service.js';
+import { emitSupportEvent } from '../services/analytics/supportEvents.service.js';
+import {
+  applyInboundIngressPostInsert,
+  evaluateInboundIngressPolicy,
+  logIngressDecision,
+  shouldSkipPostInboundAutomation,
+} from '../services/ingress/ingressPolicy.service.js';
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -175,6 +182,50 @@ export async function createIncomingMessageController(req, res, next) {
 
     emitIncomingMessageEvent('request_received', safeLogPayload);
 
+    const ingressEval = await evaluateInboundIngressPolicy({
+      organizationId,
+      channel: 'web',
+      email: normalizedEmail,
+      message: normalizedMessage,
+    });
+    logIngressDecision(ingressEval, organizationId);
+
+    if (ingressEval.decision === 'reject_spam') {
+      emitSupportEvent({
+        organizationId,
+        eventType: 'ingress.spam_rejected',
+        entityType: 'conversation',
+        entityId: organizationId,
+        channelType: 'web',
+        payload: {
+          email: normalizedEmail,
+          score: ingressEval.spam?.score,
+          signals: ingressEval.spam?.signals,
+        },
+      });
+      throw new HttpError(422, 'Message rejected by ingress spam policy.');
+    }
+
+    if (ingressEval.decision === 'suppress_duplicate' && ingressEval.duplicate) {
+      emitSupportEvent({
+        organizationId,
+        eventType: 'ingress.duplicate_suppressed',
+        entityType: 'conversation',
+        entityId: ingressEval.duplicate.conversationId,
+        channelType: 'web',
+        payload: {
+          message_id: ingressEval.duplicate.messageId,
+          email: normalizedEmail,
+        },
+      });
+      res.status(200).json({
+        conversationId: ingressEval.duplicate.conversationId,
+        messageId: ingressEval.duplicate.messageId,
+        duplicate: true,
+      });
+      return;
+    }
+
     const { data, error } = await callIncomingMessageRpcWithRetry({
       p_organization_id: organizationId,
       p_email: normalizedEmail,
@@ -212,11 +263,21 @@ export async function createIncomingMessageController(req, res, next) {
       messageId: row.message_id,
     });
 
-    scheduleInboundClassification({
+    const ingressPost = await applyInboundIngressPostInsert({
       organizationId,
       conversationId: row.conversation_id,
       messageId: row.message_id,
+      message: normalizedMessage,
+      evaluation: ingressEval,
     });
+
+    if (!shouldSkipPostInboundAutomation(ingressEval) && !ingressPost.flagged) {
+      scheduleInboundPostCustomerMessage({
+        organizationId,
+        conversationId: row.conversation_id,
+        messageId: row.message_id,
+      });
+    }
 
     const notifyFresh = await isCustomerMessageFreshForNotification(row.message_id);
     if (notifyFresh) {

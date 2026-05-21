@@ -46,6 +46,7 @@ export default function OrgAiSettingsPage() {
   const [saved, setSaved] = useState(false)
   const [ai, setAi] = useState(null)
   const [automation, setAutomation] = useState(null)
+  const [ingress, setIngress] = useState(null)
   const [llmHealth, setLlmHealth] = useState(null)
   const [healthLoading, setHealthLoading] = useState(false)
   const [healthError, setHealthError] = useState('')
@@ -58,6 +59,7 @@ export default function OrgAiSettingsPage() {
       const data = await fetchOrgAiSettings(orgId)
       setAi(data.ai ?? {})
       setAutomation(data.automation ?? {})
+      setIngress(data.ingress ?? {})
     } catch (e) {
       setError(e.message || 'Failed to load settings.')
     } finally {
@@ -86,14 +88,15 @@ export default function OrgAiSettingsPage() {
 
   async function handleSave(e) {
     e.preventDefault()
-    if (!isAdmin || !ai || !automation) return
+    if (!isAdmin || !ai || !automation || !ingress) return
     setSaving(true)
     setError('')
     setSaved(false)
     try {
-      const data = await patchOrgAiSettings(orgId, { ai, automation })
+      const data = await patchOrgAiSettings(orgId, { ai, automation, ingress })
       setAi(data.ai)
       setAutomation(data.automation)
+      setIngress(data.ingress)
       setSaved(true)
     } catch (err) {
       setError(err.message || 'Failed to save settings.')
@@ -222,7 +225,18 @@ export default function OrgAiSettingsPage() {
                 />
                 <ToggleRow
                   label="Workflow automation"
-                  description="Run Phase 4 routing rules via the automation worker (inbound, tags, SLA triggers)."
+                  description={
+                    <>
+                      Run Phase 4 routing rules via the automation worker (inbound, tags, SLA triggers).{' '}
+                      <Link
+                        to={`/org/${orgId}/settings/workflows`}
+                        className="text-[#3ECF8E] hover:underline"
+                      >
+                        Manage rules
+                      </Link>
+                      .
+                    </>
+                  }
                   phase="Phase 4"
                   checked={ai.workflow_automation_enabled}
                   disabled={!isAdmin || masterOff}
@@ -266,6 +280,57 @@ export default function OrgAiSettingsPage() {
                   <option value="standard">Standard</option>
                   <option value="advanced">Advanced</option>
                 </select>
+              </label>
+            </section>
+
+            <section>
+              <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                Ingress policy
+              </h2>
+              <div className="space-y-2">
+                <ToggleRow
+                  label="Spam heuristics"
+                  description="Flag or reject noisy inbound messages (blocklist, links, shouting)."
+                  phase="Phase 4"
+                  checked={ingress.spam_enabled}
+                  disabled={!isAdmin}
+                  onChange={(v) => setIngress((prev) => ({ ...prev, spam_enabled: v }))}
+                />
+                <ToggleRow
+                  label="Hard reject spam"
+                  description="When on, spam is rejected with HTTP 422 instead of flagged in the Spam inbox."
+                  phase="Phase 4"
+                  checked={ingress.spam_action === 'reject'}
+                  disabled={!isAdmin || !ingress.spam_enabled}
+                  onChange={(v) =>
+                    setIngress((prev) => ({ ...prev, spam_action: v ? 'reject' : 'flag' }))
+                  }
+                />
+                <ToggleRow
+                  label="Duplicate detection"
+                  description="Suppress repeat customer messages with the same content within the time window."
+                  phase="Phase 4"
+                  checked={ingress.duplicate_enabled}
+                  disabled={!isAdmin}
+                  onChange={(v) => setIngress((prev) => ({ ...prev, duplicate_enabled: v }))}
+                />
+              </div>
+              <label className="mt-4 block">
+                <span className="text-xs font-medium text-slate-400">Duplicate window (minutes)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={ingress.duplicate_window_minutes}
+                  disabled={!isAdmin || !ingress.duplicate_enabled}
+                  onChange={(e) =>
+                    setIngress((prev) => ({
+                      ...prev,
+                      duplicate_window_minutes: Number(e.target.value),
+                    }))
+                  }
+                  className="mt-1 w-full max-w-[200px] rounded-lg border border-[#2b3858] bg-[#111827] px-3 py-2 text-sm text-white disabled:opacity-60"
+                />
               </label>
             </section>
 

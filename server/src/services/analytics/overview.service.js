@@ -1,6 +1,7 @@
 import { deltaPercent, parseAnalyticsDateRange } from './dateRange.js';
 import { fetchKnowledgeMetrics } from './knowledgeMetrics.js';
 import { fetchAiMetrics, fetchAiRunsPaginated, fetchProductMetrics } from './metricsQueries.js';
+import { getWorkflowMetrics } from '../ai/workflowMetrics.service.js';
 
 function kpi(id, label, value, previous, unit = 'count') {
   return {
@@ -18,10 +19,11 @@ function kpi(id, label, value, previous, unit = 'count') {
  */
 export async function getAnalyticsOverview(organizationId, query) {
   const range = parseAnalyticsDateRange(query);
-  const [current, previous, ai] = await Promise.all([
+  const [current, previous, ai, workflow] = await Promise.all([
     fetchProductMetrics(organizationId, range.fromDate, range.toExclusive),
     fetchProductMetrics(organizationId, range.compareFrom, range.compareToExclusive),
     fetchAiMetrics(organizationId, range.fromDate, range.toExclusive),
+    getWorkflowMetrics(organizationId, { days: 7 }).catch(() => null),
   ]);
 
   const outboundTotal =
@@ -101,6 +103,14 @@ export async function getAnalyticsOverview(organizationId, query) {
         aiAssignedConversations: ai.aiAssignedConversations,
       } : null,
     },
+    workflow: workflow
+      ? {
+          queueDepth: workflow.queue?.available ? workflow.queue.depth : null,
+          actionsApplied: workflow.events?.available ? workflow.events.applied : null,
+          rulesEnabled: workflow.rules?.enabled ?? 0,
+          settingsPath: `/org/${organizationId}/settings/workflows`,
+        }
+      : null,
   };
 }
 

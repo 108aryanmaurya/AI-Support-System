@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { ensureOrgMembership } from './support.service.js';
-import { CONVERSATION_ACTIVE_STATUSES } from '@ai-support/shared';
+import { CONVERSATION_ACTIVE_STATUSES, isClassificationIntent } from '@ai-support/shared';
 
 /** Sidebar / inbox filter keys — single source of truth for API + client. */
 export const CONVERSATION_INBOX_FILTER_TYPES = Object.freeze([
@@ -11,6 +11,9 @@ export const CONVERSATION_INBOX_FILTER_TYPES = Object.freeze([
   'all',
   'unassigned',
   'spam',
+  'sla_risk',
+  'ingress_spam',
+  'ai_intent',
   'closed',
 ]);
 
@@ -35,6 +38,7 @@ export function shouldExcludeSpam(filterType, includeSpam) {
  * @param {string} options.currentUserId — auth.users / public.users id
  * @param {string | null} options.memberId — organization_members.id for current user (required for `inbox`)
  * @param {boolean} [options.includeSpam]
+ * @param {string | null} [options.aiIntent] — required when filterType is `ai_intent`
  * @returns {import('@supabase/supabase-js').PostgrestFilterBuilder}
  */
 export function applyConversationFilters(query, options) {
@@ -44,6 +48,7 @@ export function applyConversationFilters(query, options) {
     currentUserId,
     memberId = null,
     includeSpam = false,
+    aiIntent = null,
   } = options;
 
   if (!CONVERSATION_INBOX_FILTER_TYPES.includes(filterType)) {
@@ -80,6 +85,19 @@ export function applyConversationFilters(query, options) {
     case 'spam':
       q = q.or('status.eq.spam,is_spam.eq.true');
       break;
+    case 'sla_risk':
+      q = q.eq('metadata->ingress->>sla_at_risk', 'true');
+      break;
+    case 'ingress_spam':
+      q = q.eq('metadata->ingress->>spam_suspected', 'true');
+      break;
+    case 'ai_intent': {
+      if (!aiIntent || !isClassificationIntent(aiIntent)) {
+        throw new HttpError(400, 'aiIntent query param is required for ai_intent filter.');
+      }
+      q = q.eq('metadata->ai->>intent', aiIntent);
+      break;
+    }
     case 'closed':
       q = q.eq('status', 'closed');
       break;
@@ -141,15 +159,18 @@ export async function getConversationFilterCounts({ currentUserId, organizationI
     return count ?? 0;
   };
 
-  const [inbox, mentions, created_by_you, all, unassigned, spam, closed] = await Promise.all([
-    countOne('inbox'),
-    countOne('mentions'),
-    countOne('created_by_you'),
-    countOne('all'),
-    countOne('unassigned'),
-    countOne('spam'),
-    countOne('closed'),
-  ]);
+  const [inbox, mentions, created_by_you, all, unassigned, spam, sla_risk, ingress_spam, closed] =
+    await Promise.all([
+      countOne('inbox'),
+      countOne('mentions'),
+      countOne('created_by_you'),
+      countOne('all'),
+      countOne('unassigned'),
+      countOne('spam'),
+      countOne('sla_risk'),
+      countOne('ingress_spam'),
+      countOne('closed'),
+    ]);
 
   return {
     inbox,
@@ -158,6 +179,8 @@ export async function getConversationFilterCounts({ currentUserId, organizationI
     all,
     unassigned,
     spam,
+    sla_risk,
+    ingress_spam,
     closed,
   };
 }
@@ -172,6 +195,7 @@ export async function getFilteredConversations({
   to,
   includeSpam = false,
   tagId = null,
+  aiIntent = null,
 }) {
   if (!currentUserId) {
     throw new HttpError(400, 'currentUserId is required.');
@@ -275,6 +299,7 @@ export async function getFilteredConversations({
     currentUserId,
     memberId: filterType === 'inbox' ? memberId : null,
     includeSpam: Boolean(includeSpam),
+    aiIntent,
   });
 
   if (tagConversationIds) {

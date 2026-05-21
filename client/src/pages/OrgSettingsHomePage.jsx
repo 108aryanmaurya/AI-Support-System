@@ -186,6 +186,13 @@ export default function OrgSettingsHomePage() {
               title="AI & Automation"
               description="Enable AI features, defaults for new conversations, and notification automation."
             />
+            <SettingsCard
+              to={`/org/${orgId}/settings/workflows`}
+              icon={Bot}
+              iconClass="bg-violet-700"
+              title="Workflow rules"
+              description="Routing rules, dry-run simulation, queue metrics, and test notifications."
+            />
           </div>
         </section>
 
