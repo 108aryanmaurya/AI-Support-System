@@ -56,7 +56,7 @@ export default function TestSendMessagePage() {
           }),
         },
       )
-
+console.log('response', response) 
       setResult(response)
     } catch (err) {
       setError(err?.message || 'Failed to send message.')

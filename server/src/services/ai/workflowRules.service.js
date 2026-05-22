@@ -167,7 +167,7 @@ export async function evaluateWorkflowForConversation({
   if (!(await isWorkflowAutomationEnabled(organizationId))) {
     return { skipped: true, reason: 'workflow_disabled', matched: [], apply: null };
   }
-
+console.log('trigger', trigger)
   const { rules, schedule } = await getOrgWorkflowRules(organizationId);
   const hasTriggerRules = (rules ?? []).some(
     (r) => r.enabled !== false && r.trigger === trigger,
@@ -223,6 +223,7 @@ export async function evaluateWorkflowForConversation({
 
   let apply = null;
   if (applyActions) {
+    console.log('applyActions', applyActions)
     if (trigger === 'sla_warning') {
       await markConversationSlaAtRisk({
         organizationId,

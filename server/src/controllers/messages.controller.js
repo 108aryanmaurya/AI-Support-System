@@ -134,6 +134,7 @@ export async function createMessageController(req, res, next) {
 
 export async function createIncomingMessageController(req, res, next) {
   try {
+    console.log('createIncomingMessageController')
     const organizationId =
       typeof req.params?.orgId === 'string' ? req.params.orgId.trim() : '';
 
@@ -271,7 +272,9 @@ export async function createIncomingMessageController(req, res, next) {
       evaluation: ingressEval,
     });
 
+    console.log('ingressPost', ingressPost)
     if (!shouldSkipPostInboundAutomation(ingressEval) && !ingressPost.flagged) {
+      console.log('scheduleInboundPostCustomerMessage')
       scheduleInboundPostCustomerMessage({
         organizationId,
         conversationId: row.conversation_id,

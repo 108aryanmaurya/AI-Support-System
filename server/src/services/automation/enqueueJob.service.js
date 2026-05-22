@@ -67,12 +67,14 @@ export async function enqueueAutomationJob({
   };
 
   if (idempotencyKey) {
+    console.log('idempotencyKey', idempotencyKey)
     const { data: existing } = await supabaseAdmin
       .from('automation_jobs')
       .select('id, status')
       .eq('organization_id', organizationId)
       .eq('idempotency_key', idempotencyKey)
       .maybeSingle();
+      console.log('existing', existing)
 
     if (existing?.id) {
       return { jobId: existing.id, skipped: existing.status === 'completed' };
@@ -110,8 +112,11 @@ export async function enqueueAutomationJob({
 
   const jobId = data?.id ?? null;
 
+  console.log('process.env.AUTOMATION_PROCESS_INLINE', process.env.AUTOMATION_PROCESS_INLINE)
+  console.log('jobId', jobId)
   if (process.env.AUTOMATION_PROCESS_INLINE === 'true' && jobId) {
     try {
+      console.log('processAutomationJobById', jobId)
       await processAutomationJobById(jobId);
     } catch (e) {
       // eslint-disable-next-line no-console

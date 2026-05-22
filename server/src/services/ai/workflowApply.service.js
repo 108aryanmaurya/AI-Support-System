@@ -90,7 +90,7 @@ function emitWorkflowActionApplied(params) {
  */
 async function applyWorkflowAction(action, ctx) {
   const type = action.type;
-
+console.log('action', action)
   if (type === 'set_priority') {
     await updateConversationFromAutomation({
       organizationId: ctx.organizationId,
@@ -292,7 +292,7 @@ export async function applyMatchedWorkflowRules({
   matched,
 }) {
   if (!matched?.length) return { applied: 0, skipped: 0, failed: 0 };
-
+ console.log('matched', matched)
   const { data: conv } = await supabaseAdmin
     .from('conversations')
     .select('channel_type, customer_id')

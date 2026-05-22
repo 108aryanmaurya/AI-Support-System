@@ -342,6 +342,8 @@ Recommendation: start with **Supabase Edge Function** for inbound-triggered ligh
 
 ## 7. Phase 5 — RAG & AI Copilot System
 
+**Implementation sprints:** [phase-5-sprints.md](./phase-5-sprints.md)
+
 **Goal:** Vector search, embeddings pipeline, contextual retrieval, AI article recommendations, and organization-aware copilots.
 
 ### Prerequisites

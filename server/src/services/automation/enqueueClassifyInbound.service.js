@@ -16,6 +16,7 @@ export function scheduleInboundClassification({ organizationId, conversationId, 
     try {
       const allowed = await canEnqueueInboundClassification(organizationId, conversationId);
       if (allowed) {
+        console.log('scheduleInboundClassification')
         emitAutomationJob({
           organizationId,
           jobType: 'ai.classify_inbound',
@@ -26,6 +27,7 @@ export function scheduleInboundClassification({ organizationId, conversationId, 
         return;
       }
 
+      console.log('scheduleInboundWorkflow')
       scheduleInboundWorkflow({
         organizationId,
         conversationId,

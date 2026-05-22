@@ -68,6 +68,7 @@ async function markJobFailed(job, errorMessage, { forceDead = false } = {}) {
  */
 export async function runAutomationJob(job) {
   const handler = HANDLERS[job.job_type];
+  console.log('runAutomationJob handler', handler)
   if (!handler) {
     throw new Error(`No handler for job_type: ${job.job_type}`);
   }
@@ -120,6 +121,7 @@ async function claimJobForInlineProcessing(jobId) {
  */
 export async function processAutomationJobById(jobId) {
   const job = await claimJobForInlineProcessing(jobId);
+  console.log('processAutomationJobById job', job)
   if (!job) return;
 
   try {

@@ -19,11 +19,11 @@ export function scheduleInboundWorkflow({
 }) {
   void (async () => {
     try {
+      console.log('isWorkflowAutomationEnabled', await isWorkflowAutomationEnabled(organizationId))
       if (!(await isWorkflowAutomationEnabled(organizationId))) return;
-
       const runAt =
         runAtDelayMs > 0 ? new Date(Date.now() + runAtDelayMs).toISOString() : null;
-
+console.log('runAt', runAt)
       emitAutomationJob({
         organizationId,
         jobType: 'ai.workflow_inbound',
