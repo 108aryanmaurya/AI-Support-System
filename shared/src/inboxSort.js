@@ -6,7 +6,10 @@
  * Within each tier: last_message_at descending (newest first).
  *
  * sortConversationsInbox is O(n log n). Spam inclusion is a filter concern — this only orders the given list.
+ * Sorting never mutates or clears assignment fields; it only reorders rows.
  */
+
+import { normalizeConversationRecord, pickAssignedMemberId } from './conversationRecord.js';
 
 export function lastMessageMs(conversation) {
   return new Date(conversation?.last_message_at ?? 0).getTime()
@@ -19,8 +22,9 @@ export function lastMessageMs(conversation) {
  */
 export function inboxSortTier(conversation, myMemberId) {
   if (conversation == null) return 2
-  if (!conversation.assigned_to_member_id) return 0
-  if (myMemberId != null && conversation.assigned_to_member_id === myMemberId) return 1
+  const assigneeId = pickAssignedMemberId(conversation)
+  if (!assigneeId) return 0
+  if (myMemberId != null && assigneeId === myMemberId) return 1
   return 2
 }
 
@@ -38,5 +42,6 @@ export function compareConversationsInbox(a, b, myMemberId) {
 export function sortConversationsInbox(items, myMemberId) {
   if (!items?.length) return []
   const mid = myMemberId ?? null
-  return [...items].sort((a, b) => compareConversationsInbox(a, b, mid))
+  const normalized = items.map((row) => normalizeConversationRecord(row))
+  return normalized.sort((a, b) => compareConversationsInbox(a, b, mid))
 }

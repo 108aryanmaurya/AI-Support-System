@@ -8,12 +8,8 @@ import { supabaseAdmin } from '../../config/supabase.js';
  * @param {string} organizationId
  */
 export async function isWorkflowAutomationEnabled(organizationId) {
-  console.log('isWorkflowAutomationEnabled', organizationId)
-  console.log('isOrgAiMasterEnabled', await isOrgAiMasterEnabled(organizationId))
   if (!(await isOrgAiMasterEnabled(organizationId))) return false;
   const  ai = await getOrgAiSettings(organizationId);
-  console.log('ai', ai)
-  console.log('ai.workflow_automation_enabled', ai.workflow_automation_enabled)
   return Boolean(ai.workflow_automation_enabled);
 }
 

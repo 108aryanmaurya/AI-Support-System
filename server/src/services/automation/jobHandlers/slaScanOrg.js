@@ -1,4 +1,8 @@
-import { CONVERSATION_ACTIVE_STATUSES } from '@ai-support/shared';
+import {
+  CONVERSATION_ACTIVE_STATUSES,
+  fifteenMinuteBucketKey,
+  slaScanOrgIdempotencyKey,
+} from '@ai-support/shared';
 import { supabaseAdmin } from '../../../config/supabase.js';
 import { emitSupportEvent } from '../../analytics/supportEvents.service.js';
 import { getOrgAutomationSettings } from '../orgAutomationSettings.service.js';
@@ -91,18 +95,21 @@ export async function handleSlaScanOrg(job) {
   }
 }
 
-/** Enqueue SLA scan for every org (cron). */
-export async function enqueueSlaScansForAllOrgs() {
+/**
+ * Enqueue SLA scan for every org (cron).
+ *
+ * @param {string} [scanBucketKey] — defaults to current UTC 15-minute bucket
+ */
+export async function enqueueSlaScansForAllOrgs(scanBucketKey = fifteenMinuteBucketKey()) {
   const { data: orgs, error } = await supabaseAdmin.from('organizations').select('id');
   if (error) throw new Error(error.message);
 
   for (const org of orgs ?? []) {
-    const day = new Date().toISOString().slice(0, 10);
     await enqueueAutomationJob({
       organizationId: org.id,
       jobType: 'sla.scan_org',
-      payload: {},
-      idempotencyKey: `sla.scan:${org.id}:${day}`,
+      payload: { scanBucketKey },
+      idempotencyKey: slaScanOrgIdempotencyKey(org.id, scanBucketKey),
     });
   }
 }

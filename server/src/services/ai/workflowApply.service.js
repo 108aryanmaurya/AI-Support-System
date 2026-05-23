@@ -2,10 +2,14 @@ import { supabaseAdmin } from '../../config/supabase.js';
 import { HttpError } from '../../utils/httpError.js';
 import { updateConversationFromAutomation } from '../conversationUpdate.service.js';
 import { listTagDefinitions, mergeConversationTagsByIds } from '../tags.service.js';
-import { scheduleStaffInboundNotification } from '../automation/automationNotify.service.js';
+import {
+  scheduleSlaWarningNotification,
+  scheduleStaffInboundNotification,
+} from '../automation/automationNotify.service.js';
 import { emitSupportEvent } from '../analytics/supportEvents.service.js';
 import { canAssignConversationToAi, isPhase6AutonomousSendEnabled } from './workflowAiGates.service.js';
 import { logWorkflowEvent } from './workflowLog.service.js';
+import { recordSlaWorkflowPriority } from './workflowConversationFlags.service.js';
 
 /**
  * @param {object} params
@@ -84,13 +88,14 @@ function emitWorkflowActionApplied(params) {
  * @param {string} [ctx.channelType]
  * @param {string} [ctx.customerMessage]
  * @param {string} [ctx.customerEmail]
+ * @param {string} [ctx.workflowTrigger]
+ * @param {number} [ctx.slaMinutes]
  */
 /**
  * @returns {'applied' | 'skipped'}
  */
 async function applyWorkflowAction(action, ctx) {
   const type = action.type;
-console.log('action', action)
   if (type === 'set_priority') {
     await updateConversationFromAutomation({
       organizationId: ctx.organizationId,
@@ -98,6 +103,13 @@ console.log('action', action)
       priority: action.priority,
       workflowMeta: { ruleId: ctx.ruleId, actionType: type },
     });
+    if (ctx.workflowTrigger === 'sla_warning') {
+      await recordSlaWorkflowPriority({
+        organizationId: ctx.organizationId,
+        conversationId: ctx.conversationId,
+        priority: action.priority,
+      });
+    }
     emitWorkflowActionApplied({
       organizationId: ctx.organizationId,
       conversationId: ctx.conversationId,
@@ -207,6 +219,29 @@ console.log('action', action)
 
   if (type === 'notify') {
     const channel = action.channel === 'assignee' ? 'assignee' : 'staff';
+    const idempotencyKey = `workflow:notify:${ctx.ruleId}:${ctx.messageId ?? ctx.conversationId}:${channel}`;
+
+    if (ctx.workflowTrigger === 'sla_warning') {
+      scheduleSlaWarningNotification({
+        organizationId: ctx.organizationId,
+        conversationId: ctx.conversationId,
+        slaMinutes: ctx.slaMinutes,
+        channel,
+        ruleId: ctx.ruleId,
+        idempotencyKey: `workflow:sla_notify:${ctx.ruleId}:${ctx.conversationId}:${channel}`,
+      });
+      emitWorkflowActionApplied({
+        organizationId: ctx.organizationId,
+        conversationId: ctx.conversationId,
+        ruleId: ctx.ruleId,
+        actionType: type,
+        messageId: ctx.messageId,
+        channelType: ctx.channelType,
+        detail: { channel, notification: 'sla_warning' },
+      });
+      return 'applied';
+    }
+
     if (channel === 'assignee') {
       emitWorkflowActionSkipped({
         organizationId: ctx.organizationId,
@@ -219,13 +254,14 @@ console.log('action', action)
       });
       return 'skipped';
     }
+
     scheduleStaffInboundNotification({
       organizationId: ctx.organizationId,
       conversationId: ctx.conversationId,
       customerMessage: ctx.customerMessage ?? '(workflow notification)',
       customerEmail: ctx.customerEmail ?? '',
       channelLabel: 'workflow',
-      idempotencyKey: `workflow:notify:${ctx.ruleId}:${ctx.messageId ?? ctx.conversationId}`,
+      idempotencyKey,
     });
     emitWorkflowActionApplied({
       organizationId: ctx.organizationId,
@@ -283,16 +319,19 @@ console.log('action', action)
  * @param {string} params.organizationId
  * @param {string} params.conversationId
  * @param {string} [params.messageId]
+ * @param {string} [params.workflowTrigger]
+ * @param {number} [params.slaMinutes]
  * @param {Array<{ ruleId: string, name: string, actions: object[] }>} params.matched
  */
 export async function applyMatchedWorkflowRules({
   organizationId,
   conversationId,
   messageId,
+  workflowTrigger,
+  slaMinutes,
   matched,
 }) {
   if (!matched?.length) return { applied: 0, skipped: 0, failed: 0 };
- console.log('matched', matched)
   const { data: conv } = await supabaseAdmin
     .from('conversations')
     .select('channel_type, customer_id')
@@ -337,6 +376,8 @@ export async function applyMatchedWorkflowRules({
           channelType,
           customerEmail,
           customerMessage,
+          workflowTrigger,
+          slaMinutes,
         });
         if (outcome === 'applied') applied += 1;
         else skipped += 1;

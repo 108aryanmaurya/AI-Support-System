@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { getDefaultConversationAiEnabled } from './orgSettings.service.js';
+import { clearConversationSlaAtRisk } from './ai/workflowConversationFlags.service.js';
 
 function toInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -186,6 +187,11 @@ export async function createMessage({
     if (error.code === '23503') throw new HttpError(409, error.message || 'Conversation changed during write.');
     throw new HttpError(500, error.message || 'Failed to send message.');
   }
+
+  if (senderType === 'agent') {
+    await clearConversationSlaAtRisk({ organizationId, conversationId });
+  }
+
   return data;
 }
 

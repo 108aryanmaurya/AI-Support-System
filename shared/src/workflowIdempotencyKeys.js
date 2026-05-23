@@ -44,3 +44,40 @@ export function workflowSlaWarningIdempotencyKey(organizationId, conversationId,
 export function workflowScheduleScanIdempotencyKey(organizationId, hourKey) {
   return `workflow:schedule:${organizationId}:${hourKey}`;
 }
+
+/**
+ * UTC 15-minute bucket for cron dedupe (00, 15, 30, 45).
+ *
+ * @param {Date} [date]
+ * @returns {string} e.g. `2026-05-23T14:30`
+ */
+export function fifteenMinuteBucketKey(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  const h = String(d.getUTCHours()).padStart(2, '0');
+  const m = String(Math.floor(d.getUTCMinutes() / 15) * 15).padStart(2, '0');
+  return `${y}-${mo}-${day}T${h}:${m}`;
+}
+
+/**
+ * One org SLA scan per 15-minute bucket (cron should run at least every 15 minutes).
+ *
+ * @param {string} organizationId
+ * @param {string} bucketKey — from {@link fifteenMinuteBucketKey}
+ */
+export function slaScanOrgIdempotencyKey(organizationId, bucketKey) {
+  return `sla.scan:${organizationId}:${bucketKey}`;
+}
+
+/**
+ * One auto-route attempt per inbound message (Sprint 5+ `assignment.auto_route`).
+ *
+ * @param {string} organizationId
+ * @param {string} conversationId
+ * @param {string} messageId
+ */
+export function autoRouteIdempotencyKey(organizationId, conversationId, messageId) {
+  return `assignment:auto_route:${organizationId}:${conversationId}:${messageId}`;
+}

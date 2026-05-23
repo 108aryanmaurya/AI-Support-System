@@ -3,6 +3,7 @@ import { WORKFLOW_AUTOMATION_JOB_TYPES } from './workflowAutomationJobTypes.js';
 /** Durable job types for `automation_jobs.job_type`. */
 export const AUTOMATION_JOB_TYPES = Object.freeze([
   'notify.staff_inbound',
+  'notify.sla_warning',
   'notify.assignment',
   'sla.scan_org',
   'knowledge.ingest_source',

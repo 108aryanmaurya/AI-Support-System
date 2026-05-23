@@ -8,6 +8,7 @@ import { runSlaWarningWorkflowAutomation } from '../../ai/workflowRules.service.
  */
 export async function handleWorkflowSla(job) {
   const p = parseAutomationJobPayload(job);
+  console.log('handleWorkflowSla', p)
   const conversationId =
     typeof p.conversationId === 'string'
       ? p.conversationId.trim()

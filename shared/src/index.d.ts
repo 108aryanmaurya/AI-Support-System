@@ -47,6 +47,10 @@ export function inboxSortTier(conversation: unknown, myMemberId: string | null |
 export function compareConversationsInbox(a: unknown, b: unknown, myMemberId: string | null | undefined): number;
 export function sortConversationsInbox(items: unknown[], myMemberId: string | null | undefined): unknown[];
 
+export function normalizeConversationRecord(raw: unknown): unknown;
+export function mergeConversationRecords(prev: unknown, incoming: unknown): unknown;
+export function pickAssignedMemberId(raw: unknown): string | null;
+
 export const SUPPORT_EVENT_TYPES: readonly [
   'message.inbound',
   'message.outbound_sent',
@@ -119,6 +123,29 @@ export const ORG_AUTOMATION_SETTINGS_DEFAULTS: {
 
 export function mergeOrgAiSettings(raw: unknown): typeof ORG_AI_SETTINGS_DEFAULTS;
 export function mergeOrgAutomationSettings(raw: unknown): typeof ORG_AUTOMATION_SETTINGS_DEFAULTS;
+
+export const ASSIGNMENT_STRATEGIES: readonly [
+  'weighted_hybrid',
+  'least_loaded',
+  'round_robin',
+  'skill_based',
+];
+
+export const ORG_ASSIGNMENT_SETTINGS_DEFAULTS: {
+  auto_route_enabled: boolean;
+  strategy: string;
+};
+
+export function mergeOrgAssignmentSettings(
+  raw: unknown,
+): typeof ORG_ASSIGNMENT_SETTINGS_DEFAULTS;
+export function isOrgAutoRouteEnabled(settings: unknown): boolean;
+
+export function autoRouteIdempotencyKey(
+  organizationId: string,
+  conversationId: string,
+  messageId: string,
+): string;
 
 export const KNOWLEDGE_ARTICLE_STATUSES: readonly [
   'draft',

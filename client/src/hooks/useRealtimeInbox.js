@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef } from 'react'
+import { mergeConversationRecords } from '@ai-support/shared'
 import { supabase } from '../services/supabase.js'
 import { apiFetch } from '../services/api.js'
 import { conversationsListUrl } from '../services/inboxApi.js'
@@ -193,7 +194,9 @@ function createRealtimeInboxSubscription({ organizationId, userId, subscriptionK
       return
     }
     rememberConversationOrg(row.id, row.organization_id)
-    useInboxStore.getState().upsertConversation(row)
+    const store = useInboxStore.getState()
+    const existing = store.conversations.find((c) => c.id === row.id)
+    store.upsertConversation(mergeConversationRecords(existing, row))
   }
 
   const syncActiveViewers = () => {

@@ -21,7 +21,7 @@ export async function isCustomerMessageFreshForNotification(messageId) {
   return age >= 0 && age <= FRESH_MESSAGE_MAX_AGE_MS;
 }
 
-async function emailForMember(organizationId, memberId) {
+export async function emailForMember(organizationId, memberId) {
   const { data: member, error: mErr } = await supabaseAdmin
     .from('organization_members')
     .select('user_id')

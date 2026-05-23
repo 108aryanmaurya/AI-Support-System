@@ -50,7 +50,7 @@ flowchart LR
 | GET | `.../conversations?filter=` | Paginated list |
 | GET | `.../conversations/counts` | Sidebar badges |
 | POST | `.../conversations` | Create thread |
-| PATCH | `.../conversations/:id` | Status, priority, assignment |
+| PATCH | `.../conversations/:id` | Status, priority, **assignment** (`assignedToMemberId`, `assignmentType`), `aiEnabled`, `tagIds` |
 | PATCH | `.../conversations/:id/spam` | Spam bucket |
 | GET | `.../conversations/:id/messages` | Thread history |
 | GET | `.../conversations/members` | Assignee picker |

@@ -167,7 +167,6 @@ export async function evaluateWorkflowForConversation({
   if (!(await isWorkflowAutomationEnabled(organizationId))) {
     return { skipped: true, reason: 'workflow_disabled', matched: [], apply: null };
   }
-console.log('trigger', trigger)
   const { rules, schedule } = await getOrgWorkflowRules(organizationId);
   const hasTriggerRules = (rules ?? []).some(
     (r) => r.enabled !== false && r.trigger === trigger,
@@ -198,7 +197,6 @@ console.log('trigger', trigger)
     isBusinessHours: resolvedBusinessHours,
   });
   const matched = evaluateWorkflowRules(rules, trigger, ctx);
-
   for (const m of matched) {
     logWorkflowEvent({
       organization_id: organizationId,
@@ -223,7 +221,6 @@ console.log('trigger', trigger)
 
   let apply = null;
   if (applyActions) {
-    console.log('applyActions', applyActions)
     if (trigger === 'sla_warning') {
       await markConversationSlaAtRisk({
         organizationId,
@@ -235,6 +232,8 @@ console.log('trigger', trigger)
       organizationId,
       conversationId,
       messageId,
+      workflowTrigger: trigger,
+      slaMinutes,
       matched,
     });
     if (trigger === 'sla_warning' && matched.length > 0) {
@@ -289,7 +288,6 @@ export async function runSlaWarningWorkflowAutomation({
       'runSlaWarningWorkflowAutomation requires organizationId and conversationId',
     );
   }
-
   return evaluateWorkflowForConversation({
     organizationId,
     conversationId,

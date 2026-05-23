@@ -1,5 +1,9 @@
 import { create } from 'zustand'
-import { sortConversationsInbox } from '@ai-support/shared'
+import {
+  mergeConversationRecords,
+  normalizeConversationRecord,
+  sortConversationsInbox,
+} from '@ai-support/shared'
 
 /** Hard cap for conversations kept in client memory (pagination / load-more trim). */
 export const MAX_CONVERSATIONS_IN_MEMORY = 100
@@ -23,6 +27,7 @@ export function trimConversationsToCap(sortedInboxList, max, pinnedConversationI
   if (!pinned) return sortedInboxList.slice(0, max)
 
   const rest = sortedInboxList.filter((c) => c.id !== pinned.id)
+
   return sortConversationsInbox([pinned, ...rest], myMemberId ?? null).slice(0, max)
 }
 
@@ -32,7 +37,7 @@ function mergeConversationInboxSort(list, incoming, myMemberId) {
   if (!id) return list
   const without = list.filter((c) => c.id !== id)
   const prev = list.find((c) => c.id === id)
-  const merged = prev ? { ...prev, ...incoming } : { ...incoming }
+  const merged = mergeConversationRecords(prev, normalizeConversationRecord(incoming))
   return sortConversationsInbox([...without, merged], myMemberId ?? null)
 }
 
@@ -169,7 +174,7 @@ export const useInboxStore = create((set) => ({
    */
   setConversationsPage: (payload) =>
     set((state) => {
-      const items = payload?.items ?? []
+      const items = (payload?.items ?? []).map((item) => normalizeConversationRecord(item))
       const pg = payload?.pagination ?? {}
       const page = pg.page ?? 1
       const pageSize = pg.pageSize ?? (items.length || 50)
@@ -201,7 +206,8 @@ export const useInboxStore = create((set) => ({
         byId.set(c.id, c)
       }
       for (const c of newItems) {
-        if (c?.id) byId.set(c.id, { ...byId.get(c.id), ...c })
+        if (!c?.id) continue
+        byId.set(c.id, mergeConversationRecords(byId.get(c.id), c))
       }
       const mid = state.inboxSortMemberId ?? null
       const merged = sortConversationsInbox([...byId.values()], mid)

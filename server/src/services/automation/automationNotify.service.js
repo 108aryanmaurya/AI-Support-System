@@ -5,6 +5,27 @@ import { notifyConversationAssignee } from '../conversationAssignmentNotificatio
 /**
  * Enqueue staff inbound notification (falls back to direct send if queue unavailable).
  */
+export function scheduleSlaWarningNotification({
+  organizationId,
+  conversationId,
+  slaMinutes,
+  channel,
+  ruleId,
+  idempotencyKey,
+}) {
+  emitAutomationJob({
+    organizationId,
+    jobType: 'notify.sla_warning',
+    idempotencyKey,
+    payload: {
+      conversationId,
+      slaMinutes,
+      channel: channel === 'assignee' ? 'assignee' : 'staff',
+      ruleId,
+    },
+  });
+}
+
 export function scheduleStaffInboundNotification({
   organizationId,
   conversationId,

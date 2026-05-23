@@ -45,6 +45,11 @@ import {
 } from '../utils/inboxAiLineage.js'
 import { fetchOrgAiSettings } from '../services/orgSettingsApi.js'
 import { fetchOrgTags } from '../services/tagsApi.js'
+import {
+  assignConversationToMember,
+  patchConversation,
+} from '../services/conversationsApi.js'
+import { useOrganizationContext } from '../context/OrganizationContext.jsx'
 import { useInboxSidebarActions } from '../hooks/useInboxSidebarActions.js'
 import {
   conversationCountsUrl,
@@ -52,7 +57,6 @@ import {
   conversationMessagesUrl,
   conversationsListUrl,
   patchConversationSpamUrl,
-  patchConversationUrl,
 } from '../services/inboxApi.js'
 import { getConversationAutomationBadges } from '@ai-support/shared'
 import { DEFAULT_INBOX_FILTER, useInboxStore } from '../stores/inboxStore.js'
@@ -213,6 +217,7 @@ export default function InboxPage() {
     (typeof orgFromRoute === 'string' && orgFromRoute.trim()) ||
     ''
   const { user } = useAuth()
+  const { organizations } = useOrganizationContext()
   const conversations = useInboxStore((state) => state.conversations)
   const activeConversationId = useInboxStore((state) => state.activeConversationId)
   const conversationPagination = useInboxStore((state) => state.conversationPagination)
@@ -235,6 +240,7 @@ export default function InboxPage() {
   const [orgMembers, setOrgMembers] = useState([])
   const [orgTags, setOrgTags] = useState([])
   const [assigningConversation, setAssigningConversation] = useState(false)
+  const [assignError, setAssignError] = useState('')
   const [assignMenuOpen, setAssignMenuOpen] = useState(false)
   const [conversationDetailSaving, setConversationDetailSaving] = useState(false)
   const [spamUpdating, setSpamUpdating] = useState(false)
@@ -481,10 +487,21 @@ export default function InboxPage() {
     [organizationId, composerAiDisabledReason, captureComposerSelection, getComposerTargetText],
   )
 
-  const myMembership = useMemo(
-    () => orgMembers.find((m) => m.userId === user?.id) ?? null,
-    [orgMembers, user?.id],
-  )
+  const myMembership = useMemo(() => {
+    const fromMembers = orgMembers.find((m) => m.userId === user?.id)
+    if (fromMembers) return fromMembers
+    const orgRow = organizations.find((o) => o.orgId === organizationId)
+    if (orgRow?.membershipId && user?.id) {
+      return {
+        id: orgRow.membershipId,
+        userId: user.id,
+        role: orgRow.role,
+        displayName: 'You',
+        email: typeof user.email === 'string' ? user.email : null,
+      }
+    }
+    return null
+  }, [orgMembers, organizations, organizationId, user?.id, user?.email])
 
   const setInboxSortMemberId = useInboxStore((state) => state.setInboxSortMemberId)
   useEffect(() => {
@@ -678,30 +695,36 @@ export default function InboxPage() {
 
   const assignConversation = useCallback(
     async (conversationId, memberId) => {
-      if (!organizationId || !conversationId) return
+      if (!organizationId) {
+        setAssignError('Missing organization in URL. Open inbox from /org/:orgId/inbox.')
+        return
+      }
+      if (!conversationId) {
+        setAssignError('No conversation selected.')
+        return
+      }
       setAssigningConversation(true)
+      setAssignError('')
       setError('')
       try {
-        const res = await apiFetch(patchConversationUrl(organizationId, conversationId), {
-          method: 'PATCH',
-          body: JSON.stringify(
-            memberId
-              ? { assignedToMemberId: memberId, assignmentType: 'assigned_to_agent' }
-              : { assignedToMemberId: null, assignmentType: 'unassigned' },
-          ),
-        })
+        const res = await assignConversationToMember(organizationId, conversationId, memberId)
         const updated = res?.conversation
-        if (updated) upsertConversation(updated)
-        const filterNow = useInboxStore.getState().activeFilter
-        await runConversationQuery(filterNow, { silent: true })
+        if (!updated?.id) {
+          throw new Error('Server did not return an updated conversation.')
+        }
+        upsertConversation(updated)
+        // Do not refetch the list here: setConversationsPage would replace items and drop
+        // the active thread when the current filter no longer matches (e.g. unassigned).
         await loadFilterCounts()
       } catch (err) {
-        setError(err?.message || 'Could not update assignment.')
+        const message = err?.message || 'Could not update assignment.'
+        setAssignError(message)
+        setError(message)
       } finally {
         setAssigningConversation(false)
       }
     },
-    [organizationId, upsertConversation, runConversationQuery, loadFilterCounts],
+    [organizationId, upsertConversation, loadFilterCounts],
   )
 
   const handleSelectConversation = useCallback(
@@ -729,14 +752,17 @@ export default function InboxPage() {
       setConversationDetailSaving(true)
       setError('')
       try {
-        const res = await apiFetch(patchConversationUrl(organizationId, activeConversationId), {
-          method: 'PATCH',
-          body: JSON.stringify(patch),
-        })
+        const res = await patchConversation(organizationId, activeConversationId, patch)
         const updated = res?.conversation
         if (updated) upsertConversation(updated)
-        const filterNow = useInboxStore.getState().activeFilter
-        await runConversationQuery(filterNow, { silent: true })
+        const keys = Object.keys(patch ?? {})
+        const assignmentOnly =
+          keys.length > 0 &&
+          keys.every((k) => k === 'assignedToMemberId' || k === 'assignmentType')
+        if (!assignmentOnly) {
+          const filterNow = useInboxStore.getState().activeFilter
+          await runConversationQuery(filterNow, { silent: true })
+        }
         await loadFilterCounts()
       } catch (err) {
         setError(err?.message || 'Could not update conversation.')
@@ -1162,10 +1188,15 @@ export default function InboxPage() {
                   {assigneeLabel}
                 </span>
               </div>
+              {assignError ? (
+                <p className="text-xs text-red-300" role="alert">
+                  {assignError}
+                </p>
+              ) : null}
               <div ref={assignMenuRef} className="relative">
                 <button
                   type="button"
-                  disabled={!selectedConversation || !myMembership || assigningConversation}
+                  disabled={!selectedConversation || assigningConversation}
                   aria-expanded={assignMenuOpen}
                   aria-haspopup="listbox"
                   aria-controls="inbox-assign-member-list"

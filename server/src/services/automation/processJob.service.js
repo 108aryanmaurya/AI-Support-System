@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../config/supabase.js';
 import { handleNotifyAssignment } from './jobHandlers/notifyAssignment.js';
 import { handleNotifyStaffInbound } from './jobHandlers/notifyStaffInbound.js';
+import { handleNotifySlaWarning } from './jobHandlers/notifySlaWarning.js';
 import { handleSlaScanOrg } from './jobHandlers/slaScanOrg.js';
 import { handleKnowledgeIngestSource } from './jobHandlers/knowledgeIngestSource.js';
 import { handleClassifyInbound } from './jobHandlers/classifyInbound.js';
@@ -15,6 +16,7 @@ function isWorkflowFatalError(e) {
 
 const HANDLERS = {
   'notify.staff_inbound': handleNotifyStaffInbound,
+  'notify.sla_warning': handleNotifySlaWarning,
   'notify.assignment': handleNotifyAssignment,
   'sla.scan_org': handleSlaScanOrg,
   'knowledge.ingest_source': handleKnowledgeIngestSource,
@@ -68,7 +70,6 @@ async function markJobFailed(job, errorMessage, { forceDead = false } = {}) {
  */
 export async function runAutomationJob(job) {
   const handler = HANDLERS[job.job_type];
-  console.log('runAutomationJob handler', handler)
   if (!handler) {
     throw new Error(`No handler for job_type: ${job.job_type}`);
   }
@@ -121,7 +122,6 @@ async function claimJobForInlineProcessing(jobId) {
  */
 export async function processAutomationJobById(jobId) {
   const job = await claimJobForInlineProcessing(jobId);
-  console.log('processAutomationJobById job', job)
   if (!job) return;
 
   try {

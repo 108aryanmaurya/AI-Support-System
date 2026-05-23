@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { fifteenMinuteBucketKey } from '@ai-support/shared';
 import { env } from '../config/env.js';
 import { enqueueSlaScansForAllOrgs } from '../services/automation/jobHandlers/slaScanOrg.js';
 import { enqueueWorkflowScheduleScansForAllOrgs } from '../services/automation/jobHandlers/workflowScheduleOrg.js';
@@ -8,6 +9,7 @@ const router = Router();
 /**
  * POST /api/internal/cron/sla-scan
  * Header: x-automation-cron-secret
+ * Idempotency: one `sla.scan_org` per org per 15-minute UTC bucket — run cron every 15 minutes.
  */
 router.post('/sla-scan', async (req, res, next) => {
   try {
@@ -16,8 +18,13 @@ router.post('/sla-scan', async (req, res, next) => {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
-    await enqueueSlaScansForAllOrgs();
-    res.json({ ok: true, enqueued: 'sla.scan_org per organization' });
+    const scanBucketKey = fifteenMinuteBucketKey();
+    await enqueueSlaScansForAllOrgs(scanBucketKey);
+    res.json({
+      ok: true,
+      enqueued: 'sla.scan_org per organization',
+      scanBucketKey,
+    });
   } catch (e) {
     next(e);
   }

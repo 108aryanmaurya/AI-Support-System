@@ -24,8 +24,6 @@ export async function handleWorkflowInbound(job) {
   if (!conversationId || !messageId) {
     throw new Error('ai.workflow_inbound payload requires conversationId and messageId');
   }
-console.log('conversationId', conversationId)
-console.log('messageId', messageId)
   await runInboundWorkflowAutomation({
     organizationId: job.organization_id,
     conversationId,

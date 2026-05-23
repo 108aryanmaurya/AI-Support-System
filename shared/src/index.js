@@ -29,6 +29,12 @@ export {
   sortConversationsInbox,
 } from './inboxSort.js';
 
+export {
+  mergeConversationRecords,
+  normalizeConversationRecord,
+  pickAssignedMemberId,
+} from './conversationRecord.js';
+
 export { SUPPORT_EVENT_TYPES, isSupportEventType } from './supportEventTypes.js';
 
 export { AUTOMATION_JOB_TYPES, isAutomationJobType } from './automationJobTypes.js';
@@ -45,6 +51,9 @@ export {
 } from './conversationMetadataAi.js';
 
 export {
+  autoRouteIdempotencyKey,
+  fifteenMinuteBucketKey,
+  slaScanOrgIdempotencyKey,
   workflowInboundIdempotencyKey,
   workflowScheduleScanIdempotencyKey,
   workflowSlaWarningIdempotencyKey,
@@ -96,6 +105,13 @@ export {
   mergeOrgAiSettings,
   mergeOrgAutomationSettings,
 } from './orgSettings.js';
+
+export {
+  ASSIGNMENT_STRATEGIES,
+  ORG_ASSIGNMENT_SETTINGS_DEFAULTS,
+  isOrgAutoRouteEnabled,
+  mergeOrgAssignmentSettings,
+} from './assignmentSettings.js';
 
 export {
   INGRESS_DUPLICATE_ACTIONS,

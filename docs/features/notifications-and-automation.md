@@ -6,7 +6,7 @@ Side effects that must not block HTTP requests (staff email, SLA scanning) run t
 
 ## Capabilities
 
-- Job types: `notify.staff_inbound`, `notify.assignment`, `sla.scan_org`, `knowledge.ingest_source`, `ai.classify_inbound`, `ai.workflow_inbound`, `ai.workflow_tag_added`, `ai.workflow_sla`, `ai.workflow_schedule_org`
+- Job types: `notify.staff_inbound`, `notify.sla_warning`, `notify.assignment`, `sla.scan_org`, `knowledge.ingest_source`, `ai.classify_inbound`, `ai.workflow_inbound`, `ai.workflow_tag_added`, `ai.workflow_sla`, `ai.workflow_schedule_org`
 - Worker polls via `claim_automation_jobs` RPC
 - Org settings in `organizations.settings.automation` (SLA minutes, notify toggles) — edited via [org-ai-settings](./org-ai-settings.md)
 - Optional internal email via Resend env vars
@@ -47,7 +47,7 @@ flowchart LR
 |-------|----------------|
 | Customer inbound message | `notify.staff_inbound` (from `messages.controller`, `emailWebhook.service`) |
 | Conversation assigned | `notify.assignment` (from `conversations.controller` / `conversationUpdate.service`) |
-| Cron SLA scan | `POST /api/internal/cron/sla-scan` → `sla.scan_org` per org → `sla.first_response_breach` + enqueue `ai.workflow_sla` |
+| Cron SLA scan | `POST /api/internal/cron/sla-scan` → `sla.scan_org` per org per **15-minute UTC bucket** (`slaScanOrgIdempotencyKey`) — run cron **every 15 minutes** → `sla.first_response_breach` + enqueue `ai.workflow_sla` |
 | Cron schedule workflow | `POST /api/internal/cron/workflow-schedule-scan` → `ai.workflow_schedule_org` (orgs with `workflow.schedule.enabled`) |
 | Knowledge file upload | `knowledge.ingest_source` → article publish + chunks |
 

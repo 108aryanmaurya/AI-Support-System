@@ -29,7 +29,6 @@ export async function handleClassifyInbound(job) {
     conversationId,
     messageId,
   });
-console.log('result', result)
   if (result.skipped) {
     // eslint-disable-next-line no-console
     console.info('[classification] job skipped', {
@@ -41,9 +40,7 @@ console.log('result', result)
   }
 
   const skipWorkflow = result.skipped && result.reason === 'not_customer_message';
-  console.log('skipWorkflow', skipWorkflow)
   if (!skipWorkflow) {
-    console.log('scheduleInboundWorkflow')
     scheduleInboundWorkflow({
       organizationId: job.organization_id,
       conversationId,

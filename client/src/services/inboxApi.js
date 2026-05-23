@@ -27,6 +27,7 @@ export function conversationMembersUrl(organizationId) {
   return `${orgBase(organizationId)}/conversations/members`;
 }
 
+/** PATCH assignment, status, priority, assignmentType, aiEnabled, tagIds. */
 export function patchConversationUrl(organizationId, conversationId) {
   return `${orgBase(organizationId)}/conversations/${encodeURIComponent(conversationId)}`;
 }
