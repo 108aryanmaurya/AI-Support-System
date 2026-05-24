@@ -2,7 +2,7 @@
 
 Parent: [auto-assignment-sprint.md](./auto-assignment-sprint.md) | [auto-assignment.md](./auto-assignment.md)
 
-**Status:** Sprint 0 complete (2026-05-23). Safe to start Sprint 1 (agent schema & audit tables).
+**Status:** Sprint 0 complete (2026-05-23). Sprint 1 complete — see [auto-assignment-sprint.md](./auto-assignment-sprint.md#sprint-1--agent-profile-schema--assignment-audit).
 
 ---
 

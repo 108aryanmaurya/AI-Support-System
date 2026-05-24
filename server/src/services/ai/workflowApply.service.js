@@ -414,5 +414,19 @@ export async function applyMatchedWorkflowRules({
     }
   }
 
+  try {
+    const { syncConversationAssignmentRouting } = await import(
+      '../assignment/assignmentInbox.service.js'
+    );
+    await syncConversationAssignmentRouting(organizationId, conversationId);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[assignment] workflow routing sync skipped', {
+      organization_id: organizationId,
+      conversation_id: conversationId,
+      error: e?.message,
+    });
+  }
+
   return { applied, skipped, failed };
 }

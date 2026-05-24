@@ -8,6 +8,8 @@ export const AUTOMATION_JOB_TYPES = Object.freeze([
   'sla.scan_org',
   'knowledge.ingest_source',
   'ai.classify_inbound',
+  'assignment.auto_route',
+  'assignment.reassign',
   ...WORKFLOW_AUTOMATION_JOB_TYPES,
 ]);
 

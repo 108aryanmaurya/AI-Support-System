@@ -2,6 +2,10 @@ import { isAutomationJobType, isWorkflowAutomationJobType } from '@ai-support/sh
 import { supabaseAdmin } from '../../config/supabase.js';
 import { getOrgAutomationSettings } from './orgAutomationSettings.service.js';
 import { getOrgAiSettings } from '../orgSettings.service.js';
+import {
+  canEnqueueAutoRoute,
+  canEnqueueReassign,
+} from '../assignment/assignmentSettings.service.js';
 import { processAutomationJobById } from './processJob.service.js';
 
 function isJobTypeAllowedBySettings(jobType, automationSettings, aiSettings) {
@@ -55,7 +59,17 @@ export async function enqueueAutomationJob({
     aiSettings = { ai_enabled: false, workflow_automation_enabled: false };
   }
 
-  if (!isJobTypeAllowedBySettings(jobType, automationSettings, aiSettings)) {
+  if (jobType === 'assignment.auto_route') {
+    const gate = await canEnqueueAutoRoute(organizationId);
+    if (!gate.allowed) {
+      return { jobId: null, skipped: true, reason: gate.reason ?? 'auto_route_disabled' };
+    }
+  } else if (jobType === 'assignment.reassign') {
+    const gate = await canEnqueueReassign(organizationId);
+    if (!gate.allowed) {
+      return { jobId: null, skipped: true, reason: gate.reason ?? 'reassign_disabled' };
+    }
+  } else if (!isJobTypeAllowedBySettings(jobType, automationSettings, aiSettings)) {
     return { jobId: null, skipped: true, reason: 'disabled_by_org_settings' };
   }
 

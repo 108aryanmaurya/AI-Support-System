@@ -81,3 +81,14 @@ export function slaScanOrgIdempotencyKey(organizationId, bucketKey) {
 export function autoRouteIdempotencyKey(organizationId, conversationId, messageId) {
   return `assignment:auto_route:${organizationId}:${conversationId}:${messageId}`;
 }
+
+/**
+ * One reassignment attempt per conversation per trigger key (Sprint 6+).
+ *
+ * @param {string} organizationId
+ * @param {string} conversationId
+ * @param {string} triggerKey — e.g. `offline:memberId`, `sla_warning:day`
+ */
+export function reassignIdempotencyKey(organizationId, conversationId, triggerKey) {
+  return `assignment:reassign:${organizationId}:${conversationId}:${triggerKey}`;
+}

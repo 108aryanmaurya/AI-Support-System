@@ -52,6 +52,7 @@ export {
 
 export {
   autoRouteIdempotencyKey,
+  reassignIdempotencyKey,
   fifteenMinuteBucketKey,
   slaScanOrgIdempotencyKey,
   workflowInboundIdempotencyKey,
@@ -107,11 +108,78 @@ export {
 } from './orgSettings.js';
 
 export {
+  AGENT_PRESENCE_ASSIGNABLE,
+  AGENT_PRESENCE_HEARTBEAT_STATES,
+  AGENT_PRESENCE_STATES,
+  AGENT_ROUTING_STATUSES,
+  ASSIGNMENT_LIMITS,
+  ASSIGNMENT_LOG_REASONS,
+  ASSIGNMENT_PRESENCE_DEFAULTS,
   ASSIGNMENT_STRATEGIES,
+  defaultAgentProfileRow,
+  isAgentPresenceHeartbeatState,
+  isAgentPresenceState,
+  isAgentRoutingStatus,
+  isAssignmentLogReason,
+  isAssignmentStrategy,
+  isPresenceAssignable,
+  normalizeAgentTimezone,
+  normalizeMaxConcurrency,
+  normalizeShiftTime,
+  validateAgentSkillsPayload,
+} from './assignment.js';
+
+export { isWithinAgentShift } from './agentShiftHours.js';
+
+export {
+  ASSIGNMENT_ADVANCED_DEFAULTS,
+  conversationMatchesVipTags,
+  mergeAssignmentAdvancedSettings,
+} from './assignmentAdvanced.js';
+
+export {
+  applySlaUrgentRanking,
+  isSlaRemainingUrgent,
+} from './assignmentSlaBoost.js';
+
+export {
+  ASSIGNMENT_INBOX_LIMITS,
+  ORG_ASSIGNMENT_ROUTING_DEFAULTS,
+  mergeOrgAssignmentRouting,
+  parseConversationMetadataAssignment,
+} from './assignmentInboxes.js';
+
+export {
+  ELIGIBILITY_DROP_CODES,
+  SKILL_MATCH_TIERS,
+  computeSkillMatchTier,
+  isSkillMatchEligible,
+} from './assignmentSkillMatch.js';
+
+export {
+  ASSIGNMENT_SCORE_WEIGHTS,
+  SKILL_TIER_FACTORS,
+  computeCustomerHistoryFactor,
+  computeLowWorkloadFactor,
+  computePriorityBonusFactor,
+  computeRecentActivityFactor,
+  computeSlaPerformanceFactor,
+  computeStrategyScore,
+  computeWeightedHybridScore,
+  normalizeAssignmentStrategy,
+  skillTierToFactor,
+} from './assignmentScoring.js';
+
+export {
+  ORG_ASSIGNMENT_ORG_DEFAULTS,
   ORG_ASSIGNMENT_SETTINGS_DEFAULTS,
   isOrgAutoRouteEnabled,
   mergeOrgAssignmentSettings,
 } from './assignmentSettings.js';
+
+export { buildAssignmentSettingsPatch } from './assignmentSettingsPatch.js';
+
+export { percentile, stddevActiveChats } from './assignmentMetricsMath.js';
 
 export {
   INGRESS_DUPLICATE_ACTIONS,

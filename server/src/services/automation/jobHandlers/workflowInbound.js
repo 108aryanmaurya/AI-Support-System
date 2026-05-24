@@ -1,5 +1,6 @@
 import { parseAutomationJobPayload } from '../jobPayload.js';
 import { runInboundWorkflowAutomation } from '../../ai/workflowRules.service.js';
+import { scheduleAutoRoute } from '../enqueueAutoRoute.service.js';
 
 /**
  * Evaluate and apply inbound_message workflow rules.
@@ -25,6 +26,12 @@ export async function handleWorkflowInbound(job) {
     throw new Error('ai.workflow_inbound payload requires conversationId and messageId');
   }
   await runInboundWorkflowAutomation({
+    organizationId: job.organization_id,
+    conversationId,
+    messageId,
+  });
+
+  scheduleAutoRoute({
     organizationId: job.organization_id,
     conversationId,
     messageId,

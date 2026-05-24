@@ -13,6 +13,22 @@ Last updated: 2026-05-23
 
 **Sprint 0:** Complete — see [auto-assignment-prerequisites.md](./auto-assignment-prerequisites.md).
 
+**Sprint 1:** Complete — agent schema, assignment audit log, admin agent API.
+
+**Sprint 2:** Complete — Redis presence/workload, heartbeat, shift hours helpers.
+
+**Sprint 3:** Complete — inbox routing, eligibility filters, preview API.
+
+**Sprint 4:** Complete — weighted scoring, strategies, round-robin tie-break.
+
+**Sprint 5:** Complete — `assignment.auto_route` job, Redis lock, sticky assign, fallback queue.
+
+**Sprint 6:** Complete — SLA-urgent ranking in preview, VIP proficiency floor, `assignment.reassign` job, offline + SLA-warning triggers.
+
+**Sprint 7:** Complete — Settings → Assignment admin UI, `GET/PUT .../assignment/settings`, agent skills editor, inbox assignment audit hint.
+
+**Sprint 8:** Complete — metrics API, structured logs, preview rate limits, concurrency tests, operations runbook.
+
 ---
 
 ## Goal (from architecture plan)
@@ -122,6 +138,13 @@ Sprints 2 and 3 can **partially parallelize** after Sprint 1 lands migrations (p
 
 **Exit:** Admin can configure skills + concurrency for a member; assigning a conversation writes one `assignment_logs` row.
 
+**Shipped (2026-05-23)**
+
+- Migration `20260523120000_agent_assignment_schema.sql` — `agent_profiles`, `agent_skills`, `agent_presence`, `assignment_logs`
+- `shared/src/assignment.js` — presence, strategies, limits, skill validation
+- `GET/PUT /api/org/:orgId/assignment/agents/:memberId` (**ADMIN**)
+- `assignmentLog.service.js` — append on assignment change via `conversationUpdate.service.js`
+
 ---
 
 ## Sprint 2 — Presence & workload counters
@@ -145,6 +168,14 @@ Sprints 2 and 3 can **partially parallelize** after Sprint 1 lands migrations (p
 | Client | `client/src/hooks/useAgentPresence.js` (heartbeat on inbox mount) |
 
 **Exit:** Two agents in same org show distinct presence in Redis; active chat count matches open assigned conversations within tolerance.
+
+**Shipped (2026-05-23)**
+
+- `assignmentRedis.service.js` — `asmt:presence:{org}:{member}` (TTL), `asmt:active_chats:{org}:{member}`
+- `agentPresence.service.js` — heartbeat → DB + Redis; `GET /assignment/presence` (**ADMIN**)
+- `agentWorkload.service.js` — DB-synced active chat counts; `memberHasConcurrencyCapacity`; hooks in `conversationUpdate.service.js`
+- `shared/src/agentShiftHours.js` — `isWithinAgentShift`
+- Client `useAgentPresence` — 30s heartbeat on inbox mount; `POST .../presence/heartbeat`
 
 ---
 
@@ -175,6 +206,14 @@ Sprints 2 and 3 can **partially parallelize** after Sprint 1 lands migrations (p
 | Workflow hook | extend `buildWorkflowEvalContext` / assignment metadata on apply |
 
 **Exit:** Unit tests cover each filter dimension; dry-run API `POST .../assignment/preview` returns eligible member ids + drop reasons.
+
+**Shipped (2026-05-23)**
+
+- `assignmentInbox.service.js` — resolve inbox from metadata, channel map, or org rules; workflow sync
+- `assignmentEligibility.service.js` + `assignmentEligibility.filters.js` — seven filters, `no_candidates` summary
+- `shared/src/assignmentInboxes.js`, `assignmentSkillMatch.js`
+- `POST /api/org/:orgId/assignment/preview` — org member; body `{ conversationId, targetInboxId? }`
+- `workflowApply` syncs `metadata.assignment.target_inbox_id` after rule apply
 
 ---
 
@@ -207,6 +246,13 @@ Sprints 2 and 3 can **partially parallelize** after Sprint 1 lands migrations (p
 
 **Exit:** Preview API returns ordered candidates with per-factor breakdown; ties deterministically resolved across repeated calls.
 
+**Shipped (2026-05-23)**
+
+- `shared/src/assignmentScoring.js` — weights, factor helpers, `computeWeightedHybridScore`
+- `assignmentScoring.service.js` — SLA lookback, sticky customer agent, `rankEligibleAgents`
+- `assignmentRoundRobin.service.js` — Redis `asmt:rr:{org}:{inbox}` tie-break + `round_robin` strategy
+- Preview API returns `rankedCandidates`, `recommendedMemberId`, per-candidate `breakdown`
+
 ---
 
 ## Sprint 5 — Auto-assign execution pipeline
@@ -235,32 +281,59 @@ Sprints 2 and 3 can **partially parallelize** after Sprint 1 lands migrations (p
 
 **Exit:** New inbound message on unassigned conversation → worker assigns best agent or leaves in unassigned queue with logged reason; no double-assign under concurrent workers.
 
+**Shipped (2026-05-23)**
+
+- Job `assignment.auto_route` + `handleAutoRoute` / `autoAssign.service.js`
+- Enqueued from `workflowInbound` when still `unassigned` + `auto_route_enabled`
+- Redis lock `asmt:lock:conversation:{id}`; skip when Redis down (`assignment.auto_skipped`)
+- Sticky customer agent preferred when eligible; else `recommendedMemberId` from scoring
+- Fallback `metadata.assignment.fallback = unassigned_queue`; events `assignment.auto_*`
+
 ---
 
 ## Sprint 6 — SLA-aware routing, VIP & reassignment
 
 **Goal:** Operational overrides and lifecycle after initial assign (plan §13–16).
 
+**Status:** Complete (2026-05-23).
+
 **Scope**
 
-- **SLA-aware:** when `remaining_sla_time < threshold` (org setting), boost fastest-available agent (skip fairness weights or apply `priority_bonus` max).
-- **VIP / enterprise:** route to senior tier or priority queue via rules + scoring floor on proficiency.
+- **SLA-aware:** when `remaining_sla_time < threshold` (`settings.assignment.sla_routing_enabled`, `sla_remaining_minutes_threshold`), preview re-ranks by lowest `activeChats` (`applySlaUrgentRanking`).
+- **VIP / enterprise:** `vip_routing_enabled` + `vip_tag_names` → optional `vip_target_inbox_id` override; agents below `vip_min_proficiency` dropped from shortlist.
 - **Reassignment triggers:**
-  - Agent offline > threshold → enqueue `assignment.reassign`
-  - SLA warning (integrate `ai.workflow_sla` / `notify.sla_warning`) → optional auto-reassign
+  - Agent offline (`POST .../presence/offline`) → `scheduleReassignForOfflineAgent` when `reassign_on_agent_offline`
+  - SLA warning → after `ai.workflow_sla` when `reassign_on_sla_warning`
   - Manual transfer → existing PATCH; log `reason: manual`
-  - Sentiment deterioration (optional rule hook from classification delta)
-- **Job:** `assignment.reassign` shares eligibility + scoring; preserves audit chain.
+  - Sentiment deterioration — deferred (hook when classification delta rules exist)
+- **Job:** `assignment.reassign` — excludes current assignee, no sticky; audit `reason: reassign`.
 
-**Key files (target)**
+**Org settings** (merged in `mergeOrgAssignmentRouting` via `mergeAssignmentAdvancedSettings`):
+
+| Key | Default |
+|-----|---------|
+| `sla_routing_enabled` | `false` |
+| `sla_remaining_minutes_threshold` | `5` |
+| `reassign_enabled` | `false` |
+| `reassign_on_sla_warning` | `false` |
+| `reassign_on_agent_offline` | `false` |
+| `vip_routing_enabled` | `false` |
+| `vip_tag_names` | `vip`, `enterprise` |
+| `vip_min_proficiency` | `70` |
+| `vip_target_inbox_id` | `null` |
+
+**Key files**
 
 | Layer | Path |
 |-------|------|
+| Shared advanced | `shared/src/assignmentAdvanced.js` |
+| SLA boost (shared) | `shared/src/assignmentSlaBoost.js` |
+| SLA context (server) | `server/src/services/assignment/assignmentSlaBoost.service.js` |
 | Reassign | `server/src/services/assignment/reassign.service.js` |
-| SLA boost | `server/src/services/assignment/assignmentSlaBoost.service.js` |
-| Handler | `jobHandlers/reassignConversation.js` |
+| Enqueue | `server/src/services/automation/enqueueReassign.service.js` |
+| Handler | `server/src/services/automation/jobHandlers/reassignConversation.js` |
 
-**Exit:** Simulated offline agent triggers reassignment; SLA-near conversation prefers low-latency agent in preview API.
+**Exit:** Offline agent enqueues reassignment for open threads; SLA-near conversation shows `sla.urgent` + boosted ranking in `POST .../assignment/preview`.
 
 ---
 
@@ -268,15 +341,17 @@ Sprints 2 and 3 can **partially parallelize** after Sprint 1 lands migrations (p
 
 **Goal:** Admins configure routing; agents see why a thread landed where it did (plan §24).
 
+**Status:** Complete (2026-05-23).
+
 **Scope**
 
-- **Settings UI:** Settings → Assignment — strategy, default concurrency, business hours template, VIP rules, fallback notify list, enable/disable auto-route.
-- **API:** `GET/PUT /api/org/:orgId/assignment/settings` (**ADMIN** only); merge with shared defaults (never blind replace JSONB).
-- **Agent skills UI:** manage skills per teammate on same page or teammates detail.
-- **Inbox:** optional badge/tooltip “Auto-assigned” from `assignment_logs` latest row; link to strategy for admins.
-- **Docs:** update [support-inbox.md](./support-inbox.md), [workflow-automation.md](./workflow-automation.md) **Connections**; distinguish workflow `set_assignment` (explicit target) vs auto-route (scored).
+- **Settings UI:** `client/src/pages/OrgAssignmentSettingsPage.jsx` — strategy, default concurrency/shift template, VIP rules, fallback notify list, auto-route / SLA / reassign toggles.
+- **API:** `GET/PUT /api/org/:orgId/assignment/settings` (**ADMIN**); `buildAssignmentSettingsPatch` + merge into `settings.assignment` (never blind replace JSONB).
+- **Agent skills UI:** teammate picker + `PUT .../assignment/agents/:memberId` on same page.
+- **Inbox:** `AssignmentAuditHint` from `GET .../assignment/conversations/:id/audit`; admins link to strategy in settings.
+- **Docs:** [support-inbox.md](./support-inbox.md), [workflow-automation.md](./workflow-automation.md) **Connections** updated.
 
-**Exit:** Admin toggles strategy and saves; next auto-route uses new strategy; agent sees assignment source in conversation detail.
+**Exit:** Admin toggles strategy and saves; next auto-route uses new strategy; agents see assignment source in conversation details sidebar.
 
 ---
 
@@ -284,16 +359,18 @@ Sprints 2 and 3 can **partially parallelize** after Sprint 1 lands migrations (p
 
 **Goal:** Enterprise-safe operations (plan §23, production-readiness rule).
 
+**Status:** Complete (2026-05-23).
+
 **Scope**
 
-- **Metrics:** `GET /api/org/:orgId/assignment/metrics` — assignment latency p50/p95, % unassigned fallback, fairness (stddev of active chats per agent), reassignment rate, queue backlog.
-- **Structured logs:** JSON one-liners with `organization_id`, `conversation_id`, `strategy`, `error_code` (no message bodies).
-- **Load tests:** concurrent inbound to same inbox does not over-assign past concurrency; lock contention logged not silent.
-- **Rate limits:** cap preview/dry-run endpoints per org.
-- **Graceful degradation:** Redis down → skip auto-route with `assignment.auto_skipped` reason `redis_unavailable` (do not partial-assign).
-- **Documentation:** mark [auto-assignment.md](./auto-assignment.md) sections implemented; `IMPLEMENTED-FEATURES.md` bullet when shipped.
+- **Metrics:** `GET /api/org/:orgId/assignment/metrics` — latency p50/p95, fallback %, fairness σ, reassign rate, queue depth; embedded in Reports → Overview.
+- **Structured logs:** `assignmentStructuredLog.service.js` — JSON one-liners (`organization_id`, `conversation_id`, `strategy`, `error_code`, `duration_ms`).
+- **Load tests:** `assignmentConcurrency.test.js` — eligibility drops saturated agents (no over-assign past `max_concurrency`).
+- **Rate limits:** `orgAssignmentPreviewRateLimit` on `POST .../assignment/preview` (Redis, env-tunable).
+- **Graceful degradation:** Redis down → skip auto-route/reassign (`redis_unavailable`); lock miss → `lock_held` + structured warn (no silent skip).
+- **Runbook:** [auto-assignment-operations.md](./auto-assignment-operations.md).
 
-**Exit:** Metrics dashboard or API consumed in Reports; runbook notes for worker + Redis failure modes; Phase 6 still does not send autonomous customer replies.
+**Exit:** Reports overview shows assignment KPIs; ops runbook documents worker + Redis failures; Phase 6 outbound unchanged.
 
 ---
 

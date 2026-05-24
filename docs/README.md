@@ -21,6 +21,7 @@ Per-feature implementation guides for the AI Support System monorepo. Each doc e
 | [auto-assignment.md](./features/auto-assignment.md) | Intelligent routing architecture (AI-assisted weighted round robin) |
 | [auto-assignment-sprint.md](./features/auto-assignment-sprint.md) | Auto assignment implementation sprints |
 | [auto-assignment-prerequisites.md](./features/auto-assignment-prerequisites.md) | Sprint 0 gate — platform prerequisites for intelligent routing |
+| [auto-assignment-operations.md](./features/auto-assignment-operations.md) | Assignment metrics, structured logs, Redis/worker runbook (Sprint 8) |
 | [operational-hardening.md](./features/operational-hardening.md) | Rate limits (ingress, AI, webhook) + outbound failure monitoring |
 | [search.md](./features/search.md) | Search page *(partial)* |
 | [ai-capabilities.md](./features/ai-capabilities.md) | AI stubs, schema hooks, roadmap link |

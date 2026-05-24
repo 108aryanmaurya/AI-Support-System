@@ -9,6 +9,8 @@ import { handleWorkflowInbound } from './jobHandlers/workflowInbound.js';
 import { handleWorkflowTagAdded } from './jobHandlers/workflowTagAdded.js';
 import { handleWorkflowSla } from './jobHandlers/workflowSla.js';
 import { handleWorkflowScheduleOrg } from './jobHandlers/workflowScheduleOrg.js';
+import { handleAutoRoute } from './jobHandlers/autoRoute.js';
+import { handleReassignConversation } from './jobHandlers/reassignConversation.js';
 
 function isWorkflowFatalError(e) {
   return e?.fatal === true || e?.name === 'WorkflowFatalError';
@@ -25,6 +27,8 @@ const HANDLERS = {
   'ai.workflow_tag_added': handleWorkflowTagAdded,
   'ai.workflow_sla': handleWorkflowSla,
   'ai.workflow_schedule_org': handleWorkflowScheduleOrg,
+  'assignment.auto_route': handleAutoRoute,
+  'assignment.reassign': handleReassignConversation,
 };
 
 function backoffSeconds(attempts) {

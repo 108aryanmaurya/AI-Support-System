@@ -1,5 +1,7 @@
 import { parseAutomationJobPayload } from '../jobPayload.js';
 import { runSlaWarningWorkflowAutomation } from '../../ai/workflowRules.service.js';
+import { getOrgAssignmentSettings } from '../../assignment/assignmentSettings.service.js';
+import { scheduleReassign } from '../enqueueReassign.service.js';
 
 /**
  * Apply workflow rules for `sla_warning` trigger (enqueued from SLA scan).
@@ -8,7 +10,6 @@ import { runSlaWarningWorkflowAutomation } from '../../ai/workflowRules.service.
  */
 export async function handleWorkflowSla(job) {
   const p = parseAutomationJobPayload(job);
-  console.log('handleWorkflowSla', p)
   const conversationId =
     typeof p.conversationId === 'string'
       ? p.conversationId.trim()
@@ -27,4 +28,15 @@ export async function handleWorkflowSla(job) {
     conversationId,
     slaMinutes: Number.isFinite(slaMinutes) ? slaMinutes : undefined,
   });
+
+  const routing = await getOrgAssignmentSettings(job.organization_id);
+  if (routing.reassign_enabled && routing.reassign_on_sla_warning) {
+    const day = new Date().toISOString().slice(0, 10);
+    scheduleReassign({
+      organizationId: job.organization_id,
+      conversationId,
+      trigger: 'sla_warning',
+      triggerKey: `sla_warning:${day}`,
+    });
+  }
 }

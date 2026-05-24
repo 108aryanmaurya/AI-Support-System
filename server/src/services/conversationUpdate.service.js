@@ -223,6 +223,44 @@ export async function updateConversationFields({
       channelType: data.channel_type ?? null,
       payload: assignmentPayload,
     });
+
+    void (async () => {
+      try {
+        const { appendAssignmentLog, resolveAssignmentLogReason } = await import(
+          './assignment/assignmentLog.service.js'
+        );
+        const logMeta =
+          workflowMeta?.assignmentLog && typeof workflowMeta.assignmentLog === 'object'
+            ? workflowMeta.assignmentLog
+            : {};
+        await appendAssignmentLog({
+          organizationId,
+          conversationId,
+          assignedFrom: prior.assigned_to_member_id ?? null,
+          assignedTo: data.assigned_to_member_id ?? null,
+          assignmentType: data.assignment_type ?? null,
+          reason: resolveAssignmentLogReason({
+            automationSource,
+            workflowMeta,
+            assignedToMemberId: data.assigned_to_member_id,
+            assignmentType: data.assignment_type,
+          }),
+          strategy: typeof logMeta.strategy === 'string' ? logMeta.strategy : null,
+          scoreSnapshot:
+            logMeta.scoreSnapshot && typeof logMeta.scoreSnapshot === 'object'
+              ? logMeta.scoreSnapshot
+              : null,
+          actorMemberId: actorMember?.id ?? null,
+        });
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('[assignment_log] append skipped', {
+          organization_id: organizationId,
+          conversation_id: conversationId,
+          error: e?.message,
+        });
+      }
+    })();
   }
 
   if (prior.priority !== data.priority) {
@@ -240,6 +278,22 @@ export async function updateConversationFields({
       payload: priorityPayload,
     });
   }
+
+  void (async () => {
+    try {
+      const { syncWorkloadOnConversationUpdate } = await import(
+        './assignment/agentWorkload.service.js'
+      );
+      await syncWorkloadOnConversationUpdate(organizationId, prior, data);
+    } catch (e) {
+      // eslint-disable-next-line no-console
+      console.warn('[assignment_workload] sync skipped', {
+        organization_id: organizationId,
+        conversation_id: conversationId,
+        error: e?.message,
+      });
+    }
+  })();
 
   return { conversation: data, priorAssignedToMemberId };
 }

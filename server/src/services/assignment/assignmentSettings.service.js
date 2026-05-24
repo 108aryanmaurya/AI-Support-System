@@ -1,4 +1,4 @@
-import { mergeOrgAssignmentSettings } from '@ai-support/shared';
+import { mergeOrgAssignmentRouting } from '@ai-support/shared';
 import { getOrgAiAndAutomationSettings } from '../orgSettings.service.js';
 import { supabaseAdmin } from '../../config/supabase.js';
 import { HttpError } from '../../utils/httpError.js';
@@ -21,7 +21,7 @@ export async function getOrgAssignmentSettings(organizationId) {
   }
 
   const settings = data.settings && typeof data.settings === 'object' ? data.settings : {};
-  return mergeOrgAssignmentSettings(settings.assignment);
+  return mergeOrgAssignmentRouting(settings.assignment);
 }
 
 /**
@@ -50,6 +50,19 @@ export async function canEnqueueAutoRoute(organizationId) {
   }
   if (!ai.ai_enabled) {
     return { allowed: false, reason: 'ai_disabled' };
+  }
+  return { allowed: true };
+}
+
+/**
+ * Gate for `assignment.reassign` jobs (Sprint 6+).
+ *
+ * @param {string} organizationId
+ */
+export async function canEnqueueReassign(organizationId) {
+  const assignment = await getOrgAssignmentSettings(organizationId);
+  if (!assignment.reassign_enabled) {
+    return { allowed: false, reason: 'reassign_disabled' };
   }
   return { allowed: true };
 }

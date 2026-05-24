@@ -255,6 +255,61 @@ export default function OrgReportsPage() {
                 </p>
               </section>
             ) : null}
+            {overview?.assignment ? (
+              <section className="rounded-xl border border-cyan-900/30 bg-cyan-950/15 p-4">
+                <h3 className="text-sm font-semibold text-cyan-200">Intelligent assignment (7d)</h3>
+                <div className="mt-2 flex flex-wrap gap-6 text-sm text-slate-300">
+                  <span>
+                    Queue depth:{' '}
+                    <strong className="text-white">
+                      {overview.assignment.queueDepth ?? '—'}
+                    </strong>
+                  </span>
+                  <span>
+                    Auto-assigned:{' '}
+                    <strong className="text-white">{overview.assignment.autoApplied ?? 0}</strong>
+                  </span>
+                  <span>
+                    Fallback %:{' '}
+                    <strong className="text-white">
+                      {overview.assignment.fallbackPct != null
+                        ? `${overview.assignment.fallbackPct}%`
+                        : '—'}
+                    </strong>
+                  </span>
+                  <span>
+                    Reassign rate:{' '}
+                    <strong className="text-white">
+                      {overview.assignment.reassignRatePct != null
+                        ? `${overview.assignment.reassignRatePct}%`
+                        : '—'}
+                    </strong>
+                  </span>
+                  <span>
+                    Latency p50:{' '}
+                    <strong className="text-white">
+                      {overview.assignment.latencyP50Ms != null
+                        ? `${overview.assignment.latencyP50Ms} ms`
+                        : '—'}
+                    </strong>
+                  </span>
+                  <span>
+                    Load fairness σ:{' '}
+                    <strong className="text-white">
+                      {overview.assignment.fairnessStdDev ?? '—'}
+                    </strong>
+                  </span>
+                </div>
+                {overview.assignment.settingsPath ? (
+                  <Link
+                    to={overview.assignment.settingsPath}
+                    className="mt-2 inline-block text-xs text-[#3ECF8E] hover:underline"
+                  >
+                    Assignment settings →
+                  </Link>
+                ) : null}
+              </section>
+            ) : null}
             {overview?.workflow ? (
               <section className="rounded-xl border border-emerald-900/30 bg-emerald-950/15 p-4">
                 <h3 className="text-sm font-semibold text-emerald-200">Workflow automation (7d)</h3>

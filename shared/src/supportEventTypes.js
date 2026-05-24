@@ -26,6 +26,11 @@ export const SUPPORT_EVENT_TYPES = Object.freeze([
   'ingress.duplicate_suppressed',
   'workflow.sla_warning_applied',
   'workflow.tag_added_applied',
+  'assignment.auto_applied',
+  'assignment.auto_skipped',
+  'assignment.auto_failed',
+  'assignment.reassigned',
+  'assignment.reassign_skipped',
 ]);
 
 /** @param {unknown} v */

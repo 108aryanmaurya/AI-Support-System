@@ -62,6 +62,11 @@ export const rateLimitConfig = Object.freeze({
     max: parsePositiveInt(process.env.RATE_LIMIT_AGENT_SEND_MAX, 90),
   }),
 
+  assignment: Object.freeze({
+    previewOrgWindowMs: parsePositiveInt(process.env.RATE_LIMIT_ASSIGNMENT_PREVIEW_ORG_WINDOW_MS, 60_000),
+    previewOrgMax: parsePositiveInt(process.env.RATE_LIMIT_ASSIGNMENT_PREVIEW_ORG_MAX, 60),
+  }),
+
   knowledge: Object.freeze({
     searchOrgWindowMs: parsePositiveInt(process.env.RATE_LIMIT_KNOWLEDGE_SEARCH_ORG_WINDOW_MS, 60_000),
     searchOrgMax: parsePositiveInt(process.env.RATE_LIMIT_KNOWLEDGE_SEARCH_ORG_MAX, 120),

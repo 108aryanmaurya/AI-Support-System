@@ -2,6 +2,7 @@ import { deltaPercent, parseAnalyticsDateRange } from './dateRange.js';
 import { fetchKnowledgeMetrics } from './knowledgeMetrics.js';
 import { fetchAiMetrics, fetchAiRunsPaginated, fetchProductMetrics } from './metricsQueries.js';
 import { getWorkflowMetrics } from '../ai/workflowMetrics.service.js';
+import { getAssignmentMetrics } from '../assignment/assignmentMetrics.service.js';
 
 function kpi(id, label, value, previous, unit = 'count') {
   return {
@@ -19,11 +20,12 @@ function kpi(id, label, value, previous, unit = 'count') {
  */
 export async function getAnalyticsOverview(organizationId, query) {
   const range = parseAnalyticsDateRange(query);
-  const [current, previous, ai, workflow] = await Promise.all([
+  const [current, previous, ai, workflow, assignment] = await Promise.all([
     fetchProductMetrics(organizationId, range.fromDate, range.toExclusive),
     fetchProductMetrics(organizationId, range.compareFrom, range.compareToExclusive),
     fetchAiMetrics(organizationId, range.fromDate, range.toExclusive),
     getWorkflowMetrics(organizationId, { days: 7 }).catch(() => null),
+    getAssignmentMetrics(organizationId, { days: 7 }).catch(() => null),
   ]);
 
   const outboundTotal =
@@ -109,6 +111,18 @@ export async function getAnalyticsOverview(organizationId, query) {
           actionsApplied: workflow.events?.available ? workflow.events.applied : null,
           rulesEnabled: workflow.rules?.enabled ?? 0,
           settingsPath: `/org/${organizationId}/settings/workflows`,
+        }
+      : null,
+    assignment: assignment
+      ? {
+          queueDepth: assignment.queue?.available ? assignment.queue.depth : null,
+          autoApplied: assignment.outcomes?.auto_applied ?? 0,
+          fallbackPct: assignment.outcomes?.fallback_unassigned_pct ?? null,
+          reassignRatePct: assignment.outcomes?.reassign_rate_pct ?? null,
+          latencyP50Ms: assignment.latency?.p50Ms ?? null,
+          latencyP95Ms: assignment.latency?.p95Ms ?? null,
+          fairnessStdDev: assignment.fairness?.activeChatsStdDev ?? null,
+          settingsPath: assignment.settingsPath ?? `/org/${organizationId}/settings/assignment`,
         }
       : null,
   };

@@ -54,6 +54,11 @@ flowchart LR
 | PATCH | `.../conversations/:id/spam` | Spam bucket |
 | GET | `.../conversations/:id/messages` | Thread history |
 | GET | `.../conversations/members` | Assignee picker |
+| GET/PUT | `.../assignment/settings` | Org assignment toggles + strategy (**ADMIN**) — Sprint 7 |
+| GET/PUT | `.../assignment/agents/:memberId` | Agent routing profile + skills (**ADMIN**) — Sprint 1 |
+| GET | `.../assignment/metrics` | Ops metrics — latency, fallback %, fairness, queue (Sprint 8) |
+| GET | `.../assignment/conversations/:id/audit` | Latest `assignment_logs` row for inbox badge (Sprint 7) |
+| POST | `.../assignment/preview` | Eligible agents + drop reasons (rate-limited per org, Sprint 8) |
 
 ## Database
 
@@ -70,6 +75,8 @@ flowchart LR
 | [Multi-channel](./multi-channel.md) | Each conversation bound to one channel |
 | [Multi-organization](./multi-organization.md) | All queries scoped by `organization_id` |
 | [Notifications](./notifications-and-automation.md) | Assignment changes enqueue `notify.assignment` |
+| [Auto assignment](./auto-assignment-sprint.md) | `assignment_logs` on PATCH assign; Settings → Assignment UI; audit hint in conversation details |
+| [Workflow automation](./workflow-automation.md) | `set_assignment` = explicit target; auto-route scores agents after rules |
 | [Analytics](./analytics-and-reports.md) | Lifecycle events via `conversationUpdate.service` |
 | [AI capabilities](./ai-capabilities.md) | `assigned_to_ai`, Copilot tab *(partial)* |
 

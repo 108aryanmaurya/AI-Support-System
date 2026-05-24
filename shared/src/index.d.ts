@@ -73,13 +73,16 @@ export function isSupportEventType(value: unknown): value is (typeof SUPPORT_EVE
 
 export const AUTOMATION_JOB_TYPES: readonly [
   'notify.staff_inbound',
+  'notify.sla_warning',
   'notify.assignment',
   'sla.scan_org',
   'knowledge.ingest_source',
   'ai.classify_inbound',
+  'assignment.auto_route',
   'ai.workflow_inbound',
   'ai.workflow_tag_added',
   'ai.workflow_sla',
+  'ai.workflow_schedule_org',
 ];
 
 export function isAutomationJobType(value: unknown): value is (typeof AUTOMATION_JOB_TYPES)[number];
@@ -130,6 +133,73 @@ export const ASSIGNMENT_STRATEGIES: readonly [
   'round_robin',
   'skill_based',
 ];
+
+export const AGENT_ROUTING_STATUSES: readonly ['active', 'inactive'];
+export const AGENT_PRESENCE_STATES: readonly [
+  'online',
+  'available',
+  'away',
+  'busy',
+  'offline',
+];
+export const AGENT_PRESENCE_HEARTBEAT_STATES: readonly [
+  'online',
+  'available',
+  'away',
+  'busy',
+];
+export const AGENT_PRESENCE_ASSIGNABLE: readonly ['online', 'available'];
+export const ASSIGNMENT_PRESENCE_DEFAULTS: {
+  presenceTtlSec: number;
+  heartbeatIntervalMs: number;
+};
+export function isAgentPresenceHeartbeatState(value: unknown): boolean;
+export function isPresenceAssignable(presence: unknown): boolean;
+export function isWithinAgentShift(
+  profile: {
+    shiftStart?: string | null;
+    shiftEnd?: string | null;
+    shift_start?: string | null;
+    shift_end?: string | null;
+    timezone?: string;
+  },
+  at?: Date,
+): boolean;
+export const ASSIGNMENT_LOG_REASONS: readonly [
+  'manual',
+  'workflow',
+  'auto_route',
+  'unassign',
+  'system',
+];
+export const ASSIGNMENT_LIMITS: {
+  maxSkillsPerAgent: number;
+  maxSkillNameLength: number;
+  minProficiency: number;
+  maxProficiency: number;
+  minConcurrency: number;
+  maxConcurrency: number;
+  defaultConcurrency: number;
+  maxTimezoneLength: number;
+};
+
+export function isAssignmentStrategy(value: unknown): boolean;
+export function isAgentRoutingStatus(value: unknown): boolean;
+export function isAgentPresenceState(value: unknown): boolean;
+export function isAssignmentLogReason(value: unknown): boolean;
+export function normalizeShiftTime(raw: unknown): string | null;
+export function normalizeAgentTimezone(raw: unknown): string;
+export function normalizeMaxConcurrency(raw: unknown): number;
+export function validateAgentSkillsPayload(
+  raw: unknown,
+): { skill: string; proficiency: number }[];
+export function defaultAgentProfileRow(): {
+  status: string;
+  max_concurrency: number;
+  shift_start: null;
+  shift_end: null;
+  timezone: string;
+};
 
 export const ORG_ASSIGNMENT_SETTINGS_DEFAULTS: {
   auto_route_enabled: boolean;

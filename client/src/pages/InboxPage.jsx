@@ -32,9 +32,12 @@ import {
 import { useAuth } from '../hooks/useAuth.js'
 import { useInboxPeriodicSync } from '../hooks/useInboxPeriodicSync.js'
 import { useRealtimeInbox } from '../hooks/useRealtimeInbox.js'
+import { useAgentPresence } from '../hooks/useAgentPresence.js'
 import { formatTypingIndicator, useTypingPresence } from '../hooks/useTypingPresence.js'
 import { InboxSidebar } from '../components/InboxSidebar.jsx'
 import { ConversationTagsPanel } from '../components/inbox/ConversationTagsPanel.jsx'
+import AssignmentAuditHint from '../components/inbox/AssignmentAuditHint.jsx'
+import { fetchConversationAssignmentAudit } from '../services/assignmentApi.js'
 import { InboxCopilotPanel } from '../components/inbox/InboxCopilotPanel.jsx'
 import { ComposerAiMenu } from '../components/inbox/ComposerAiMenu.jsx'
 import { ComposerAiPreviewModal } from '../components/inbox/ComposerAiPreviewModal.jsx'
@@ -246,6 +249,7 @@ export default function InboxPage() {
   const [spamUpdating, setSpamUpdating] = useState(false)
   const [sidebarTab, setSidebarTab] = useState('details')
   const [orgAiSettings, setOrgAiSettings] = useState(null)
+  const [assignmentAudit, setAssignmentAudit] = useState(null)
   /** @type {[{ runId: string, sourceText: string, parentMessageId: string | null } | null]} */
   const [pendingSuggestLineage, setPendingSuggestLineage] = useState(null)
   const [aiPreview, setAiPreview] = useState(null)
@@ -487,6 +491,11 @@ export default function InboxPage() {
     [organizationId, composerAiDisabledReason, captureComposerSelection, getComposerTargetText],
   )
 
+  const isOrgAdmin = useMemo(() => {
+    const orgRow = organizations.find((o) => o.orgId === organizationId)
+    return String(orgRow?.role ?? '').toUpperCase() === 'ADMIN'
+  }, [organizations, organizationId])
+
   const myMembership = useMemo(() => {
     const fromMembers = orgMembers.find((m) => m.userId === user?.id)
     if (fromMembers) return fromMembers
@@ -571,6 +580,12 @@ export default function InboxPage() {
     onReconnect: handleRealtimeReconnect,
   })
 
+  useAgentPresence({
+    organizationId,
+    enabled: Boolean(organizationId && user?.id),
+    presence: 'online',
+  })
+
   useInboxPeriodicSync({
     organizationId,
     activeConversationId,
@@ -612,6 +627,30 @@ export default function InboxPage() {
       }),
     )
   }, [orgMembers])
+
+  useEffect(() => {
+    if (!organizationId || !activeConversationId) {
+      setAssignmentAudit(null)
+      return undefined
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetchConversationAssignmentAudit(organizationId, activeConversationId)
+        if (!cancelled) setAssignmentAudit(res?.log ?? null)
+      } catch {
+        if (!cancelled) setAssignmentAudit(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    organizationId,
+    activeConversationId,
+    selectedConversation?.assigned_to_member_id,
+    selectedConversation?.assignment_type,
+  ])
 
   useEffect(() => {
     setAssignMenuOpen(false)
@@ -1193,6 +1232,7 @@ export default function InboxPage() {
                   {assignError}
                 </p>
               ) : null}
+              <AssignmentAuditHint log={assignmentAudit} isAdmin={isOrgAdmin} orgId={organizationId} />
               <div ref={assignMenuRef} className="relative">
                 <button
                   type="button"

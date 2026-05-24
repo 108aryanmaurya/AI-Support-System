@@ -67,6 +67,7 @@ Org toggles: `PATCH .../settings/ai` — `workflow_automation_enabled`, `ai_enab
 | [Notifications and automation](./notifications-and-automation.md) | Worker queue, `notify` actions |
 | [Analytics and reports](./analytics-and-reports.md) | Overview includes workflow KPIs |
 | [Support inbox](./support-inbox.md) | Phase 4 inbox filters and badges |
+| [Auto assignment](./auto-assignment-sprint.md) | **`set_assignment`** sets an explicit member/queue; **`assignment.auto_route`** runs after workflow and picks via scoring (Sprint 5–7). Configure strategy in Settings → Assignment. |
 | [Phase 4 sprints](../ai-features/phase-4-sprint.md) | Implementation breakdown |
 
 ## Status

@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   BarChart3,
   Bot,
+  GitBranch,
   Clock,
   CreditCard,
   Gift,
@@ -170,6 +171,13 @@ export default function OrgSettingsHomePage() {
               iconClass="bg-emerald-700"
               title="Conversation tags"
               description="Create and manage tags for filtering conversations and AI auto-tagging."
+            />
+            <SettingsCard
+              to={`/org/${orgId}/settings/assignment`}
+              icon={GitBranch}
+              iconClass="bg-emerald-800"
+              title="Assignment"
+              description="Auto-route strategy, VIP rules, agent skills, and reassignment toggles."
             />
           </div>
         </section>

@@ -1,6 +1,22 @@
 # Auto Assignment System Plan
 
-**Implementation sprints:** [auto-assignment-sprint.md](./auto-assignment-sprint.md) · **Sprint 0 gate:** [auto-assignment-prerequisites.md](./auto-assignment-prerequisites.md)
+**Implementation sprints:** [auto-assignment-sprint.md](./auto-assignment-sprint.md) · **Sprint 0 gate:** [auto-assignment-prerequisites.md](./auto-assignment-prerequisites.md) · **Ops:** [auto-assignment-operations.md](./auto-assignment-operations.md)
+
+## Implementation status (shipped)
+
+| Plan section | Status |
+|--------------|--------|
+| §1 Philosophy (AI assists, deterministic pick) | Shipped |
+| §2 Lifecycle (classify → workflow → route → assign) | Shipped |
+| §3–8 Inbound + classification context | Shipped (via Phase 3–4) |
+| §9–11 Inbox routing + eligibility filters | Shipped (Sprint 3) |
+| §12 Sticky assignment | Shipped (Sprint 5) |
+| §13–14 SLA + VIP routing | Shipped (Sprint 6) |
+| §15 Fallback queue | Shipped (Sprint 5) |
+| §16 Reassignment | Shipped (Sprint 6) |
+| §23 Metrics + ops | Shipped (Sprint 8) |
+| §24 Admin configuration | Shipped (Sprint 7) |
+| Phase 6 autonomous outbound | **Out of scope** |
 
 ````md
 # Auto Assignment System Architecture Plan

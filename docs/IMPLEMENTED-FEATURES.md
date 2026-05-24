@@ -110,6 +110,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Auto-assign on select** — optional: assign conversation to current agent when opened from unassigned queue
 - **One open conversation per customer** — DB constraint for email/web threads
 - **Active thread index / RPC helpers** — migrations for performant inbox queries
+- **Intelligent assignment (Sprint 1–8)** — Settings → Assignment; `GET .../assignment/metrics` + Reports overview KPIs; structured assignment logs; preview rate limits; ops runbook [auto-assignment-operations.md](docs/features/auto-assignment-operations.md); worker jobs `assignment.auto_route` / `assignment.reassign`
 
 ---
 
