@@ -1,7 +1,7 @@
 import { supabaseAdmin } from '../../config/supabase.js';
 import { emitSupportEvent } from '../analytics/supportEvents.service.js';
 import { updateConversationFromAutomation } from '../conversationUpdate.service.js';
-import { scheduleAssignmentWithFallback } from '../automation/automationNotify.service.js';
+import { schedulePostInboundNotification } from '../postInboundNotification.service.js';
 import { getOrgAssignmentSettings } from './assignmentSettings.service.js';
 import { previewAssignmentEligibility } from './assignmentEligibility.service.js';
 import {
@@ -86,6 +86,15 @@ export async function runAutoAssignConversation({
       reason: 'redis_unavailable',
       message_id: messageId ?? null,
     });
+    if (messageId) {
+      void schedulePostInboundNotification({
+        organizationId,
+        conversationId,
+        messageId,
+        mode: 'routing_fallback',
+        autoRouteReason: 'redis_unavailable',
+      });
+    }
     return { outcome: 'skipped', reason: 'redis_unavailable' };
   }
 
@@ -95,6 +104,15 @@ export async function runAutoAssignConversation({
       reason: 'lock_held',
       message_id: messageId ?? null,
     });
+    if (messageId) {
+      void schedulePostInboundNotification({
+        organizationId,
+        conversationId,
+        messageId,
+        mode: 'routing_fallback',
+        autoRouteReason: 'lock_held',
+      });
+    }
     return { outcome: 'skipped', reason: 'lock_held' };
   }
 
@@ -177,6 +195,23 @@ export async function runAutoAssignConversation({
         message_id: messageId ?? null,
         duration_ms: Date.now() - startedAt,
       });
+      const useFallbackNotify = [
+        'no_candidates',
+        'no_vip_candidates',
+        'redis_unavailable',
+        'lock_held',
+      ].includes(reason);
+      if (useFallbackNotify && messageId) {
+       
+        void schedulePostInboundNotification({
+          organizationId,
+          conversationId,
+          messageId,
+          mode: 'routing_fallback',
+          autoRouteReason: reason,
+          primaryCodes: preview.noCandidates?.primaryCodes ?? [],
+        });
+      }
       return { outcome: 'skipped', reason };
     }
 
@@ -197,13 +232,16 @@ export async function runAutoAssignConversation({
       },
     });
 
-    void scheduleAssignmentWithFallback({
-      organizationId,
-      conversation: updated,
-      assignedToMemberId: winnerId,
-      actorUserId: null,
-      priorAssignedToMemberId: null,
-    });
+    if (messageId) {
+     
+        void schedulePostInboundNotification({
+          organizationId,
+          conversationId,
+          messageId,
+          mode: 'auto_assigned_first_touch',
+          assignedToMemberId: winnerId,
+        });
+    }
 
     const durationMs = Date.now() - startedAt;
     logAssignmentStructured('info', {

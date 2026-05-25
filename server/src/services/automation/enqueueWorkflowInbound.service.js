@@ -1,6 +1,8 @@
 import { workflowInboundIdempotencyKey } from '@ai-support/shared';
 import { emitAutomationJob } from './enqueueJob.service.js';
 import { isWorkflowAutomationEnabled } from '../ai/workflowAiGates.service.js';
+import { tryScheduleAutoRoute } from './enqueueAutoRoute.service.js';
+import { schedulePostInboundNotification } from '../postInboundNotification.service.js';
 
 /**
  * Fire-and-forget: queue Phase 4 inbound workflow evaluation + action apply.
@@ -19,7 +21,23 @@ export function scheduleInboundWorkflow({
 }) {
   void (async () => {
     try {
-      if (!(await isWorkflowAutomationEnabled(organizationId))) return;
+      if (!(await isWorkflowAutomationEnabled(organizationId))) {
+        const route = await tryScheduleAutoRoute({ organizationId, conversationId, messageId });
+        if (!route.scheduled) {
+          const mode =
+            route.reason === 'already_assigned' ? 'standard' : 'routing_fallback';
+          await schedulePostInboundNotification({
+            organizationId,
+            conversationId,
+            messageId,
+            mode,
+            autoRouteReason:
+              route.reason === 'already_assigned' ? null : route.reason ?? 'auto_route_not_scheduled',
+            idempotencyKey: `post-inbound:${organizationId}:${messageId}:${mode}`,
+          });
+        }
+        return;
+      }
       const runAt =
         runAtDelayMs > 0 ? new Date(Date.now() + runAtDelayMs).toISOString() : null;
       emitAutomationJob({

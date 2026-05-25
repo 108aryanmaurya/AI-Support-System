@@ -340,6 +340,7 @@ export async function listMembersForOrganization(organizationId) {
   return (rows ?? []).map((row) => {
     const u = userMap.get(row.user_id);
     return {
+      id: row.id,
       membershipId: row.id,
       userId: row.user_id,
       role: row.role,

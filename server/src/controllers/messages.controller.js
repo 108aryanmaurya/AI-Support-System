@@ -11,8 +11,6 @@ import {
 } from '../utils/incomingMessageValidation.js';
 import { emitIncomingMessageEvent } from '../utils/monitoring.js';
 import { sendInboxAgentOutboundMessage } from '../services/inboxAgentSend.service.js';
-import { isCustomerMessageFreshForNotification } from '../services/customerInboundNotification.service.js';
-import { scheduleStaffInboundWithFallback } from '../services/automation/automationNotify.service.js';
 import { scheduleInboundPostCustomerMessage } from '../services/automation/inboundAutomation.service.js';
 import { emitSupportEvent } from '../services/analytics/supportEvents.service.js';
 import {
@@ -276,23 +274,6 @@ export async function createIncomingMessageController(req, res, next) {
         organizationId,
         conversationId: row.conversation_id,
         messageId: row.message_id,
-      });
-    }
-
-    const notifyFresh = await isCustomerMessageFreshForNotification(row.message_id);
-    if (notifyFresh) {
-      const notifyJobKey =
-        typeof idempotencyKey === 'string' && idempotencyKey.trim()
-          ? `inbound:${organizationId}:${idempotencyKey.trim()}`
-          : `inbound:${organizationId}:${row.message_id}`;
-      void scheduleStaffInboundWithFallback({
-        organizationId,
-        conversationId: row.conversation_id,
-        messageId: row.message_id,
-        customerMessage: normalizedMessage,
-        customerEmail: normalizedEmail,
-        channelLabel: 'api',
-        idempotencyKey: notifyJobKey,
       });
     }
 

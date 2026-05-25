@@ -83,6 +83,184 @@ export async function resolveOrgAdminNotificationEmail(organizationId) {
   return null;
 }
 
+async function loadConversationNotifyDetails(organizationId, conversationId) {
+  const { data: conv, error: cErr } = await supabaseAdmin
+    .from('conversations')
+    .select('id, source, status, subject, assigned_to_member_id')
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+
+  if (cErr || !conv) return null;
+  return conv;
+}
+
+function formatUtcWhen() {
+  return new Date().toLocaleString('en-US', {
+    timeZone: 'UTC',
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+/**
+ * First customer message after intelligent auto-route: one email to the new assignee.
+ */
+export async function notifyAutoAssignedFirstTouch({
+  organizationId,
+  conversationId,
+  assignedToMemberId,
+  customerMessage,
+  customerEmail,
+  channelLabel = 'chat',
+}) {
+  try {
+    const recipientEmail = await emailForMember(organizationId, assignedToMemberId);
+    if (!recipientEmail) {
+      // eslint-disable-next-line no-console
+      console.log('[customer-inbound-notify] auto-assignee has no email; skip send');
+      return;
+    }
+
+    const conv = await loadConversationNotifyDetails(organizationId, conversationId);
+    if (!conv) return;
+
+    const shortId = typeof conv.id === 'string' ? `${conv.id.slice(0, 8)}…` : '—';
+    const source = conv.source ?? '—';
+    const subjectLine =
+      typeof conv.subject === 'string' && conv.subject.trim() ? conv.subject.trim() : null;
+    const inboxUrl = `${env.publicAppUrl}/org/${organizationId}/inbox`;
+    const when = formatUtcWhen();
+    const msg =
+      typeof customerMessage === 'string' && customerMessage.trim()
+        ? customerMessage.trim()
+        : '(empty message)';
+    const cust =
+      typeof customerEmail === 'string' && customerEmail.trim()
+        ? customerEmail.trim().toLowerCase()
+        : '—';
+
+    const lines = [
+      'You were auto-assigned a new conversation.',
+      '',
+      'Message from customer',
+      msg,
+      '',
+      'Details',
+      `  Customer email: ${cust}`,
+      `  Conversation ID: ${conv.id}`,
+      `  Short ID: ${shortId}`,
+      `  Source: ${source}`,
+      `  Channel: ${channelLabel}`,
+      `  Status: ${conv.status ?? '—'}`,
+      ...(subjectLine ? [`  Subject: ${subjectLine}`] : []),
+      `  Received (UTC): ${when}`,
+      '',
+      `Open inbox: ${inboxUrl}`,
+      '',
+      '— AI Support',
+    ];
+
+    const subject = `New conversation assigned to you — ${shortId}`;
+    const result = await sendNotificationEmailIfConfigured({
+      to: recipientEmail,
+      subject,
+      text: lines.join('\n'),
+    });
+    if (!result.ok) {
+      // eslint-disable-next-line no-console
+      console.error('[customer-inbound-notify] auto-assign first touch failed', result.error);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[customer-inbound-notify] auto-assign first touch', e);
+  }
+}
+
+/**
+ * Auto-route found no eligible agent — notify fallback list or org admin.
+ */
+export async function notifyRoutingFallbackUnassigned({
+  organizationId,
+  conversationId,
+  customerMessage,
+  customerEmail,
+  channelLabel = 'chat',
+  autoRouteReason = 'no_candidates',
+  primaryCodes = [],
+  recipientEmails = [],
+}) {
+  try {
+    const conv = await loadConversationNotifyDetails(organizationId, conversationId);
+    if (!conv) return;
+
+    const targets = [...new Set((recipientEmails ?? []).filter(Boolean))];
+    if (targets.length === 0) {
+      // eslint-disable-next-line no-console
+      console.log('[customer-inbound-notify] routing fallback: no recipient emails');
+      return;
+    }
+
+    const shortId = typeof conv.id === 'string' ? `${conv.id.slice(0, 8)}…` : '—';
+    const source = conv.source ?? '—';
+    const subjectLine =
+      typeof conv.subject === 'string' && conv.subject.trim() ? conv.subject.trim() : null;
+    const inboxUrl = `${env.publicAppUrl}/org/${organizationId}/inbox`;
+    const when = formatUtcWhen();
+    const msg =
+      typeof customerMessage === 'string' && customerMessage.trim()
+        ? customerMessage.trim()
+        : '(empty message)';
+    const cust =
+      typeof customerEmail === 'string' && customerEmail.trim()
+        ? customerEmail.trim().toLowerCase()
+        : '—';
+    const codes =
+      Array.isArray(primaryCodes) && primaryCodes.length > 0
+        ? primaryCodes.join(', ')
+        : '—';
+
+    const lines = [
+      'A new customer message arrived but intelligent routing could not assign an agent.',
+      '',
+      `Routing result: ${autoRouteReason}`,
+      `Top eligibility drop codes: ${codes}`,
+      '',
+      'Message from customer',
+      msg,
+      '',
+      'Details',
+      `  Customer email: ${cust}`,
+      `  Conversation ID: ${conv.id}`,
+      `  Short ID: ${shortId}`,
+      `  Source: ${source}`,
+      `  Channel: ${channelLabel}`,
+      `  Status: ${conv.status ?? '—'}`,
+      ...(subjectLine ? [`  Subject: ${subjectLine}`] : []),
+      `  Assignee: (unassigned — needs manual assignment)`,
+      `  Received (UTC): ${when}`,
+      '',
+      `Open inbox: ${inboxUrl}`,
+      '',
+      '— AI Support',
+    ];
+
+    const subject = `Unassigned conversation — routing could not assign (${shortId})`;
+    const text = lines.join('\n');
+
+    for (const to of targets) {
+      const result = await sendNotificationEmailIfConfigured({ to, subject, text });
+      if (!result.ok) {
+        // eslint-disable-next-line no-console
+        console.error('[customer-inbound-notify] routing fallback send failed', to, result.error);
+      }
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[customer-inbound-notify] routing fallback', e);
+  }
+}
+
 /**
  * Email assignee when set; otherwise org admin fallback. Logs only on failure; does not throw.
  *
@@ -101,16 +279,10 @@ export async function notifyStaffOfCustomerMessage({
   channelLabel = 'chat',
 }) {
   try {
-    const { data: conv, error: cErr } = await supabaseAdmin
-      .from('conversations')
-      .select('id, source, status, subject, assigned_to_member_id')
-      .eq('id', conversationId)
-      .eq('organization_id', organizationId)
-      .maybeSingle();
-
-    if (cErr || !conv) {
+    const conv = await loadConversationNotifyDetails(organizationId, conversationId);
+    if (!conv) {
       // eslint-disable-next-line no-console
-      console.error('[customer-inbound-notify] conversation not found', cErr?.message);
+      console.error('[customer-inbound-notify] conversation not found');
       return;
     }
 
@@ -120,8 +292,7 @@ export async function notifyStaffOfCustomerMessage({
     if (conv.assigned_to_member_id) {
       recipientEmail = await emailForMember(organizationId, conv.assigned_to_member_id);
       recipientRole = 'assignee';
-    }
-    if (!recipientEmail) {
+    } else {
       recipientEmail = await resolveOrgAdminNotificationEmail(organizationId);
       recipientRole = 'organization admin';
     }
@@ -136,11 +307,7 @@ export async function notifyStaffOfCustomerMessage({
     const subjectLine =
       typeof conv.subject === 'string' && conv.subject.trim() ? conv.subject.trim() : null;
     const inboxUrl = `${env.publicAppUrl}/org/${organizationId}/inbox`;
-    const when = new Date().toLocaleString('en-US', {
-      timeZone: 'UTC',
-      dateStyle: 'medium',
-      timeStyle: 'short',
-    });
+    const when = formatUtcWhen();
 
     const msg =
       typeof customerMessage === 'string' && customerMessage.trim()

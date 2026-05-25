@@ -233,18 +233,20 @@ export async function updateConversationFields({
           workflowMeta?.assignmentLog && typeof workflowMeta.assignmentLog === 'object'
             ? workflowMeta.assignmentLog
             : {};
+        const assignmentReason = resolveAssignmentLogReason({
+          automationSource,
+          workflowMeta,
+          assignedToMemberId: data.assigned_to_member_id,
+          assignmentType: data.assignment_type,
+        });
+  
         await appendAssignmentLog({
           organizationId,
           conversationId,
           assignedFrom: prior.assigned_to_member_id ?? null,
           assignedTo: data.assigned_to_member_id ?? null,
           assignmentType: data.assignment_type ?? null,
-          reason: resolveAssignmentLogReason({
-            automationSource,
-            workflowMeta,
-            assignedToMemberId: data.assigned_to_member_id,
-            assignmentType: data.assignment_type,
-          }),
+          reason: assignmentReason,
           strategy: typeof logMeta.strategy === 'string' ? logMeta.strategy : null,
           scoreSnapshot:
             logMeta.scoreSnapshot && typeof logMeta.scoreSnapshot === 'object'

@@ -41,6 +41,11 @@ function ToggleRow({ label, description, checked, onChange, disabled }) {
   )
 }
 
+/** `organization_members.id` from GET `/api/org/:orgId/members` (`membershipId`). */
+function memberRowId(m) {
+  return (typeof m?.membershipId === 'string' && m.membershipId) || (typeof m?.id === 'string' && m.id) || ''
+}
+
 function memberLabel(m) {
   const fn = typeof m.firstName === 'string' ? m.firstName.trim() : ''
   const ln = typeof m.lastName === 'string' ? m.lastName.trim() : ''
@@ -83,10 +88,17 @@ export default function OrgAssignmentSettingsPage() {
         fetchOrgAssignmentSettings(orgId),
         fetchOrgMembers(orgId),
       ])
-      setAssignment(settingsRes?.assignment ?? {})
+      const loaded = settingsRes?.assignment ?? {}
+      setAssignment({
+        ...loaded,
+        fallback_notify_member_ids: Array.isArray(loaded.fallback_notify_member_ids)
+          ? [...loaded.fallback_notify_member_ids]
+          : [],
+      })
       const list = Array.isArray(membersRes?.members) ? membersRes.members : []
       setMembers(list)
-      if (!skillsMemberId && list[0]?.id) setSkillsMemberId(list[0].id)
+      const firstMemberId = list[0] ? memberRowId(list[0]) : ''
+      if (!skillsMemberId && firstMemberId) setSkillsMemberId(firstMemberId)
     } catch (e) {
       setError(e.message || 'Failed to load assignment settings.')
     } finally {
@@ -133,8 +145,21 @@ export default function OrgAssignmentSettingsPage() {
         .split(',')
         .map((t) => t.trim().toLowerCase())
         .filter(Boolean)
-      const res = await putOrgAssignmentSettings(orgId, { ...assignment, vip_tag_names })
-      setAssignment(res?.assignment ?? assignment)
+      const fallback_notify_member_ids = (assignment.fallback_notify_member_ids ?? []).filter(
+        (id) => typeof id === 'string' && id.trim(),
+      )
+      const res = await putOrgAssignmentSettings(orgId, {
+        ...assignment,
+        vip_tag_names,
+        fallback_notify_member_ids,
+      })
+      const savedAssignment = res?.assignment ?? assignment
+      setAssignment({
+        ...savedAssignment,
+        fallback_notify_member_ids: Array.isArray(savedAssignment.fallback_notify_member_ids)
+          ? [...savedAssignment.fallback_notify_member_ids]
+          : [],
+      })
       setSaved(true)
     } catch (err) {
       setError(err.message || 'Failed to save settings.')
@@ -401,19 +426,21 @@ export default function OrgAssignmentSettingsPage() {
                 Fallback notifications
               </h2>
               <p className="text-xs text-slate-500">
-                When auto-route finds no eligible agent, these teammates can be notified (stored for
-                future notify integration).
+                When auto-route finds no eligible agent, these teammates receive the routing-fallback
+                email. If none are selected, the org admin email is used.
               </p>
               <div className="max-h-40 overflow-y-auto rounded-xl border border-[#2b3858] bg-[#12192c] p-3">
                 {members.length === 0 ? (
                   <p className="text-xs text-slate-500">No members loaded.</p>
                 ) : (
                   members.map((m) => {
+                    const mid = memberRowId(m)
+                    if (!mid) return null
                     const ids = assignment.fallback_notify_member_ids ?? []
-                    const checked = ids.includes(m.id)
+                    const checked = ids.includes(mid)
                     return (
                       <label
-                        key={m.id}
+                        key={mid}
                         className="flex cursor-pointer items-center gap-2 py-1 text-sm text-slate-300"
                       >
                         <input
@@ -421,8 +448,8 @@ export default function OrgAssignmentSettingsPage() {
                           checked={checked}
                           onChange={(e) => {
                             const next = e.target.checked
-                              ? [...ids, m.id]
-                              : ids.filter((id) => id !== m.id)
+                              ? [...new Set([...ids, mid])]
+                              : ids.filter((id) => id !== mid)
                             setAssignment({ ...assignment, fallback_notify_member_ids: next })
                           }}
                           className="accent-[#3ECF8E]"
@@ -465,11 +492,15 @@ export default function OrgAssignmentSettingsPage() {
               onChange={(e) => setSkillsMemberId(e.target.value)}
               className="rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
             >
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {memberLabel(m)}
-                </option>
-              ))}
+              {members.map((m) => {
+                const mid = memberRowId(m)
+                if (!mid) return null
+                return (
+                  <option key={mid} value={mid}>
+                    {memberLabel(m)}
+                  </option>
+                )
+              })}
             </select>
           </label>
 

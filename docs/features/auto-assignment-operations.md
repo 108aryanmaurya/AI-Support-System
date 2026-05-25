@@ -60,7 +60,15 @@ Concurrent jobs for the same conversation: second acquirer logs `error_code: loc
 
 Conversation stays unassigned; metadata `assignment.fallback = unassigned_queue`. Metrics `fallback_unassigned_pct` rises.
 
+Staff email: `notify.staff_inbound` with `mode=routing_fallback` goes to `fallback_notify_member_ids` (or org admin if unset) — not the new assignee. Sent **after** `assignment.auto_route` completes, not at HTTP ingress time.
+
 **Remediation:** Check agent presence, skills, shift hours, concurrency — use `POST .../assignment/preview` for drop codes.
+
+### Inbound email routing
+
+- **Auto-route applied:** one email to assignee (`auto_assigned_first_touch`) with assignment + customer message.
+- **Already assigned / follow-up:** standard inbound email to current assignee only.
+- **Unassigned after auto-route:** fallback/admin routing-failure email (not duplicate admin-on-every-message from ingress).
 
 ### Worker not running
 

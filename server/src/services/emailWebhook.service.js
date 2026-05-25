@@ -1,7 +1,6 @@
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { createConversation, createMessage, findOrCreateCustomer } from './support.service.js';
-import { scheduleStaffInboundWithFallback } from './automation/automationNotify.service.js';
 import { scheduleInboundPostCustomerMessage } from './automation/inboundAutomation.service.js';
 import { emitSupportEvent } from './analytics/supportEvents.service.js';
 import {
@@ -464,16 +463,6 @@ export async function processInboundEmail(payload) {
       messageId: message.id,
     });
   }
-
-  void scheduleStaffInboundWithFallback({
-    organizationId: channel.organization_id,
-    conversationId: conversation.id,
-    messageId: message.id,
-    customerMessage: message.content,
-    customerEmail: payload.fromEmail,
-    channelLabel: 'email',
-    idempotencyKey: `inbound:${channel.organization_id}:email:${externalId}`,
-  });
 
   return {
     status: 'processed',

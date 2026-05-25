@@ -180,7 +180,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Durable job queue** — `automation_jobs` table with claim RPC, retries, idempotency keys
 - **Automation worker** — separate Node process polls and processes jobs (`npm run worker:automation`)
 - **Job types**
-  - `notify.staff_inbound` — email staff when customer messages (with sync fallback if enqueue fails)
+  - `notify.staff_inbound` — post-routing staff email (assignee after auto-route, fallback list/admin when unassigned; not at raw ingress)
   - `notify.assignment` — email assignee on conversation assignment
   - `sla.scan_org` — detect first-response SLA breaches per org
   - `knowledge.ingest_source` — file upload → article → publish → chunks

@@ -40,23 +40,28 @@ export async function putOrgAssignmentSettings(organizationId, body) {
     throw new HttpError(400, 'No valid assignment settings fields provided.');
   }
 
-  if (patch.fallback_notify_member_ids?.length) {
-    const ids = patch.fallback_notify_member_ids;
-    const { data: members, error: mErr } = await supabaseAdmin
-      .from('organization_members')
-      .select('id')
-      .eq('organization_id', organizationId)
-      .eq('status', 'ACTIVE')
-      .in('id', ids);
+  if (Object.prototype.hasOwnProperty.call(patch, 'fallback_notify_member_ids')) {
+    const ids = Array.isArray(patch.fallback_notify_member_ids)
+      ? patch.fallback_notify_member_ids
+      : [];
+    if (ids.length > 0) {
+      const { data: members, error: mErr } = await supabaseAdmin
+        .from('organization_members')
+        .select('id')
+        .eq('organization_id', organizationId)
+        .eq('status', 'ACTIVE')
+        .in('id', ids);
 
-    if (mErr) {
-      throw new HttpError(500, mErr.message || 'Failed to validate fallback notify members.');
+      if (mErr) {
+        throw new HttpError(500, mErr.message || 'Failed to validate fallback notify members.');
+      }
+      const found = new Set((members ?? []).map((m) => m.id));
+      const invalid = ids.filter((id) => !found.has(id));
+      if (invalid.length > 0) {
+        throw new HttpError(400, 'fallback_notify_member_ids contains invalid member ids.');
+      }
     }
-    const found = new Set((members ?? []).map((m) => m.id));
-    const invalid = ids.filter((id) => !found.has(id));
-    if (invalid.length > 0) {
-      throw new HttpError(400, 'fallback_notify_member_ids contains invalid member ids.');
-    }
+    patch.fallback_notify_member_ids = ids;
   }
 
   const row = await loadSettingsRow(organizationId);

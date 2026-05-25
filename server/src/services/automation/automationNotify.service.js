@@ -1,6 +1,9 @@
 import { enqueueAutomationJob, emitAutomationJob } from './enqueueJob.service.js';
-import { notifyStaffOfCustomerMessage } from '../customerInboundNotification.service.js';
 import { notifyConversationAssignee } from '../conversationAssignmentNotification.service.js';
+import {
+  deliverPostInboundNotification,
+  schedulePostInboundNotification,
+} from '../postInboundNotification.service.js';
 
 /**
  * Enqueue staff inbound notification (falls back to direct send if queue unavailable).
@@ -29,21 +32,22 @@ export function scheduleSlaWarningNotification({
 export function scheduleStaffInboundNotification({
   organizationId,
   conversationId,
+  messageId = null,
   customerMessage,
   customerEmail,
   channelLabel,
   idempotencyKey,
+  mode = 'standard',
 }) {
-  emitAutomationJob({
+  void schedulePostInboundNotification({
     organizationId,
-    jobType: 'notify.staff_inbound',
+    conversationId,
+    messageId,
+    customerMessage,
+    customerEmail,
+    channelLabel,
     idempotencyKey,
-    payload: {
-      conversationId,
-      customerMessage,
-      customerEmail,
-      channelLabel,
-    },
+    mode,
   });
 }
 
@@ -51,7 +55,17 @@ export function scheduleStaffInboundNotification({
  * Sync fallback when migration not applied — used by schedule* if enqueue returns table_missing.
  */
 export async function fallbackStaffInboundNotification(params) {
-  await notifyStaffOfCustomerMessage(params);
+  await deliverPostInboundNotification({
+    organizationId: params.organizationId,
+    conversationId: params.conversationId,
+    customerMessage: params.customerMessage ?? '',
+    customerEmail: params.customerEmail ?? '',
+    channelLabel: params.channelLabel ?? 'chat',
+    mode: params.mode ?? 'standard',
+    autoRouteReason: params.autoRouteReason ?? null,
+    primaryCodes: params.primaryCodes ?? [],
+    assignedToMemberId: params.assignedToMemberId ?? null,
+  });
 }
 
 export function scheduleAssignmentNotification({
@@ -87,28 +101,22 @@ export async function fallbackAssignmentNotification(params) {
 }
 
 /**
- * Try enqueue; on missing table run handler inline once.
+ * @deprecated Prefer {@link schedulePostInboundNotification} after routing. Kept for workflow notify actions.
  */
 export async function scheduleStaffInboundWithFallback(params) {
-  const key =
-    params.idempotencyKey ??
-    `inbound:${params.organizationId}:${params.conversationId}:${params.messageId ?? 'x'}`;
-
-  const result = await enqueueAutomationJob({
+  await schedulePostInboundNotification({
     organizationId: params.organizationId,
-    jobType: 'notify.staff_inbound',
-    idempotencyKey: key,
-    payload: {
-      conversationId: params.conversationId,
-      customerMessage: params.customerMessage,
-      customerEmail: params.customerEmail,
-      channelLabel: params.channelLabel,
-    },
+    conversationId: params.conversationId,
+    messageId: params.messageId,
+    customerMessage: params.customerMessage,
+    customerEmail: params.customerEmail,
+    channelLabel: params.channelLabel,
+    idempotencyKey: params.idempotencyKey,
+    mode: params.mode ?? 'standard',
+    autoRouteReason: params.autoRouteReason ?? null,
+    primaryCodes: params.primaryCodes ?? [],
+    assignedToMemberId: params.assignedToMemberId ?? null,
   });
-
-  if (result.reason === 'automation_table_missing' || result.reason === 'enqueue_error') {
-    await fallbackStaffInboundNotification(params);
-  }
 }
 
 export async function scheduleAssignmentWithFallback(params) {

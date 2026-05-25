@@ -21,6 +21,7 @@ export async function notifyConversationAssignee({
   if (assignedToMemberId == null) return;
   if (assignedToMemberId === priorAssignedToMemberId) return;
 
+ 
   try {
     const { data: memberRow, error: memErr } = await supabaseAdmin
       .from('organization_members')
@@ -50,14 +51,19 @@ export async function notifyConversationAssignee({
       return;
     }
 
-    const { data: actorUser } = await supabaseAdmin
-      .from('users')
-      .select('first_name, last_name, email')
-      .eq('id', actorUserId)
-      .maybeSingle();
-
-    const assignerName = displayNameFromUser(actorUser);
     const assigneeName = displayNameFromUser(assigneeUser);
+
+    let assignerName = 'Intelligent routing';
+    let assignmentIntro = `${assignerName} assigned this conversation to you.`;
+    if (actorUserId) {
+      const { data: actorUser } = await supabaseAdmin
+        .from('users')
+        .select('first_name, last_name, email')
+        .eq('id', actorUserId)
+        .maybeSingle();
+      assignerName = displayNameFromUser(actorUser);
+      assignmentIntro = `${assignerName} assigned this conversation to you.`;
+    }
     const assignedAt = new Date().toLocaleString('en-US', {
       timeZone: 'UTC',
       dateStyle: 'medium',
@@ -78,7 +84,7 @@ export async function notifyConversationAssignee({
     const lines = [
       `Hello ${assigneeName},`,
       '',
-      `${assignerName} assigned this conversation to you.`,
+      assignmentIntro,
       '',
       'Conversation',
       `  ID: ${conv.id ?? '—'}`,

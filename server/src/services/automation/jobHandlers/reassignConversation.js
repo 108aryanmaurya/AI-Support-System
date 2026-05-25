@@ -22,7 +22,7 @@ export async function handleReassignConversation(job) {
   const trigger = typeof p.trigger === 'string' ? p.trigger.trim() : 'system';
   const priorMemberId =
     typeof p.priorMemberId === 'string'
-      ? p.priorMemberId.trim()
+      ? p.priorMemberId.trim() 
       : typeof p.prior_member_id === 'string'
         ? p.prior_member_id.trim()
         : null;

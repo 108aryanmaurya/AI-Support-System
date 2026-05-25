@@ -16,3 +16,11 @@ test('buildAssignmentSettingsPatch whitelists known keys', () => {
   assert.deepEqual(patch.vip_tag_names, ['vip']);
   assert.deepEqual(patch.fallback_notify_member_ids, ['uuid-1']);
 });
+
+test('buildAssignmentSettingsPatch persists empty fallback_notify_member_ids', () => {
+  const patch = buildAssignmentSettingsPatch({
+    auto_route_enabled: true,
+    fallback_notify_member_ids: [],
+  });
+  assert.deepEqual(patch.fallback_notify_member_ids, []);
+});

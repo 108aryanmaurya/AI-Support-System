@@ -219,7 +219,7 @@ async function applyWorkflowAction(action, ctx) {
 
   if (type === 'notify') {
     const channel = action.channel === 'assignee' ? 'assignee' : 'staff';
-    const idempotencyKey = `workflow:notify:${ctx.ruleId}:${ctx.messageId ?? ctx.conversationId}:${channel}`;
+    const idempotencyKey = `post-inbound:${ctx.organizationId}:${ctx.messageId ?? ctx.conversationId}:standard`;
 
     if (ctx.workflowTrigger === 'sla_warning') {
       scheduleSlaWarningNotification({
@@ -258,10 +258,12 @@ async function applyWorkflowAction(action, ctx) {
     scheduleStaffInboundNotification({
       organizationId: ctx.organizationId,
       conversationId: ctx.conversationId,
+      messageId: ctx.messageId ?? null,
       customerMessage: ctx.customerMessage ?? '(workflow notification)',
       customerEmail: ctx.customerEmail ?? '',
       channelLabel: 'workflow',
       idempotencyKey,
+      mode: 'standard',
     });
     emitWorkflowActionApplied({
       organizationId: ctx.organizationId,
