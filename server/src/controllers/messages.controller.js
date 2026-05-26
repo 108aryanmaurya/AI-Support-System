@@ -1,6 +1,5 @@
 import { HttpError } from '../utils/httpError.js';
 import { createMessage } from '../services/support.service.js';
-import { supabaseAdmin } from '../config/supabase.js';
 import { MESSAGE_SENDER_TYPES, isMessageSenderType } from '@ai-support/shared';
 import {
   getMaxMessageLength,
@@ -19,30 +18,11 @@ import {
   logIngressDecision,
   shouldSkipPostInboundAutomation,
 } from '../services/ingress/ingressPolicy.service.js';
+import { processInboundWebMessage } from '../services/lifecycle/inboundWeb.service.js';
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_MESSAGE_LENGTH = getMaxMessageLength();
-
-function isTransientRpcFailure(error) {
-  if (!error) return false;
-  if (typeof error.status === 'number' && error.status >= 500) return true;
-  return error.code === '57014' || error.code === '08006' || error.code === '08001';
-}
-
-async function callIncomingMessageRpcWithRetry(params) {
-  const firstAttempt = await supabaseAdmin.rpc('handle_incoming_message', params);
-  if (!firstAttempt.error || !isTransientRpcFailure(firstAttempt.error)) {
-    return firstAttempt;
-  }
-
-  emitIncomingMessageEvent('rpc_retry_attempt', {
-    code: firstAttempt.error.code,
-    status: firstAttempt.error.status,
-  });
-
-  return supabaseAdmin.rpc('handle_incoming_message', params);
-}
 
 export async function sendInboxMessageController(req, res, next) {
   try {
@@ -224,47 +204,38 @@ export async function createIncomingMessageController(req, res, next) {
       return;
     }
 
-    const { data, error } = await callIncomingMessageRpcWithRetry({
-      p_organization_id: organizationId,
-      p_email: normalizedEmail,
-      p_message: normalizedMessage,
-      p_idempotency_key: typeof idempotencyKey === 'string' ? idempotencyKey.trim() : null,
-    });
-
-    if (error) {
+    let inboundResult;
+    try {
+      inboundResult = await processInboundWebMessage({
+        organizationId,
+        email: normalizedEmail,
+        message: normalizedMessage,
+        idempotencyKey: typeof idempotencyKey === 'string' ? idempotencyKey.trim() : null,
+      });
+    } catch (processError) {
       emitIncomingMessageEvent('request_failed', {
         ...safeLogPayload,
-        code: error.code,
-        status: error.status,
+        error: processError?.message,
       });
-      if (error.code === 'PGRST116') throw new HttpError(404, 'Organization not found.');
-      if (error.code === '23514' || error.code === '22001' || error.code === '22P02') {
-        throw new HttpError(400, 'Invalid incoming message payload.');
+      if (processError instanceof HttpError && processError.status === 404) {
+        throw processError;
       }
-      if (error.code === 'P0001') {
-        if (error.message === 'ORGANIZATION_NOT_FOUND') {
-          throw new HttpError(404, 'Organization not found.');
-        }
-        throw new HttpError(400, 'Request could not be processed.');
-      }
-      throw new HttpError(500, 'Failed to process incoming message.');
-    }
-
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row?.conversation_id || !row?.message_id) {
-      throw new HttpError(500, 'Failed to process incoming message.');
+      throw processError instanceof HttpError
+        ? processError
+        : new HttpError(500, 'Failed to process incoming message.');
     }
 
     emitIncomingMessageEvent('request_succeeded', {
       ...safeLogPayload,
-      conversationId: row.conversation_id,
-      messageId: row.message_id,
+      conversationId: inboundResult.conversationId,
+      messageId: inboundResult.messageId,
+      reopened: inboundResult.reopened ?? false,
     });
 
     const ingressPost = await applyInboundIngressPostInsert({
       organizationId,
-      conversationId: row.conversation_id,
-      messageId: row.message_id,
+      conversationId: inboundResult.conversationId,
+      messageId: inboundResult.messageId,
       message: normalizedMessage,
       evaluation: ingressEval,
     });
@@ -272,14 +243,15 @@ export async function createIncomingMessageController(req, res, next) {
     if (!shouldSkipPostInboundAutomation(ingressEval) && !ingressPost.flagged) {
       scheduleInboundPostCustomerMessage({
         organizationId,
-        conversationId: row.conversation_id,
-        messageId: row.message_id,
+        conversationId: inboundResult.conversationId,
+        messageId: inboundResult.messageId,
       });
     }
 
     res.status(201).json({
-      conversationId: row.conversation_id,
-      messageId: row.message_id,
+      conversationId: inboundResult.conversationId,
+      messageId: inboundResult.messageId,
+      ...(inboundResult.reopened ? { reopened: true } : {}),
     });
   } catch (error) {
     next(error);

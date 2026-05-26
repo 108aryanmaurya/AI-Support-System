@@ -19,6 +19,8 @@ import OrgAiSettingsPage from './pages/OrgAiSettingsPage.jsx'
 import OrgWorkflowSettingsPage from './pages/OrgWorkflowSettingsPage.jsx'
 import OrgTagsSettingsPage from './pages/OrgTagsSettingsPage.jsx'
 import OrgAssignmentSettingsPage from './pages/OrgAssignmentSettingsPage.jsx'
+import OrgEmailSettingsPage from './pages/OrgEmailSettingsPage.jsx'
+import OrgLifecycleSettingsPage from './pages/OrgLifecycleSettingsPage.jsx'
 import OrgKnowledgeListPage from './pages/OrgKnowledgeListPage.jsx'
 import OrgKnowledgeEditorPage from './pages/OrgKnowledgeEditorPage.jsx'
 import TeammatesInviteDeepLink from './pages/TeammatesInviteDeepLink.jsx'
@@ -57,6 +59,8 @@ export default function App() {
             <Route path="workflows" element={<OrgWorkflowSettingsPage />} />
             <Route path="tags" element={<OrgTagsSettingsPage />} />
             <Route path="assignment" element={<OrgAssignmentSettingsPage />} />
+            <Route path="email" element={<OrgEmailSettingsPage />} />
+            <Route path="lifecycle" element={<OrgLifecycleSettingsPage />} />
           </Route>
         </Route>
       </Route>

@@ -11,6 +11,10 @@ import { handleWorkflowSla } from './jobHandlers/workflowSla.js';
 import { handleWorkflowScheduleOrg } from './jobHandlers/workflowScheduleOrg.js';
 import { handleAutoRoute } from './jobHandlers/autoRoute.js';
 import { handleReassignConversation } from './jobHandlers/reassignConversation.js';
+import { handleLifecycleScanOrg } from './jobHandlers/lifecycleScanOrg.js';
+import { handleLifecycleAutoCloseResolved } from './jobHandlers/lifecycleAutoCloseResolved.js';
+import { handleLifecycleSendCustomerReminder } from './jobHandlers/lifecycleSendCustomerReminder.js';
+import { handleLifecycleAutoCloseWaiting } from './jobHandlers/lifecycleAutoCloseWaiting.js';
 
 function isWorkflowFatalError(e) {
   return e?.fatal === true || e?.name === 'WorkflowFatalError';
@@ -29,6 +33,10 @@ const HANDLERS = {
   'ai.workflow_schedule_org': handleWorkflowScheduleOrg,
   'assignment.auto_route': handleAutoRoute,
   'assignment.reassign': handleReassignConversation,
+  'lifecycle.scan_org': handleLifecycleScanOrg,
+  'lifecycle.auto_close_resolved': handleLifecycleAutoCloseResolved,
+  'lifecycle.send_customer_reminder': handleLifecycleSendCustomerReminder,
+  'lifecycle.auto_close_waiting': handleLifecycleAutoCloseWaiting,
 };
 
 function backoffSeconds(attempts) {

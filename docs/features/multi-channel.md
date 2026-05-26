@@ -11,6 +11,7 @@ Each **conversation** belongs to exactly one **channel** (`channel_type` + `chan
 - List channels: `GET /api/org/:orgId/channels`
 - **Web**: public incoming POST + web adapter for outbound
 - **Email**: inbound webhook, threading, Resend outbound (or mock)
+- **Email DNS setup (admin UI)** — subdomain verification via Resend; see [org-email-channel.md](./org-email-channel.md)
 - WhatsApp / Messenger: types in DB only; outbound **501**
 
 ## Architecture
@@ -19,7 +20,7 @@ Each **conversation** belongs to exactly one **channel** (`channel_type` + `chan
 flowchart TB
   subgraph ingress [Inbound]
     WebPOST["POST .../messages/incoming"]
-    EmailWH["POST /api/webhooks/email"]
+    EmailWH["POST /api/webhooks/resend"]
   end
   subgraph core [Core]
     RPC[handle_incoming_message RPC]
@@ -44,6 +45,7 @@ flowchart TB
 |------|------|
 | Incoming routes | `server/src/routes/messagesIncoming.routes.js`, `emailWebhook.routes.js` |
 | Email inbound | `server/src/services/emailWebhook.service.js` |
+| Org email DNS setup | `server/src/services/orgEmailSettings.service.js`, `client/src/pages/OrgEmailSettingsPage.jsx` |
 | Email outbound | `server/src/services/emailOutbound.service.js`, `emailReply.service.js` |
 | Router | `server/src/services/channelReplyRouter.service.js` |
 | Adapters | `server/src/adapters/EmailAdapter.js`, `WebAdapter.js` |
@@ -55,12 +57,14 @@ flowchart TB
 | Method | Path | Auth |
 |--------|------|------|
 | POST | `/api/org/:orgId/messages/incoming` | No |
-| POST | `/api/webhooks/email` | Provider-specific |
+| POST | `/api/webhooks/resend` | Resend webhook (Svix signature) |
+| POST | `/api/webhooks/email` | Alias of `/resend` |
 | GET | `/api/org/:orgId/channels` | Yes |
+| GET/POST/PATCH/DELETE | `/api/org/:orgId/settings/email/*` | Yes (mutations ADMIN) |
 
 ## Database
 
-- `channels`, `channel_integrations`, `email_threads`
+- `channels`, `channel_integrations`, `email_threads`, `organization_email_domains`
 - `conversations.channel_type`, `conversations.channel_id`
 
 ## Connections
@@ -72,6 +76,7 @@ flowchart TB
 | [Notifications](./notifications-and-automation.md) | Inbound customer message triggers staff notify job |
 | [Multi-organization](./multi-organization.md) | Channels scoped by `organization_id` |
 | [Platform](./platform-and-monorepo.md) | `env.emailProvider`, `emailProviderMock` |
+| [Org email channel](./org-email-channel.md) | DNS verification UI provisions email channel |
 
 ## Status
 

@@ -22,6 +22,8 @@ import {
   Star,
   Users,
   X,
+  CheckCircle2,
+  Archive,
 } from 'lucide-react'
 import { apiFetch } from '../services/api.js'
 import {
@@ -61,13 +63,18 @@ import {
   conversationsListUrl,
   patchConversationSpamUrl,
 } from '../services/inboxApi.js'
-import { getConversationAutomationBadges } from '@ai-support/shared'
+import {
+  getConversationAutomationBadges,
+  getConversationLifecycleDetailHint,
+  getConversationLifecycleListBadges,
+} from '@ai-support/shared'
+import { fetchOrgLifecycleSettings } from '../services/lifecycleSettingsApi.js'
 import { DEFAULT_INBOX_FILTER, useInboxStore } from '../stores/inboxStore.js'
 import {
   CONVERSATION_ACTIVE_STATUSES,
   CONVERSATION_ASSIGNMENT_TYPES,
   CONVERSATION_PRIORITIES,
-  CONVERSATION_STATUSES,
+  CONVERSATION_WORKSPACE_STATUSES,
 } from '@ai-support/shared'
 
 const MESSAGE_LIST_SCROLL_BOTTOM_PX = 80
@@ -134,13 +141,17 @@ function toConversationViewModel(item) {
     body: item.last_message_preview ?? 'No messages yet',
     time: getRelativeTimeLabel(item.last_message_at),
     channel,
-    automationBadges: getConversationAutomationBadges(item.metadata),
+    automationBadges: [
+      ...getConversationLifecycleListBadges(item),
+      ...getConversationAutomationBadges(item.metadata),
+    ],
   }
 }
 
 const BADGE_TONE_CLASS = {
   warning: 'border-amber-500/40 bg-amber-950/50 text-amber-200',
   info: 'border-sky-500/40 bg-sky-950/50 text-sky-200',
+  success: 'border-emerald-500/40 bg-emerald-950/50 text-emerald-200',
   neutral: 'border-[#3a4b6f] bg-[#18233b] text-slate-300',
 }
 
@@ -611,6 +622,48 @@ export default function InboxPage() {
   const messages = useMemo(
     () => messagesByConversationId[activeConversationId] ?? [],
     [activeConversationId, messagesByConversationId],
+  )
+
+  const lastCustomerFacingSender = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const st = messages[i]?.sender_type
+      if (st === 'system') continue
+      return st ?? null
+    }
+    return null
+  }, [messages])
+
+  const [orgLifecycleSettings, setOrgLifecycleSettings] = useState(null)
+
+  useEffect(() => {
+    if (!organizationId) {
+      setOrgLifecycleSettings(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetchOrgLifecycleSettings(organizationId)
+        if (!cancelled) setOrgLifecycleSettings(res?.lifecycle ?? null)
+      } catch {
+        if (!cancelled) setOrgLifecycleSettings(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [organizationId])
+
+  const suggestWaitingOnCustomer = useMemo(() => {
+    const status = selectedConversation?.status ?? 'open'
+    const agentLast =
+      lastCustomerFacingSender === 'agent' || lastCustomerFacingSender === 'ai'
+    return agentLast && (status === 'open' || status === 'pending')
+  }, [lastCustomerFacingSender, selectedConversation?.status])
+
+  const lifecycleDetailHint = useMemo(
+    () => getConversationLifecycleDetailHint(selectedConversation, orgLifecycleSettings),
+    [selectedConversation, orgLifecycleSettings],
   )
 
   const assigneeLabel = useMemo(() => {
@@ -1326,6 +1379,37 @@ export default function InboxPage() {
               }}
             />
             <div className="flex flex-col gap-2 border-t border-[#27314a] pt-3">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Lifecycle</span>
+              {suggestWaitingOnCustomer ? (
+                <p className="rounded-md border border-sky-900/50 bg-sky-950/30 px-2 py-1.5 text-[11px] text-sky-100">
+                  You sent the last reply — resolve or close when done (waiting on customer is set automatically).
+                </p>
+              ) : null}
+              {lifecycleDetailHint ? (
+                <p className="rounded-md border border-emerald-900/40 bg-emerald-950/25 px-2 py-1.5 text-[11px] text-emerald-100">
+                  {lifecycleDetailHint}
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!selectedConversation || conversationDetailSaving}
+                  onClick={() => void patchConversationDetails({ status: 'resolved' })}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-emerald-900/50 bg-emerald-950/40 px-2 py-1.5 text-xs font-medium text-emerald-100 hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <CheckCircle2 size={14} aria-hidden />
+                  Resolve
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedConversation || conversationDetailSaving}
+                  onClick={() => void patchConversationDetails({ status: 'closed' })}
+                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-600/60 bg-slate-900/50 px-2 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800/60 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  <Archive size={14} aria-hidden />
+                  Close
+                </button>
+              </div>
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Workspace</span>
               <label className="flex flex-col gap-1 text-xs text-slate-400">
                 Status
@@ -1335,11 +1419,13 @@ export default function InboxPage() {
                   onChange={(e) => void patchConversationDetails({ status: e.target.value })}
                   className="rounded-md border border-[#334060] bg-[#0f1728] px-2 py-1.5 text-sm text-white outline-none focus:border-[#4f6290] disabled:opacity-40"
                 >
-                  {CONVERSATION_STATUSES.map((s) => (
+                  {CONVERSATION_WORKSPACE_STATUSES.map((s) => (
                     <option key={s} value={s}>
                       {s.replace(/_/g, ' ')}
                     </option>
                   ))}
+                  <option value="resolved">resolved</option>
+                  <option value="closed">closed</option>
                 </select>
               </label>
               <label className="flex flex-col gap-1 text-xs text-slate-400">

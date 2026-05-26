@@ -62,7 +62,7 @@ flowchart LR
 
 ## Database
 
-- `conversations` — `status`, `priority`, `assignment_type`, `assigned_to_member_id`, `metadata` (mentions), `last_message_at`, `channel_type`, `channel_id`
+- `conversations` — `status`, `priority`, `assignment_type`, `assigned_to_member_id`, `metadata` (mentions), `last_message_at`, `channel_type`, `channel_id`; lifecycle columns (`resolved_at`, `closed_at`, `closed_reason`, `last_*_message_at`, `customer_reminder_sent_at`) — see [conversation-status-handling.md](./conversation-status-handling.md)
 - Constraint: one open conversation per customer (email/web)
 - RPC/index migrations for active-thread performance
 
@@ -70,6 +70,7 @@ flowchart LR
 
 | Feature | Relationship |
 |---------|----------------|
+| [conversation-status-handling.md](./conversation-status-handling.md) | Sprints 0–5: lifecycle schema, reopen, resolve/waiting UX, cron auto-close/reminders, admin settings + inbox badges |
 | [Messages](./messages.md) | Thread content and outbound send |
 | [Realtime](./realtime.md) | Live list/thread updates |
 | [Multi-channel](./multi-channel.md) | Each conversation bound to one channel |

@@ -10,9 +10,11 @@ Per-feature implementation guides for the AI Support System monorepo. Each doc e
 | [multi-organization.md](./features/multi-organization.md) | Tenancy, org context, URL-scoped API |
 | [team-invitations.md](./features/team-invitations.md) | Invites, teammates settings, membership |
 | [support-inbox.md](./features/support-inbox.md) | Conversations, filters, workspace state |
+| [conversation-status-handling.md](./features/conversation-status-handling.md) | Lifecycle sprints: Model C reopen, resolved idle close, waiting reminders *(planned)* |
 | [messages.md](./features/messages.md) | Send pipeline, mentions, internal notes |
 | [realtime.md](./features/realtime.md) | Supabase Realtime, typing presence |
 | [multi-channel.md](./features/multi-channel.md) | Email, web ingress/outbound, channel router |
+| [org-email-channel.md](./features/org-email-channel.md) | Resend DNS verification, org send/receive addresses |
 | [notifications-and-automation.md](./features/notifications-and-automation.md) | Job queue, worker, SLA, staff email |
 | [analytics-and-reports.md](./features/analytics-and-reports.md) | support_events, reports API & UI |
 | [settings-and-navigation.md](./features/settings-and-navigation.md) | Sidebar, settings shell, routes |
@@ -22,7 +24,7 @@ Per-feature implementation guides for the AI Support System monorepo. Each doc e
 | [auto-assignment-sprint.md](./features/auto-assignment-sprint.md) | Auto assignment implementation sprints |
 | [auto-assignment-prerequisites.md](./features/auto-assignment-prerequisites.md) | Sprint 0 gate — platform prerequisites for intelligent routing |
 | [auto-assignment-operations.md](./features/auto-assignment-operations.md) | Assignment metrics, structured logs, Redis/worker runbook (Sprint 8) |
-| [operational-hardening.md](./features/operational-hardening.md) | Rate limits (ingress, AI, webhook) + outbound failure monitoring |
+| [operational-hardening.md](./features/operational-hardening.md) | Rate limits (ingress, AI, webhook), outbound failure monitoring, lifecycle cron/runbook |
 | [search.md](./features/search.md) | Search page *(partial)* |
 | [ai-capabilities.md](./features/ai-capabilities.md) | AI stubs, schema hooks, roadmap link |
 | [knowledge-base.md](./features/knowledge-base.md) | Articles, search, file ingest (Phase 2) |

@@ -4,6 +4,7 @@ import { persistAgentOutboundMessage } from '../services/emailReply.service.js';
 import { syncEmailThreadsLastMessageId } from '../services/emailOutboundDbSync.service.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
+import { applyAgentOutboundLifecycle } from '../services/lifecycle/lifecycleMessageTimestamps.service.js';
 
 function normalizeBody(message) {
   return typeof message === 'string' ? message.trim() : '';
@@ -136,6 +137,13 @@ export class EmailAdapter {
       .update({ last_message_at: saved.created_at })
       .eq('id', conversation.id)
       .eq('organization_id', conversation.organization_id);
+
+    await applyAgentOutboundLifecycle({
+      organizationId: conversation.organization_id,
+      conversationId: conversation.id,
+      conversation,
+      at: saved.created_at,
+    });
 
     return {
       ok: true,

@@ -9,6 +9,9 @@ export const INBOX_SIDEBAR_FILTERS = Object.freeze([
   { id: 'sla_risk', label: 'SLA risk' },
   { id: 'ingress_spam', label: 'Spam flagged' },
   { id: 'ai_intent', label: 'AI intent', requiresIntent: true },
+  { id: 'waiting_agent', label: 'Waiting on agent' },
+  { id: 'waiting_customer', label: 'Waiting on customer' },
+  { id: 'resolved', label: 'Resolved' },
   { id: 'closed', label: 'Closed' },
 ])
 

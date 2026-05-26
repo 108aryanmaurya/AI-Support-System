@@ -4,6 +4,10 @@ import {
   getOrgAiAndAutomationSettings,
   patchOrgSettings,
 } from '../services/orgSettings.service.js';
+import {
+  getOrgLifecycleSettingsForAdmin,
+  putOrgLifecycleSettings,
+} from '../services/lifecycle/orgLifecycleSettings.service.js';
 
 function orgIdOrThrow(req) {
   const id = req.orgId ?? req.organizationId;
@@ -73,6 +77,13 @@ function buildAutomationPatch(body) {
     }
     patch.first_response_sla_minutes = Math.round(n);
   }
+  if (Object.prototype.hasOwnProperty.call(autoBody, 'next_response_sla_minutes')) {
+    const n = Number(autoBody.next_response_sla_minutes);
+    if (!Number.isFinite(n) || n < 1 || n > 10080) {
+      throw new HttpError(400, 'automation.next_response_sla_minutes must be between 1 and 10080.');
+    }
+    patch.next_response_sla_minutes = Math.round(n);
+  }
   return Object.keys(patch).length ? patch : null;
 }
 
@@ -140,6 +151,34 @@ export async function getOrgAiSettingsController(req, res, next) {
           autonomous: 'Phase 6',
         },
       },
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function getOrgLifecycleSettingsController(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const lifecycle = await getOrgLifecycleSettingsForAdmin(organizationId);
+    const role = req.orgMembership?.role?.toUpperCase() ?? '';
+    res.json({
+      lifecycle,
+      meta: { canEdit: role === 'ADMIN' },
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function patchOrgLifecycleSettingsController(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const body = req.body?.lifecycle ?? req.body;
+    const saved = await putOrgLifecycleSettings(organizationId, body);
+    res.json({
+      ...saved,
+      meta: { canEdit: true },
     });
   } catch (e) {
     next(e);

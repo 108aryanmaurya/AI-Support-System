@@ -10,6 +10,7 @@ import {
   shouldSkipPostInboundAutomation,
 } from './ingress/ingressPolicy.service.js';
 import { CONVERSATION_ACTIVE_STATUSES } from '@ai-support/shared';
+import { maybeReopenEmailThreadConversation } from './lifecycle/conversationLifecycle.service.js';
 
 function isMissingColumnError(error, column) {
   if (!error) return false;
@@ -411,7 +412,12 @@ export async function processInboundEmail(payload) {
     subject: payload.subject,
   });
 
-  const conversation = threadResult.conversation;
+  const reopenResult = await maybeReopenEmailThreadConversation({
+    organizationId: channel.organization_id,
+    conversation: threadResult.conversation,
+    matchedBy: threadResult.matchedBy,
+  });
+  const conversation = reopenResult.conversation;
   const threadKeyForMetadata =
     threadResult.thread?.thread_key ||
     (typeof payload.inReplyTo === 'string' && payload.inReplyTo.trim()) ||
@@ -470,5 +476,6 @@ export async function processInboundEmail(payload) {
     conversationId: conversation.id,
     messageId: message.id,
     threadId: threadResult.thread?.id ?? null,
+    reopened: reopenResult.reopened,
   };
 }

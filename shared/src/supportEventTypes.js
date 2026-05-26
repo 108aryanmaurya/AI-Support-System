@@ -4,12 +4,14 @@ export const SUPPORT_EVENT_TYPES = Object.freeze([
   'message.outbound_sent',
   'message.outbound_failed',
   'conversation.created',
+  'conversation.resolved',
   'conversation.closed',
   'conversation.reopened',
   'conversation.assigned',
   'conversation.priority_changed',
   'member.first_response',
   'sla.first_response_breach',
+  'sla.next_response_breach',
   'knowledge.search',
   'knowledge.article_viewed',
   'knowledge.article_published',
@@ -31,6 +33,8 @@ export const SUPPORT_EVENT_TYPES = Object.freeze([
   'assignment.auto_failed',
   'assignment.reassigned',
   'assignment.reassign_skipped',
+  'lifecycle.reminder_sent',
+  'lifecycle.reminder_skipped',
 ]);
 
 /** @param {unknown} v */

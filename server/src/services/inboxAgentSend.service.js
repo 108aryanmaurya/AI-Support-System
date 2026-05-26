@@ -21,6 +21,7 @@ import {
   releaseAgentSendIdempotencyLock,
 } from './agentSendIdempotency.service.js';
 import { clearConversationSlaAtRisk } from './ai/workflowConversationFlags.service.js';
+import { applyAgentOutboundLifecycle } from './lifecycle/lifecycleMessageTimestamps.service.js';
 
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -233,6 +234,13 @@ export async function sendInboxAgentOutboundMessage({
 
     await patchConversationActivity(conversation.id, conversation.organization_id, updated.created_at);
 
+    const lifecycleResult = await applyAgentOutboundLifecycle({
+      organizationId: conversation.organization_id,
+      conversationId: conversation.id,
+      conversation,
+      at: updated.created_at,
+    });
+
     await clearConversationSlaAtRisk({
       organizationId: conversation.organization_id,
       conversationId: conversation.id,
@@ -255,6 +263,8 @@ export async function sendInboxAgentOutboundMessage({
       message: updated,
       outbound,
       deliveryStatus: 'sent',
+      waitingStatus: lifecycleResult.waitingStatus,
+      waitingStatusChanged: lifecycleResult.statusChanged,
     };
 
     await commitAgentSendIdempotency({

@@ -3,6 +3,7 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { getDefaultConversationAiEnabled } from './orgSettings.service.js';
 import { clearConversationSlaAtRisk } from './ai/workflowConversationFlags.service.js';
+import { touchLastCustomerMessageAt } from './lifecycle/lifecycleMessageTimestamps.service.js';
 
 function toInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -190,6 +191,14 @@ export async function createMessage({
 
   if (senderType === 'agent') {
     await clearConversationSlaAtRisk({ organizationId, conversationId });
+  }
+
+  if (senderType === 'customer') {
+    await touchLastCustomerMessageAt({
+      organizationId,
+      conversationId,
+      at: data.created_at,
+    });
   }
 
   return data;

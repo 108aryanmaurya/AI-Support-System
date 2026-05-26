@@ -5,11 +5,18 @@ import {
   isConversationAssignmentType,
   isConversationPriority,
   isConversationStatus,
+  isConversationTerminalStatus,
+  isConversationWaitingStatus,
+  normalizeConversationWaitingStatus,
 } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { ensureOrgMembership } from './support.service.js';
 import { emitSupportEvent } from './analytics/supportEvents.service.js';
+import {
+  buildLifecycleColumnsForStatusChange,
+  resolveLifecycleStatusEventType,
+} from './lifecycle/conversationLifecycle.patch.js';
 
 /**
  * Partial PATCH for conversations: assignment, lifecycle status, priority, queue type.
@@ -26,6 +33,8 @@ export async function updateConversationFields({
   aiEnabled: aiEnabledPatch = undefined,
   automationSource = false,
   workflowMeta = undefined,
+  closedReason: closedReasonPatch = undefined,
+  waitingStatus: waitingStatusPatch = undefined,
 }) {
   const actorMember = automationSource
     ? null
@@ -50,6 +59,7 @@ export async function updateConversationFields({
   let assigned_to_member_id = prior.assigned_to_member_id ?? null;
   let assignment_type = prior.assignment_type ?? 'unassigned';
   let status = prior.status ?? 'open';
+  let waiting_status = normalizeConversationWaitingStatus(prior.waiting_status);
   let priority = prior.priority ?? 'medium';
   let is_spam = Boolean(prior.is_spam);
   let ai_enabled = prior.ai_enabled ?? true;
@@ -69,6 +79,23 @@ export async function updateConversationFields({
     } else {
       is_spam = false;
     }
+    if (isConversationTerminalStatus(status) || status === 'spam') {
+      waiting_status = '';
+    }
+  }
+
+  if (waitingStatusPatch !== undefined) {
+    const ws = normalizeConversationWaitingStatus(waitingStatusPatch);
+    if (!isConversationWaitingStatus(ws)) {
+      throw new HttpError(
+        400,
+        'waitingStatus must be empty, waiting_agent, or waiting_customer.',
+      );
+    }
+    if (isConversationTerminalStatus(status)) {
+      throw new HttpError(400, 'Cannot set waitingStatus on resolved or closed conversations.');
+    }
+    waiting_status = ws;
   }
 
   if (priorityPatch !== undefined) {
@@ -157,15 +184,32 @@ export async function updateConversationFields({
     }
   }
 
+  const lifecyclePatch =
+    statusPatch !== undefined
+      ? buildLifecycleColumnsForStatusChange({
+          prior,
+          nextStatus: status,
+          actorMemberId: actorMember?.id ?? null,
+          closedReason:
+            status === 'closed' && closedReasonPatch !== undefined ? closedReasonPatch : null,
+        })
+      : {};
+
+  if (lifecyclePatch.waiting_status !== undefined) {
+    waiting_status = /** @type {string} */ (lifecyclePatch.waiting_status);
+  }
+
   const { data, error } = await supabaseAdmin
     .from('conversations')
     .update({
       assigned_to_member_id,
       assignment_type,
       status,
+      waiting_status,
       priority,
       is_spam,
       ai_enabled,
+      ...lifecyclePatch,
     })
     .eq('id', conversationId)
     .eq('organization_id', organizationId)
@@ -183,13 +227,7 @@ export async function updateConversationFields({
   }
 
   if (prior.status !== data.status) {
-    const nowClosed = data.status === 'closed' || data.status === 'resolved';
-    const wasClosed = prior.status === 'closed' || prior.status === 'resolved';
-    const eventType = nowClosed
-      ? 'conversation.closed'
-      : wasClosed
-        ? 'conversation.reopened'
-        : null;
+    const eventType = resolveLifecycleStatusEventType(prior.status, data.status);
     if (eventType) {
       emitSupportEvent({
         organizationId,
@@ -198,7 +236,11 @@ export async function updateConversationFields({
         entityId: conversationId,
         actorMemberId: actorMember?.id ?? null,
         channelType: data.channel_type ?? null,
-        payload: { status: data.status, prior_status: prior.status },
+        payload: {
+          status: data.status,
+          prior_status: prior.status,
+          ...(data.closed_reason ? { closed_reason: data.closed_reason } : {}),
+        },
       });
     }
   }
@@ -312,6 +354,7 @@ export async function updateConversationFromAutomation({
   assignmentType = undefined,
   aiEnabled = undefined,
   workflowMeta = undefined,
+  closedReason = undefined,
 }) {
   return updateConversationFields({
     organizationId,
@@ -324,5 +367,6 @@ export async function updateConversationFromAutomation({
     aiEnabled,
     automationSource: true,
     workflowMeta,
+    closedReason,
   });
 }

@@ -1,6 +1,7 @@
 import { env } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
+import { decryptConfigApiKey } from '../utils/secretsCrypto.js';
 
 function isMissingColumnError(error, column) {
   if (!error) return false;
@@ -17,7 +18,8 @@ function readConfigString(config, keys) {
 }
 
 export function readResendConfig(config) {
-  const apiKey = readConfigString(config, ['api_key', 'resend_api_key', 'token']);
+  const rawKey = readConfigString(config, ['api_key', 'resend_api_key', 'token']);
+  const apiKey = decryptConfigApiKey(rawKey);
   const fromEmail = readConfigString(config, [
     'from_email',
     'reply_from',
@@ -336,7 +338,18 @@ export async function sendEmailViaProvider({
       };
     }
 
-    const { apiKey, fromEmail } = readResendConfig(integration.config ?? {});
+    const config = integration.config ?? {};
+    if (config.setup_mode === 'forwarding' && config.sending_verified === false) {
+      return {
+        ok: false,
+        external_message_id: null,
+        provider: providerNorm,
+        error:
+          'Outbound email is not ready. Complete sending domain DNS in Settings → Email (Channels).',
+      };
+    }
+
+    const { apiKey, fromEmail } = readResendConfig(config);
     if (!apiKey || !fromEmail) {
       return {
         ok: false,

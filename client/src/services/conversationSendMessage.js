@@ -162,6 +162,13 @@ export function createSendMessage(deps) {
         store.touchConversationWithMessage(conversationId, merged)
       }
 
+      if (data?.conversationStatusChanged && typeof data.conversationStatus === 'string') {
+        const conv = useInboxStore.getState().conversations.find((c) => c.id === conversationId)
+        if (conv) {
+          store.upsertConversation({ ...conv, status: data.conversationStatus })
+        }
+      }
+
       return { ok: true, message: serverMessage ?? null }
     } catch (err) {
       const list = useInboxStore.getState().messagesByConversationId[conversationId] ?? []

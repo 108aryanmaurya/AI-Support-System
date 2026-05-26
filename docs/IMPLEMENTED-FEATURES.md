@@ -96,14 +96,16 @@ Inventory of features **implemented in the codebase today** (client, server, sha
   - Spam
   - SLA risk, Spam flagged (ingress metadata)
   - AI intent (`?filter=ai_intent&aiIntent=…`)
+  - Resolved
   - Closed
+- **Conversation lifecycle (Sprint 0–6)** — resolve/close/waiting inbox actions; Model C reopen; cron auto-close idle `resolved`; customer reminder email + auto-close `waiting_customer`; admin lifecycle settings (`/settings/lifecycle`); inbox badges and auto-close hints; lifecycle unit/integration tests; ops runbook in [operational-hardening.md](docs/features/operational-hardening.md); see [conversation-status-handling.md](docs/features/conversation-status-handling.md)
 - **Automation list badges** — spam flagged, SLA risk, AI intent on conversation rows (Phase 4 metadata)
 - **Filter counts** — `GET .../conversations/counts`
 - **Conversation workspace fields**
-  - Status: `open`, `pending`, `waiting_customer`, `resolved`, `closed`, `spam`
+  - Status: `open`, `pending`, `resolved`, `closed`, `spam`; **`waiting_status`**: `waiting_agent` | `waiting_customer` | empty; next-response SLA on `waiting_agent` + `last_customer_message_at`
   - Priority: `low`, `medium`, `high`, `urgent`
   - Assignment type: `unassigned`, `assigned_to_agent`, `assigned_to_team`, `assigned_to_ai`
-- **Inbox UI** (`InboxPage`) — conversation list, thread view, composer, status/priority/assignee controls
+- **Inbox UI** (`InboxPage`) — conversation list, thread view, composer, lifecycle buttons (Resolve / Close / Waiting on customer), lifecycle list badges and detail hints, status/priority/assignee controls
 - **Inbox state (client)** — Zustand `inboxStore` (conversations, filters, typing, mention cues)
 - **Filter caching & debounced refetch** — faster sidebar switching
 - **Periodic HTTP sync** — backup when realtime is quiet
@@ -160,7 +162,8 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ### 9.2 Email channel
 
-- **Inbound email webhook** — `POST /api/webhooks/email`
+- **Org email setup (Resend)** — Settings → Email: forward-to-platform address (receive), then sending-domain DNS (SPF/DKIM); optional advanced full-DNS mode ([org-email-channel.md](./features/org-email-channel.md))
+- **Inbound email webhook** — `POST /api/webhooks/resend` (alias `/api/webhooks/email`); Svix verification when `RESEND_WEBHOOK_SECRET` set
 - **Resolve org by recipient address** — match integration config / domain
 - **Email threading** — thread keys, reply routing headers, `email_threads` table
 - **Idempotent inbound** — dedupe by `external_message_id`

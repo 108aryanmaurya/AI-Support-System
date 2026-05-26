@@ -15,6 +15,9 @@ export const CONVERSATION_INBOX_FILTER_TYPES = Object.freeze([
   'ingress_spam',
   'ai_intent',
   'closed',
+  'resolved',
+  'waiting_customer',
+  'waiting_agent',
 ]);
 
 /**
@@ -101,6 +104,15 @@ export function applyConversationFilters(query, options) {
     case 'closed':
       q = q.eq('status', 'closed');
       break;
+    case 'resolved':
+      q = q.eq('status', 'resolved');
+      break;
+    case 'waiting_customer':
+      q = q.eq('waiting_status', 'waiting_customer').in('status', [...CONVERSATION_ACTIVE_STATUSES]);
+      break;
+    case 'waiting_agent':
+      q = q.eq('waiting_status', 'waiting_agent').in('status', [...CONVERSATION_ACTIVE_STATUSES]);
+      break;
     default:
       throw new HttpError(400, `Unknown filterType: ${filterType}`);
   }
@@ -159,18 +171,33 @@ export async function getConversationFilterCounts({ currentUserId, organizationI
     return count ?? 0;
   };
 
-  const [inbox, mentions, created_by_you, all, unassigned, spam, sla_risk, ingress_spam, closed] =
-    await Promise.all([
-      countOne('inbox'),
-      countOne('mentions'),
-      countOne('created_by_you'),
-      countOne('all'),
-      countOne('unassigned'),
-      countOne('spam'),
-      countOne('sla_risk'),
-      countOne('ingress_spam'),
-      countOne('closed'),
-    ]);
+  const [
+    inbox,
+    mentions,
+    created_by_you,
+    all,
+    unassigned,
+    spam,
+    sla_risk,
+    ingress_spam,
+    closed,
+    resolved,
+    waiting_customer,
+    waiting_agent,
+  ] = await Promise.all([
+    countOne('inbox'),
+    countOne('mentions'),
+    countOne('created_by_you'),
+    countOne('all'),
+    countOne('unassigned'),
+    countOne('spam'),
+    countOne('sla_risk'),
+    countOne('ingress_spam'),
+    countOne('closed'),
+    countOne('resolved'),
+    countOne('waiting_customer'),
+    countOne('waiting_agent'),
+  ]);
 
   return {
     inbox,
@@ -182,6 +209,9 @@ export async function getConversationFilterCounts({ currentUserId, organizationI
     sla_risk,
     ingress_spam,
     closed,
+    resolved,
+    waiting_customer,
+    waiting_agent,
   };
 }
 

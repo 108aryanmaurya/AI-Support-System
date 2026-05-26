@@ -26,6 +26,8 @@ export const ORG_AUTOMATION_SETTINGS_DEFAULTS = Object.freeze({
   assignment_notify_enabled: true,
   sla_enabled: true,
   first_response_sla_minutes: 60,
+  /** Agent must reply after customer message while `waiting_status = waiting_agent`. */
+  next_response_sla_minutes: 60,
 });
 
 /**
@@ -61,15 +63,21 @@ export function mergeOrgAiSettings(raw) {
 export function mergeOrgAutomationSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
   const minutes = Number(src.first_response_sla_minutes);
+  const nextMinutes = Number(src.next_response_sla_minutes);
+  const firstSla =
+    Number.isFinite(minutes) && minutes > 0
+      ? Math.min(10080, Math.round(minutes))
+      : ORG_AUTOMATION_SETTINGS_DEFAULTS.first_response_sla_minutes;
   return {
     inbound_notify_enabled:
       src.inbound_notify_enabled ?? ORG_AUTOMATION_SETTINGS_DEFAULTS.inbound_notify_enabled,
     assignment_notify_enabled:
       src.assignment_notify_enabled ?? ORG_AUTOMATION_SETTINGS_DEFAULTS.assignment_notify_enabled,
     sla_enabled: src.sla_enabled ?? ORG_AUTOMATION_SETTINGS_DEFAULTS.sla_enabled,
-    first_response_sla_minutes:
-      Number.isFinite(minutes) && minutes > 0
-        ? Math.min(10080, Math.round(minutes))
-        : ORG_AUTOMATION_SETTINGS_DEFAULTS.first_response_sla_minutes,
+    first_response_sla_minutes: firstSla,
+    next_response_sla_minutes:
+      Number.isFinite(nextMinutes) && nextMinutes > 0
+        ? Math.min(10080, Math.round(nextMinutes))
+        : firstSla,
   };
 }

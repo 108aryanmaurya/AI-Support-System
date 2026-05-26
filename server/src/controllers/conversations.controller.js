@@ -161,11 +161,20 @@ export async function patchConversationController(req, res, next) {
     const hasAssignmentType = Object.prototype.hasOwnProperty.call(body, 'assignmentType');
     const hasAiEnabled = Object.prototype.hasOwnProperty.call(body, 'aiEnabled');
     const hasTagIds = Object.prototype.hasOwnProperty.call(body, 'tagIds');
+    const hasWaitingStatus = Object.prototype.hasOwnProperty.call(body, 'waitingStatus');
 
-    if (!hasAssign && !hasStatus && !hasPriority && !hasAssignmentType && !hasAiEnabled && !hasTagIds) {
+    if (
+      !hasAssign &&
+      !hasStatus &&
+      !hasPriority &&
+      !hasAssignmentType &&
+      !hasAiEnabled &&
+      !hasTagIds &&
+      !hasWaitingStatus
+    ) {
       throw new HttpError(
         400,
-        'Provide at least one of: assignedToMemberId, status, priority, assignmentType, aiEnabled, tagIds.',
+        'Provide at least one of: assignedToMemberId, status, waitingStatus, priority, assignmentType, aiEnabled, tagIds.',
       );
     }
 
@@ -176,7 +185,14 @@ export async function patchConversationController(req, res, next) {
         actorUserId: req.userId ?? req.user.id,
         tagIds: body.tagIds ?? [],
       });
-      if (!hasAssign && !hasStatus && !hasPriority && !hasAssignmentType && !hasAiEnabled) {
+      if (
+        !hasAssign &&
+        !hasStatus &&
+        !hasPriority &&
+        !hasAssignmentType &&
+        !hasAiEnabled &&
+        !hasWaitingStatus
+      ) {
         res.json({ conversation: tagResult.conversation, tags: tagResult.tags });
         return;
       }
@@ -197,6 +213,7 @@ export async function patchConversationController(req, res, next) {
       actorUserId: req.userId ?? req.user.id,
       assignedToMemberId: hasAssign ? assignedToMemberId : undefined,
       status: hasStatus ? body.status : undefined,
+      waitingStatus: hasWaitingStatus ? body.waitingStatus : undefined,
       priority: hasPriority ? body.priority : undefined,
       assignmentType: hasAssignmentType ? body.assignmentType : undefined,
       aiEnabled: hasAiEnabled ? body.aiEnabled : undefined,

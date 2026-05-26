@@ -8,7 +8,8 @@
     "worker:automation": "node src/workers/automationWorker.js",
     "start": "NODE_ENV=production node src/server.js",
     "build": "echo \"Server has no build step\"",
-    "test": "node --test ./src/services/ai/**/*.test.js ./src/services/ai/*.test.js ./src/services/ingress/**/*.test.js ./src/services/assignment/**/*.test.js"
+    "test": "node --test ./src/services/ai/**/*.test.js ./src/services/ai/*.test.js ./src/services/ingress/**/*.test.js ./src/services/assignment/**/*.test.js ./src/services/lifecycle/**/*.test.js ./src/services/sla/**/*.test.js",
+    "test:lifecycle": "node --test ./src/services/lifecycle/**/*.test.js"
   },
   "dependencies": {
     "@ai-support/shared": "*",

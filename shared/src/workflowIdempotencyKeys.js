@@ -36,6 +36,17 @@ export function workflowSlaWarningIdempotencyKey(organizationId, conversationId,
 }
 
 /**
+ * One next-response SLA workflow run per conversation per calendar day.
+ *
+ * @param {string} organizationId
+ * @param {string} conversationId
+ * @param {string} dayKey — e.g. `YYYY-MM-DD`
+ */
+export function workflowSlaNextResponseIdempotencyKey(organizationId, conversationId, dayKey) {
+  return `workflow:sla:next:${organizationId}:${conversationId}:${dayKey}`;
+}
+
+/**
  * One schedule workflow scan per org per hour bucket.
  *
  * @param {string} organizationId
@@ -69,6 +80,46 @@ export function fifteenMinuteBucketKey(date = new Date()) {
  */
 export function slaScanOrgIdempotencyKey(organizationId, bucketKey) {
   return `sla.scan:${organizationId}:${bucketKey}`;
+}
+
+/**
+ * One org lifecycle scan per 15-minute bucket (cron should run at least every 15 minutes).
+ *
+ * @param {string} organizationId
+ * @param {string} bucketKey — from {@link fifteenMinuteBucketKey}
+ */
+export function lifecycleScanOrgIdempotencyKey(organizationId, bucketKey) {
+  return `lifecycle.scan:${organizationId}:${bucketKey}`;
+}
+
+/**
+ * One auto-close job per resolved conversation (re-enqueue only if prior job dead).
+ *
+ * @param {string} organizationId
+ * @param {string} conversationId
+ */
+export function lifecycleAutoCloseResolvedIdempotencyKey(organizationId, conversationId) {
+  return `lifecycle:auto_close:${organizationId}:${conversationId}`;
+}
+
+/**
+ * One customer reminder per conversation per waiting cycle.
+ *
+ * @param {string} organizationId
+ * @param {string} conversationId
+ */
+export function lifecycleCustomerReminderIdempotencyKey(organizationId, conversationId) {
+  return `lifecycle:reminder:${organizationId}:${conversationId}`;
+}
+
+/**
+ * One auto-close-after-reminder job per conversation.
+ *
+ * @param {string} organizationId
+ * @param {string} conversationId
+ */
+export function lifecycleAutoCloseWaitingIdempotencyKey(organizationId, conversationId) {
+  return `lifecycle:auto_close_waiting:${organizationId}:${conversationId}`;
 }
 
 /**

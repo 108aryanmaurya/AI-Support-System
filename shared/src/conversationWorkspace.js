@@ -2,11 +2,13 @@
 export const CONVERSATION_STATUSES = Object.freeze([
   'open',
   'pending',
-  'waiting_customer',
   'resolved',
   'closed',
   'spam',
 ])
+
+/** Statuses selectable in inbox workspace (excludes terminal + waiting_status-only states). */
+export const CONVERSATION_WORKSPACE_STATUSES = Object.freeze(['open', 'pending', 'spam'])
 
 /** Routing priority on `conversations.priority`. */
 export const CONVERSATION_PRIORITIES = Object.freeze(['low', 'medium', 'high', 'urgent'])
@@ -20,7 +22,7 @@ export const CONVERSATION_ASSIGNMENT_TYPES = Object.freeze([
 ])
 
 /** Statuses shown in “active” inbox buckets (your inbox, unassigned). */
-export const CONVERSATION_ACTIVE_STATUSES = Object.freeze(['open', 'pending', 'waiting_customer'])
+export const CONVERSATION_ACTIVE_STATUSES = Object.freeze(['open', 'pending'])
 
 /** @param {unknown} v */
 export function isConversationStatus(v) {

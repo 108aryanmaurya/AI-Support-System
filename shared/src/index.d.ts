@@ -9,11 +9,11 @@ export function isMessageSenderType(
 export const CONVERSATION_STATUSES: readonly [
   'open',
   'pending',
-  'waiting_customer',
   'resolved',
   'closed',
   'spam',
 ];
+export const CONVERSATION_WORKSPACE_STATUSES: readonly ['open', 'pending', 'spam'];
 export const CONVERSATION_PRIORITIES: readonly ['low', 'medium', 'high', 'urgent'];
 export const CONVERSATION_ASSIGNMENT_TYPES: readonly [
   'unassigned',
@@ -21,7 +21,7 @@ export const CONVERSATION_ASSIGNMENT_TYPES: readonly [
   'assigned_to_team',
   'assigned_to_ai',
 ];
-export const CONVERSATION_ACTIVE_STATUSES: readonly ['open', 'pending', 'waiting_customer'];
+export const CONVERSATION_ACTIVE_STATUSES: readonly ['open', 'pending'];
 
 export function isConversationStatus(value: unknown): value is (typeof CONVERSATION_STATUSES)[number];
 export function isConversationPriority(value: unknown): value is (typeof CONVERSATION_PRIORITIES)[number];
@@ -122,6 +122,7 @@ export const ORG_AUTOMATION_SETTINGS_DEFAULTS: {
   assignment_notify_enabled: boolean;
   sla_enabled: boolean;
   first_response_sla_minutes: number;
+  next_response_sla_minutes: number;
 };
 
 export function mergeOrgAiSettings(raw: unknown): typeof ORG_AI_SETTINGS_DEFAULTS;
@@ -210,6 +211,38 @@ export function mergeOrgAssignmentSettings(
   raw: unknown,
 ): typeof ORG_ASSIGNMENT_SETTINGS_DEFAULTS;
 export function isOrgAutoRouteEnabled(settings: unknown): boolean;
+
+export const CONVERSATION_CLOSED_REASONS: readonly [
+  'manual',
+  'auto_idle_resolved',
+  'auto_no_reply_after_reminder',
+];
+export const CONVERSATION_TERMINAL_STATUSES: readonly ['resolved', 'closed'];
+export const LIFECYCLE_LIMITS: {
+  readonly minDays: number;
+  readonly maxResolvedAutoCloseDays: number;
+  readonly maxWaitingDays: number;
+  readonly maxNewConversationAfterClosedDays: number;
+};
+export const ORG_LIFECYCLE_SETTINGS_DEFAULTS: {
+  readonly enabled: boolean;
+  readonly resolved_auto_close_days: number;
+  readonly waiting_reminder_days: number;
+  readonly waiting_auto_close_after_reminder_days: number;
+  readonly reopen_on_customer_message: boolean;
+  readonly new_conversation_after_closed_days: number;
+  readonly set_waiting_customer_on_agent_reply: boolean;
+  readonly customer_reminder_enabled: boolean;
+};
+export function isConversationClosedReason(value: unknown): boolean;
+export function isConversationTerminalStatus(value: unknown): boolean;
+export function mergeOrgLifecycleSettings(
+  raw: unknown,
+): typeof ORG_LIFECYCLE_SETTINGS_DEFAULTS;
+export function mergeOrgLifecycleSettingsFromOrg(
+  orgSettings: unknown,
+): typeof ORG_LIFECYCLE_SETTINGS_DEFAULTS;
+export function isOrgLifecycleEnabled(settings: unknown): boolean;
 
 export function autoRouteIdempotencyKey(
   organizationId: string,

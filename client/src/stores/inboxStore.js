@@ -91,6 +91,9 @@ export const useInboxStore = create((set) => ({
     sla_risk: 0,
     ingress_spam: 0,
     closed: 0,
+    resolved: 0,
+    waiting_customer: 0,
+    waiting_agent: 0,
   },
   /**
    * Cached first page per filter (short TTL; used when switching views).

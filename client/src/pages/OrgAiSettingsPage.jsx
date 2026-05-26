@@ -366,23 +366,45 @@ export default function OrgAiSettingsPage() {
                 />
               </div>
 
-              <label className="mt-4 block">
-                <span className="text-xs font-medium text-slate-400">First response SLA (minutes)</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={10080}
-                  value={automation.first_response_sla_minutes}
-                  disabled={!isAdmin || !automation.sla_enabled}
-                  onChange={(e) =>
-                    setAutomation((prev) => ({
-                      ...prev,
-                      first_response_sla_minutes: Number(e.target.value),
-                    }))
-                  }
-                  className="mt-1 w-full max-w-[200px] rounded-lg border border-[#2b3858] bg-[#111827] px-3 py-2 text-sm text-white disabled:opacity-60"
-                />
-              </label>
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-400">First response SLA (minutes)</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10080}
+                    value={automation.first_response_sla_minutes}
+                    disabled={!isAdmin || !automation.sla_enabled}
+                    onChange={(e) =>
+                      setAutomation((prev) => ({
+                        ...prev,
+                        first_response_sla_minutes: Number(e.target.value),
+                      }))
+                    }
+                    className="mt-1 w-full max-w-[200px] rounded-lg border border-[#2b3858] bg-[#111827] px-3 py-2 text-sm text-white disabled:opacity-60"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-slate-400">Next response SLA (minutes)</span>
+                  <p className="mt-0.5 text-[11px] text-slate-500">
+                    When waiting_status is waiting_agent and the customer is not answered.
+                  </p>
+                  <input
+                    type="number"
+                    min={1}
+                    max={10080}
+                    value={automation.next_response_sla_minutes ?? automation.first_response_sla_minutes}
+                    disabled={!isAdmin || !automation.sla_enabled}
+                    onChange={(e) =>
+                      setAutomation((prev) => ({
+                        ...prev,
+                        next_response_sla_minutes: Number(e.target.value),
+                      }))
+                    }
+                    className="mt-1 w-full max-w-[200px] rounded-lg border border-[#2b3858] bg-[#111827] px-3 py-2 text-sm text-white disabled:opacity-60"
+                  />
+                </label>
+              </div>
             </section>
 
             {isAdmin ? (

@@ -179,6 +179,13 @@ export default function OrgSettingsHomePage() {
               title="Assignment"
               description="Auto-route strategy, VIP rules, agent skills, and reassignment toggles."
             />
+            <SettingsCard
+              to={`/org/${orgId}/settings/lifecycle`}
+              icon={Clock}
+              iconClass="bg-teal-800"
+              title="Conversation lifecycle"
+              description="Auto-close resolved and waiting conversations, customer reminders, and reopen rules."
+            />
           </div>
         </section>
 
@@ -208,10 +215,11 @@ export default function OrgSettingsHomePage() {
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Channels</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <SettingsCard
+              to={`/org/${orgId}/settings/email`}
               icon={Mail}
               iconClass="bg-violet-600"
               title="Email"
-              description="Connect support inboxes and manage signatures and routing."
+              description="Forward your support inbox for receiving, then verify DNS to send replies from your domain."
             />
             <SettingsCard
               icon={MessageSquare}

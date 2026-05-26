@@ -48,6 +48,7 @@ flowchart LR
 | Customer inbound message | `notify.staff_inbound` (from `messages.controller`, `emailWebhook.service`) |
 | Conversation assigned | `notify.assignment` (from `conversations.controller` / `conversationUpdate.service`) |
 | Cron SLA scan | `POST /api/internal/cron/sla-scan` → `sla.scan_org` per org per **15-minute UTC bucket** (`slaScanOrgIdempotencyKey`) — run cron **every 15 minutes** → `sla.first_response_breach` + enqueue `ai.workflow_sla` |
+| Cron lifecycle scan | `POST /api/internal/cron/lifecycle-scan` → `lifecycle.scan_org` per org per 15-minute bucket → `lifecycle.auto_close_resolved`, `lifecycle.send_customer_reminder`, `lifecycle.auto_close_waiting` (requires `settings.lifecycle.enabled`) — see [conversation-status-handling.md](./conversation-status-handling.md) |
 | Cron schedule workflow | `POST /api/internal/cron/workflow-schedule-scan` → `ai.workflow_schedule_org` (orgs with `workflow.schedule.enabled`) |
 | Knowledge file upload | `knowledge.ingest_source` → article publish + chunks |
 
@@ -57,7 +58,10 @@ flowchart LR
 |---------|----------------|
 | [Messages](./messages.md) | Inbound path schedules staff notify |
 | [Support inbox](./support-inbox.md) | Assignment patch schedules assignment notify |
-| [Analytics](./analytics-and-reports.md) | SLA handler writes `sla.first_response_breach` events |
+| [Conversation lifecycle](./conversation-status-handling.md) | `lifecycle.scan_org` enqueues `lifecycle.auto_close_resolved`, `lifecycle.send_customer_reminder`, `lifecycle.auto_close_waiting`; requires worker + 15-min cron — see [operational-hardening.md](./operational-hardening.md) |
+| [Org email channel](./org-email-channel.md) | Customer reminder jobs call outbound email; skipped when sending not configured |
+| [Multi-channel](./multi-channel.md) | Email inbound may reopen terminal threads before staff notify |
+| [Analytics](./analytics-and-reports.md) | SLA handler writes `sla.first_response_breach` events; lifecycle emits `lifecycle.reminder_sent` / `lifecycle.reminder_skipped` |
 | [Knowledge base](./knowledge-base.md) | Ingest jobs processed by same worker |
 | [Org AI settings](./org-ai-settings.md) | Automation toggles and SLA minutes |
 | [Multi-organization](./multi-organization.md) | Jobs include `organization_id` |

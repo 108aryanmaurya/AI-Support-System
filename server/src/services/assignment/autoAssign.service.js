@@ -1,3 +1,4 @@
+import { CONVERSATION_ACTIVE_STATUSES } from '@ai-support/shared';
 import { supabaseAdmin } from '../../config/supabase.js';
 import { emitSupportEvent } from '../analytics/supportEvents.service.js';
 import { updateConversationFromAutomation } from '../conversationUpdate.service.js';
@@ -119,13 +120,22 @@ export async function runAutoAssignConversation({
   try {
     const { data: conv, error: convErr } = await supabaseAdmin
       .from('conversations')
-      .select('id, assignment_type, assigned_to_member_id, channel_type')
+      .select('id, assignment_type, assigned_to_member_id, channel_type, status')
       .eq('id', conversationId)
       .eq('organization_id', organizationId)
       .maybeSingle();
 
     if (convErr || !conv) {
       return { outcome: 'failed', reason: 'conversation_not_found' };
+    }
+
+    if (!CONVERSATION_ACTIVE_STATUSES.includes(conv.status)) {
+      emitAutoRouteEvent(organizationId, conversationId, 'assignment.auto_skipped', {
+        reason: 'conversation_not_active',
+        status: conv.status,
+        message_id: messageId ?? null,
+      });
+      return { outcome: 'skipped', reason: 'conversation_not_active' };
     }
 
     const isUnassigned =

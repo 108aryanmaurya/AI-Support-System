@@ -11,10 +11,19 @@ export {
   CONVERSATION_ASSIGNMENT_TYPES,
   CONVERSATION_PRIORITIES,
   CONVERSATION_STATUSES,
+  CONVERSATION_WORKSPACE_STATUSES,
   isConversationAssignmentType,
   isConversationPriority,
   isConversationStatus,
 } from './conversationWorkspace.js';
+
+export {
+  CONVERSATION_WAITING_STATUSES,
+  CONVERSATION_WAITING_STATUS_NONE,
+  getConversationWaitingStatus,
+  isConversationWaitingStatus,
+  normalizeConversationWaitingStatus,
+} from './conversationWaitingStatus.js';
 
 export {
   extractMentionHandles,
@@ -37,7 +46,11 @@ export {
 
 export { SUPPORT_EVENT_TYPES, isSupportEventType } from './supportEventTypes.js';
 
-export { AUTOMATION_JOB_TYPES, isAutomationJobType } from './automationJobTypes.js';
+export {
+  AUTOMATION_JOB_TYPES,
+  LIFECYCLE_AUTOMATION_JOB_TYPES,
+  isAutomationJobType,
+} from './automationJobTypes.js';
 
 export {
   WORKFLOW_AUTOMATION_JOB_TYPES,
@@ -55,9 +68,14 @@ export {
   reassignIdempotencyKey,
   fifteenMinuteBucketKey,
   slaScanOrgIdempotencyKey,
+  lifecycleScanOrgIdempotencyKey,
+  lifecycleAutoCloseResolvedIdempotencyKey,
+  lifecycleAutoCloseWaitingIdempotencyKey,
+  lifecycleCustomerReminderIdempotencyKey,
   workflowInboundIdempotencyKey,
   workflowScheduleScanIdempotencyKey,
   workflowSlaWarningIdempotencyKey,
+  workflowSlaNextResponseIdempotencyKey,
   workflowTagAddedIdempotencyKey,
 } from './workflowIdempotencyKeys.js';
 
@@ -68,6 +86,14 @@ export {
 } from './workflowSchedule.js';
 
 export { getConversationAutomationBadges } from './conversationAutomationBadges.js';
+
+export {
+  getConversationLifecycleDetailHint,
+  getConversationLifecycleListBadges,
+  isReopenedConversation,
+} from './conversationLifecycleBadges.js';
+
+export { buildLifecycleSettingsPatch } from './lifecycleSettingsPatch.js';
 
 export {
   WORKFLOW_ACTION_TYPES,
@@ -178,6 +204,18 @@ export {
 } from './assignmentSettings.js';
 
 export { buildAssignmentSettingsPatch } from './assignmentSettingsPatch.js';
+
+export {
+  CONVERSATION_CLOSED_REASONS,
+  CONVERSATION_TERMINAL_STATUSES,
+  LIFECYCLE_LIMITS,
+  ORG_LIFECYCLE_SETTINGS_DEFAULTS,
+  isConversationClosedReason,
+  isConversationTerminalStatus,
+  isOrgLifecycleEnabled,
+  mergeOrgLifecycleSettings,
+  mergeOrgLifecycleSettingsFromOrg,
+} from './lifecycleSettings.js';
 
 export { percentile, stddevActiveChats } from './assignmentMetricsMath.js';
 

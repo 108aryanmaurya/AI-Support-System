@@ -32,9 +32,14 @@ function loadEnv() {
     '',
   );
 
+  const resendApiKey = process.env.RESEND_API_KEY?.trim() || '';
   const notificationResendApiKey =
-    process.env.NOTIFICATION_RESEND_API_KEY?.trim() || process.env.RESEND_API_KEY?.trim() || '';
+    process.env.NOTIFICATION_RESEND_API_KEY?.trim() || resendApiKey || '';
   const notificationEmailFrom = process.env.NOTIFICATION_EMAIL_FROM?.trim() || '';
+  const resendWebhookSecret = process.env.RESEND_WEBHOOK_SECRET?.trim() || '';
+  const secretsEncryptionKey = process.env.SECRETS_ENCRYPTION_KEY?.trim() || '';
+  const resendInboundDomain = process.env.RESEND_INBOUND_DOMAIN?.trim().toLowerCase() || '';
+  const resendInboundAddress = process.env.RESEND_INBOUND_ADDRESS?.trim().toLowerCase() || '';
 
   const llmMaxPromptChars = Number(process.env.LLM_MAX_PROMPT_CHARS) || 32_000;
 
@@ -52,10 +57,18 @@ function loadEnv() {
     emailProvider,
     /** When true: simulate successful outbound email without HTTP to Resend */
     emailProviderMock,
+    /** Platform Resend API key (domain onboarding, inbound body fetch fallback). */
+    resendApiKey,
     /** Optional Resend API key for internal emails (e.g. conversation assignment). Channel replies use integration config instead. */
     notificationResendApiKey,
     /** Verified sender for NOTIFICATION_RESEND_API_KEY (e.g. onboarding@resend.dev or your domain). */
     notificationEmailFrom,
+    /** Svix signing secret for POST /api/webhooks/resend (whsec_… from Resend dashboard). */
+    resendWebhookSecret,
+    /** Optional 32+ char secret to encrypt per-org API keys at rest (AES-256-GCM). */
+    secretsEncryptionKey,
+    resendInboundDomain,
+    resendInboundAddress,
     /** Resolved LLM provider config (see LLM_PROVIDER in .env.example). */
     llm,
     /** @deprecated Use env.llm.apiKey */
