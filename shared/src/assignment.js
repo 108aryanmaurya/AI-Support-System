@@ -45,6 +45,8 @@ export const ASSIGNMENT_LOG_REASONS = Object.freeze([
   'reassign',
   'unassign',
   'system',
+  'claim',
+  'admin_override',
 ]);
 
 export const ASSIGNMENT_LIMITS = Object.freeze({

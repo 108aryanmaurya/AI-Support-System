@@ -2,6 +2,8 @@ import {
   mergeOrgAiSettings,
   mergeOrgAutomationSettings,
   mergeOrgIngressPolicy,
+  mergeOrgPermissions,
+  permissionsForRole,
 } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
@@ -94,6 +96,12 @@ export async function patchOrgSettings(organizationId, patch = {}) {
       ...patch.ingress,
     };
   }
+  if (patch.permissions && typeof patch.permissions === 'object') {
+    next.permissions = {
+      ...(prior.permissions && typeof prior.permissions === 'object' ? prior.permissions : {}),
+      ...patch.permissions,
+    };
+  }
 
   const { error } = await supabaseAdmin
     .from('organizations')
@@ -108,7 +116,23 @@ export async function patchOrgSettings(organizationId, patch = {}) {
     ai: mergeOrgAiSettings(next.ai),
     automation: mergeOrgAutomationSettings(next.automation),
     ingress: mergeOrgIngressPolicy(next.ingress),
+    permissions: next.permissions ?? null,
   };
+}
+
+/**
+ * @param {string} organizationId
+ * @param {string} role
+ */
+export async function getOrgPermissionsSettings(organizationId, role) {
+  const row = await loadSettingsRow(organizationId);
+  const settings = row.settings && typeof row.settings === 'object' ? row.settings : {};
+  const preset = permissionsForRole(role);
+  const overrides =
+    settings.permissions && typeof settings.permissions === 'object'
+      ? settings.permissions
+      : {};
+  return mergeOrgPermissions(overrides, preset);
 }
 
 /** Whether org allows AI features (master switch). */

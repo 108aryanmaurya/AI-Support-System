@@ -2,6 +2,7 @@ import {
   CONVERSATION_ASSIGNMENT_TYPES,
   CONVERSATION_PRIORITIES,
   CONVERSATION_STATUSES,
+  hasOrgPermission,
   isConversationAssignmentType,
   isConversationPriority,
   isConversationStatus,
@@ -11,6 +12,8 @@ import {
 } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
+import { assertConversationAssignmentAllowed } from './conversationAssignmentPolicy.service.js';
+import { getOrgPermissionsForMember } from './orgPermissions.service.js';
 import { ensureOrgMembership } from './support.service.js';
 import { emitSupportEvent } from './analytics/supportEvents.service.js';
 import {
@@ -35,6 +38,8 @@ export async function updateConversationFields({
   workflowMeta = undefined,
   closedReason: closedReasonPatch = undefined,
   waitingStatus: waitingStatusPatch = undefined,
+  assignmentMode = 'manual',
+  orgPermissions = undefined,
 }) {
   const actorMember = automationSource
     ? null
@@ -72,6 +77,14 @@ export async function updateConversationFields({
     const s = typeof statusPatch === 'string' ? statusPatch.trim() : statusPatch;
     if (!isConversationStatus(s)) {
       throw new HttpError(400, `status must be one of: ${CONVERSATION_STATUSES.join(', ')}.`);
+    }
+    if (!automationSource && s === 'spam' && actorMember) {
+      const permissions =
+        orgPermissions ??
+        (await getOrgPermissionsForMember(organizationId, actorMember));
+      if (!hasOrgPermission(permissions, 'conversations.mark_spam')) {
+        throw new HttpError(403, 'You cannot mark conversations as spam.');
+      }
     }
     status = s;
     if (status === 'spam') {
@@ -168,6 +181,40 @@ export async function updateConversationFields({
     });
   }
 
+  let humanAssignmentReason = null;
+  const assignmentChanging =
+    !automationSource &&
+    (assignedToMemberId !== undefined ||
+      (priorAssignedToMemberId ?? null) !== (assigned_to_member_id ?? null));
+
+  if (assignmentChanging && actorMember) {
+    const permissions =
+      orgPermissions ??
+      (await getOrgPermissionsForMember(organizationId, actorMember));
+    const policy = assertConversationAssignmentAllowed({
+      actorMember,
+      priorAssigneeId: priorAssignedToMemberId,
+      nextAssigneeId: assigned_to_member_id,
+      permissions,
+      mode: assignmentMode === 'claim' ? 'claim' : 'manual',
+    });
+    humanAssignmentReason = policy.assignmentLogReason;
+  }
+
+  if (
+    !automationSource &&
+    statusPatch !== undefined &&
+    status === 'closed' &&
+    actorMember
+  ) {
+    const permissions =
+      orgPermissions ??
+      (await getOrgPermissionsForMember(organizationId, actorMember));
+    if (!hasOrgPermission(permissions, 'conversations.close')) {
+      throw new HttpError(403, 'You cannot close conversations.');
+    }
+  }
+
   if (assigned_to_member_id) {
     const { data: assignee, error: assigneeError } = await supabaseAdmin
       .from('organization_members')
@@ -252,6 +299,8 @@ export async function updateConversationFields({
     const assignmentPayload = {
       assignment_type: data.assignment_type,
       assigned_to_member_id: data.assigned_to_member_id,
+      prior_assigned_to_member_id: prior.assigned_to_member_id ?? null,
+      reason: humanAssignmentReason ?? (automationSource ? 'system' : 'manual'),
     };
     if (workflowMeta && typeof workflowMeta === 'object') {
       assignmentPayload.workflow = workflowMeta;
@@ -280,6 +329,7 @@ export async function updateConversationFields({
           workflowMeta,
           assignedToMemberId: data.assigned_to_member_id,
           assignmentType: data.assignment_type,
+          humanAssignmentReason,
         });
   
         await appendAssignmentLog({

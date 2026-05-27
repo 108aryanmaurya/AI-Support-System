@@ -109,7 +109,8 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Inbox state (client)** — Zustand `inboxStore` (conversations, filters, typing, mention cues)
 - **Filter caching & debounced refetch** — faster sidebar switching
 - **Periodic HTTP sync** — backup when realtime is quiet
-- **Auto-assign on select** — optional: assign conversation to current agent when opened from unassigned queue
+- **Auto-assign on select** — optional: assign to self only when thread is **unassigned** (no steal)
+- **RBAC & collaboration** — org capabilities (`settings.permissions` + role presets); `requirePermission`; assignment steal prevention; `POST .../conversations/:id/claim`; spam/close/analytics/invite gates; audit `GET .../audit/events`; send collision `stale_thread` warning — see [rba-sprints.md](docs/features/rba-sprints.md)
 - **One open conversation per customer** — DB constraint for email/web threads
 - **Active thread index / RPC helpers** — migrations for performant inbox queries
 - **Intelligent assignment (Sprint 1–8)** — Settings → Assignment; `GET .../assignment/metrics` + Reports overview KPIs; structured assignment logs; preview rate limits; ops runbook [auto-assignment-operations.md](docs/features/auto-assignment-operations.md); worker jobs `assignment.auto_route` / `assignment.reassign`
@@ -315,7 +316,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Bearer JWT on protected routes**
 - **Org isolation** — all workspace data scoped by `organization_id`; URL param is source of truth for org scope
 - **Membership checks** — 403 when user is not an active member
-- **Admin-only mutations** — invites, batch invites
+- **Admin-only mutations** — invites require `team.invite` capability (ADMIN preset); org-wide analytics require `analytics.view_org`
 - **Incoming ingress** — no user JWT; org ID from path + rate limit
 - **Webhook/email** — channel integration resolution and optional webhook secrets
 - **Service role server-only** — elevated DB access never shipped to client

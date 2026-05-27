@@ -1,6 +1,8 @@
 import { resolveMentionUserIdsFromContent } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
+import { assertConversationCustomerReplyAllowed } from './conversationAssignmentPolicy.service.js';
+import { getOrgPermissionsForMember } from './orgPermissions.service.js';
 import {
   ensureOrgMembership,
   listOrganizationMembersWithProfiles,
@@ -28,6 +30,9 @@ const UUID_V4_REGEX =
 
 const MAX_MESSAGE_LENGTH = getMaxMessageLength();
 
+/** Warn when another agent sent within this window (seconds). */
+const STALE_THREAD_WINDOW_SEC = Number(process.env.STALE_THREAD_WINDOW_SEC) || 30;
+
 async function patchConversationActivity(conversationId, organizationId, createdAtIso) {
   const { error } = await supabaseAdmin
     .from('conversations')
@@ -51,6 +56,48 @@ function parseOptionalUuidField(value, fieldName) {
   return s;
 }
 
+async function assertThreadNotStale({
+  organizationId,
+  conversationId,
+  actorMemberId,
+  acknowledgeStaleThread,
+}) {
+  if (acknowledgeStaleThread === true) return;
+
+  const since = new Date(Date.now() - STALE_THREAD_WINDOW_SEC * 1000).toISOString();
+  const { data: recent, error } = await supabaseAdmin
+    .from('messages')
+    .select('id, sender_member_id, created_at')
+    .eq('organization_id', organizationId)
+    .eq('conversation_id', conversationId)
+    .eq('sender_type', 'agent')
+    .gte('created_at', since)
+    .neq('sender_member_id', actorMemberId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.warn('[inbox_send] stale_thread check skipped', {
+      organization_id: organizationId,
+      conversation_id: conversationId,
+      message: error.message,
+    });
+    return;
+  }
+
+  if (recent?.sender_member_id) {
+    const err = new HttpError(
+      409,
+      'Another agent may have just replied on this thread. Confirm to send again to proceed.',
+    );
+    err.code = 'stale_thread';
+    err.recentMessageId = recent.id;
+    throw err;
+  }
+}
+
 export async function sendInboxAgentOutboundMessage({
   userId,
   conversationId: rawConversationId,
@@ -60,6 +107,7 @@ export async function sendInboxAgentOutboundMessage({
   isAiGenerated = false,
   aiRunId: rawAiRunId = null,
   parentMessageId: rawParentMessageId = null,
+  acknowledgeStaleThread = false,
 }) {
   const conversationId =
     typeof rawConversationId === 'string' ? rawConversationId.trim() : '';
@@ -99,6 +147,19 @@ export async function sendInboxAgentOutboundMessage({
     idempotency.mode === 'proceed' ? idempotency.clientRequestId : null;
 
   const member = await ensureOrgMembership(userId, organizationId);
+  const permissions = await getOrgPermissionsForMember(organizationId, member);
+  assertConversationCustomerReplyAllowed({
+    actorMember: member,
+    assignedToMemberId: conversation.assigned_to_member_id ?? null,
+    permissions,
+  });
+
+  await assertThreadNotStale({
+    organizationId,
+    conversationId: conversation.id,
+    actorMemberId: member.id,
+    acknowledgeStaleThread,
+  });
 
   const membersPayload = await listOrganizationMembersWithProfiles({
     organizationId: conversation.organization_id,

@@ -14,12 +14,15 @@ import {
 } from 'lucide-react'
 import minifiedLogo from '../assets/minified_logo.png'
 import { Logo } from './Logo'
+import { useOrgPermissionsContextOptional } from '../context/OrgPermissionsContext.jsx'
+import { RestrictedControl } from './RestrictedControl.jsx'
+import { permissionDenialMessage } from '../lib/permissionUx.js'
 
 const topItems = [
   { label: 'Inbox', icon: Home, path: 'inbox' },
   { label: 'Fin AI Agent', icon: Bot },
   { label: 'Knowledge', icon: BookOpen, path: 'knowledge' },
-  { label: 'Reports', icon: SquareChartGantt, path: 'reports' },
+  { label: 'Reports', icon: SquareChartGantt, path: 'reports', permission: 'analytics.view_org' },
   { label: 'Outbound', icon: ArrowRight },
   { label: 'Contacts', icon: ContactRound },
 ]
@@ -35,6 +38,7 @@ export function HoverSidebar() {
   const navigate = useNavigate()
   const location = useLocation()
   const { orgId } = useParams()
+  const perms = useOrgPermissionsContextOptional()
 
   function goToSettings() {
     if (orgId) navigate(`/org/${orgId}/settings`)
@@ -45,7 +49,18 @@ export function HoverSidebar() {
   }
 
   function handleTopNav(item) {
+    if (item.permission && perms && !perms.can(item.permission)) return
     if (item.path) goToWorkspacePath(item.path)
+  }
+
+  function itemRestricted(item) {
+    if (!item.permission || !perms) return false
+    return !perms.can(item.permission)
+  }
+
+  function itemRestrictedReason(item) {
+    if (!item.permission) return null
+    return permissionDenialMessage(item.permission)
   }
 
   function handleBottomNav(item) {
@@ -67,21 +82,28 @@ export function HoverSidebar() {
       <div className="flex h-full w-[72px] flex-col items-center border-r border-[#1d253a] bg-black/95 py-4">
         <img src={minifiedLogo} alt="ResolveAI" className="w-20 object-contain" />
         <div className="mt-8 flex flex-1 flex-col items-center gap-5 text-white/95">
-          {topItems.map((item) =>
-            item.path ? (
-              <button
+          {topItems.map((item) => {
+            if (!item.path) {
+              return <item.icon key={item.label} size={18} />
+            }
+            const restricted = itemRestricted(item)
+            return (
+              <RestrictedControl
                 key={item.label}
-                type="button"
-                onClick={() => handleTopNav(item)}
-                aria-label={item.label}
-                className="text-white/95 transition hover:text-white"
+                restricted={restricted}
+                reason={itemRestrictedReason(item)}
               >
-                <item.icon size={18} />
-              </button>
-            ) : (
-              <item.icon key={item.label} size={18} />
-            ),
-          )}
+                <button
+                  type="button"
+                  onClick={() => handleTopNav(item)}
+                  aria-label={item.label}
+                  className="text-white/95 transition hover:text-white"
+                >
+                  <item.icon size={18} />
+                </button>
+              </RestrictedControl>
+            )
+          })}
         </div>
         <div className="mb-2 flex flex-col items-center gap-5 text-white/95">
           <button type="button">
@@ -117,24 +139,48 @@ export function HoverSidebar() {
           </div>
 
           <nav className="px-3 ">
-            {topItems.map((item) => (
-              <button
-                key={item.label}
-                type="button"
-                onClick={() => handleTopNav(item)}
-                className={`mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-medium transition hover:bg-[#111a2f] ${
-                  item.path && isActivePath(item.path)
-                    ? 'bg-[#151b2e] text-white'
-                    : 'text-white'
-                }`}
-              >
-                <item.icon size={18} className="text-white/95" />
-                <span>{item.label}</span>
-                {item.label === 'Inbox' ? (
-                  <span className="ml-auto rounded-full bg-[#3a2a21] px-1.5 text-[10px] font-semibold text-[#ffbf8b]">4</span>
-                ) : null}
-              </button>
-            ))}
+            {topItems.map((item) => {
+              const restricted = itemRestricted(item)
+              const btn = (
+                <button
+                  type="button"
+                  onClick={() => handleTopNav(item)}
+                  className={`mb-2 flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-sm font-medium transition hover:bg-[#111a2f] ${
+                    item.path && isActivePath(item.path)
+                      ? 'bg-[#151b2e] text-white'
+                      : restricted
+                        ? 'text-slate-500'
+                        : 'text-white'
+                  }`}
+                >
+                  <item.icon size={18} className="text-white/95" />
+                  <span>{item.label}</span>
+                  {item.label === 'Inbox' ? (
+                    <span className="ml-auto rounded-full bg-[#3a2a21] px-1.5 text-[10px] font-semibold text-[#ffbf8b]">
+                      4
+                    </span>
+                  ) : null}
+                </button>
+              )
+              if (!item.path) {
+                return (
+                  <div key={item.label} className="mb-2 flex items-center gap-2 px-3 py-1.5 text-slate-500">
+                    <item.icon size={18} />
+                    <span className="text-sm">{item.label}</span>
+                  </div>
+                )
+              }
+              return (
+                <RestrictedControl
+                  key={item.label}
+                  restricted={restricted}
+                  reason={itemRestrictedReason(item)}
+                  className="w-full"
+                >
+                  {btn}
+                </RestrictedControl>
+              )
+            })}
           </nav>
 
           <div className="mt-auto px-2 pb-6">

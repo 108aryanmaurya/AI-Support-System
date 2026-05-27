@@ -1,9 +1,18 @@
 import { ChevronRight } from 'lucide-react'
 import { NavLink, Outlet, useParams } from 'react-router-dom'
+import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
+import { permissionDenialMessage } from '../lib/permissionUx.js'
+import { RestrictedControl } from '../components/RestrictedControl.jsx'
 import { settingsNav } from './settings/settingsNav.js'
 
 export default function OrgSettingsLayout() {
   const { orgId } = useParams()
+  const { can } = useOrgPermissionsContext()
+
+  const visibleNav = settingsNav.filter((item) => {
+    if (!item.permission) return true
+    return can(item.permission)
+  })
 
   return (
     <div className="flex min-h-0 w-full flex-1 flex-col bg-[#0b1020] text-slate-100 md:flex-row">
@@ -13,7 +22,7 @@ export default function OrgSettingsLayout() {
           className="mt-3 flex gap-1 overflow-x-auto px-2 pb-1 md:mt-5 md:flex-col md:gap-0.5 md:pb-0"
           aria-label="Settings sections"
         >
-          {settingsNav.map((item) => {
+          {visibleNav.map((item) => {
             if (item.id === 'home') {
               return (
                 <NavLink
@@ -52,17 +61,25 @@ export default function OrgSettingsLayout() {
                 </NavLink>
               )
             }
+            const restricted = Boolean(item.permission && !can(item.permission))
             return (
-              <button
+              <RestrictedControl
                 key={item.id}
-                type="button"
-                className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium whitespace-nowrap text-slate-400 transition hover:bg-[#111827] hover:text-slate-200 md:w-full"
+                restricted={restricted}
+                reason={item.permission ? permissionDenialMessage(item.permission) : null}
+                mode="hide"
+                className="md:w-full"
               >
-                <span className="flex-1 md:inline">{item.label}</span>
-                {item.chevron ? (
-                  <ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-500 md:inline" aria-hidden />
-                ) : null}
-              </button>
+                <button
+                  type="button"
+                  className="flex min-w-0 shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium whitespace-nowrap text-slate-400 transition hover:bg-[#111827] hover:text-slate-200 md:w-full"
+                >
+                  <span className="flex-1 md:inline">{item.label}</span>
+                  {item.chevron ? (
+                    <ChevronRight className="hidden h-4 w-4 shrink-0 text-slate-500 md:inline" aria-hidden />
+                  ) : null}
+                </button>
+              </RestrictedControl>
             )
           })}
         </nav>

@@ -70,6 +70,7 @@ export default function OrgEmailSettingsPage() {
     setError('')
     try {
       const data = await fetchOrgEmailSettings(orgId)
+      console.log('data', data)
       setSettings(data)
       if (data.displaySupportEmail) setDisplaySupportEmail(data.displaySupportEmail)
       if (data.subdomain) setSubdomainInput(data.subdomain)

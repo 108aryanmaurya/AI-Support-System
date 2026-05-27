@@ -29,6 +29,7 @@ Per-feature implementation guides for the AI Support System monorepo. Each doc e
 | [ai-capabilities.md](./features/ai-capabilities.md) | AI stubs, schema hooks, roadmap link |
 | [knowledge-base.md](./features/knowledge-base.md) | Articles, search, file ingest (Phase 2) |
 | [security-and-access-control.md](./features/security-and-access-control.md) | RLS, org isolation, ingress security |
+| [rba-sprints.md](./features/rba-sprints.md) | RBAC & collaboration sprints (ADMIN/AGENT permissions, assignment policy, audit) |
 
 **Also see**
 

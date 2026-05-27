@@ -26,6 +26,7 @@ export async function apiFetch(path, options = {}) {
     }
     throw Object.assign(new Error(err.error || 'Request failed'), {
       status: res.status,
+      code: err.code ?? null,
       body: err,
     })
   }

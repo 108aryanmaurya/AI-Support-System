@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, LayoutGrid } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
 import { fetchOrgChannels, postOrgInvitesBatch } from '../services/orgWorkspaceApi.js'
 import { parseInviteEmails } from '../utils/parseInviteEmails.js'
 
@@ -13,7 +14,8 @@ export default function OrgInviteTeammatesPage() {
   const { organizations } = useOrganizationContext()
 
   const current = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(current?.role ?? '').toUpperCase() === 'ADMIN'
+  const { can } = useOrgPermissionsContext()
+  const canInvite = can('team.invite')
 
   const [rawEmails, setRawEmails] = useState('')
   const [channels, setChannels] = useState([])
@@ -77,7 +79,7 @@ export default function OrgInviteTeammatesPage() {
     }
   }
 
-  if (!isAdmin) {
+  if (!canInvite) {
     return <Navigate to={`/org/${orgId}/settings/teammates`} replace />
   }
 

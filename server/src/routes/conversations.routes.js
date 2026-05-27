@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { requirePermission } from '../middleware/orgAccess.js';
 import {
+  claimConversationController,
   createConversationController,
   getConversationCountsController,
   getConversationMessagesController,
@@ -15,7 +17,8 @@ router.post('/', createConversationController);
 router.get('/', getConversationsController);
 router.get('/counts', getConversationCountsController);
 router.get('/members', listOrganizationMembersController);
-router.patch('/:id/spam', patchConversationSpamController);
+router.post('/:id/claim', claimConversationController);
+router.patch('/:id/spam', requirePermission('conversations.mark_spam'), patchConversationSpamController);
 router.patch('/:id', patchConversationController);
 router.get('/:id/messages', getConversationMessagesController);
 

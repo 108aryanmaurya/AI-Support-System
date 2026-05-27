@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { requireOrgAccess, requireRole } from '../middleware/orgAccess.js';
+import { requireOrgAccess, requirePermission, requireRole } from '../middleware/orgAccess.js';
+import { listOrgAuditEventsController } from '../controllers/audit.controller.js';
 import conversationsRoutes from './conversations.routes.js';
 import customersRoutes from './customers.routes.js';
 import messagesAuthRoutes from './messagesAuth.routes.js';
@@ -29,9 +30,10 @@ router.use(requireOrgAccess());
 
 router.get('/members', listMembersController);
 router.get('/channels', listWorkspaceChannelsController);
-router.post('/invites/batch', requireRole('ADMIN'), createInvitesBatchController);
+router.get('/audit/events', requirePermission('analytics.view_org'), listOrgAuditEventsController);
+router.post('/invites/batch', requirePermission('team.invite'), createInvitesBatchController);
 router.get('/invites', listPendingInvitesController);
-router.post('/invite', requireRole('ADMIN'), createInviteController);
+router.post('/invite', requirePermission('team.invite'), createInviteController);
 router.use('/settings', orgSettingsRoutes);
 router.use('/ai', orgAiRoutes);
 router.use('/knowledge', orgKnowledgeRoutes);

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { hasOrgPermission } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { getDefaultConversationAiEnabled } from './orgSettings.service.js';
@@ -210,15 +211,21 @@ export async function updateConversationSpam({
   conversationId,
   isSpam,
   actorUserId,
+  orgPermissions = undefined,
 }) {
-  await ensureOrgMembership(actorUserId, organizationId);
+  const actorMember = await ensureOrgMembership(actorUserId, organizationId);
+  if (orgPermissions) {
+    if (!hasOrgPermission(orgPermissions, 'conversations.mark_spam')) {
+      throw new HttpError(403, 'You cannot change spam status on conversations.');
+    }
+  }
   if (typeof isSpam !== 'boolean') {
     throw new HttpError(400, 'isSpam must be a boolean.');
   }
 
   const { data: current, error: loadErr } = await supabaseAdmin
     .from('conversations')
-    .select('status')
+    .select('status, is_spam, channel_type')
     .eq('id', conversationId)
     .eq('organization_id', organizationId)
     .maybeSingle();
@@ -255,6 +262,24 @@ export async function updateConversationSpam({
   if (!data) {
     throw new HttpError(404, 'Conversation not found in this organization.');
   }
+
+  if (Boolean(current.is_spam) !== Boolean(data.is_spam)) {
+    const { emitSupportEvent } = await import('./analytics/supportEvents.service.js');
+    emitSupportEvent({
+      organizationId,
+      eventType: 'conversation.spam_changed',
+      entityType: 'conversation',
+      entityId: conversationId,
+      actorMemberId: actorMember?.id ?? null,
+      channelType: data.channel_type ?? null,
+      payload: {
+        is_spam: Boolean(data.is_spam),
+        prior_is_spam: Boolean(current.is_spam),
+        status: data.status,
+      },
+    });
+  }
+
   return data;
 }
 

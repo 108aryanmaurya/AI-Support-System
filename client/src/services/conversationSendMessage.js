@@ -65,6 +65,7 @@ export function createSendMessage(deps) {
    * @param {string} rawContent
    * @param {{
    *   retryOfMessageId?: string
+   *   acknowledgeStaleThread?: boolean
    *   aiLineage?: { isAiGenerated?: boolean; aiRunId?: string; parentMessageId?: string | null }
    * }} [options]
    * @returns {Promise<{ ok: true; message?: object } | { ok: false; error?: string; skipped?: boolean }>}
@@ -129,6 +130,7 @@ export function createSendMessage(deps) {
         conversation_id: conversationId,
         content,
         client_request_id: clientRequestId,
+        ...(options.acknowledgeStaleThread ? { acknowledge_stale_thread: true } : {}),
       }
       if (aiLineage?.isAiGenerated && aiLineage.aiRunId) {
         sendBody.is_ai_generated = true
@@ -171,6 +173,21 @@ export function createSendMessage(deps) {
 
       return { ok: true, message: serverMessage ?? null }
     } catch (err) {
+      if (err?.code === 'stale_thread' && !options.acknowledgeStaleThread) {
+        const confirmed =
+          typeof globalThis.confirm === 'function' &&
+          globalThis.confirm(
+            'Another agent may have just replied on this thread. Send your message anyway?',
+          )
+        if (confirmed) {
+          inFlightByConversationId.delete(lockKey)
+          return sendMessage(conversationId, rawContent, {
+            ...options,
+            acknowledgeStaleThread: true,
+          })
+        }
+      }
+
       const list = useInboxStore.getState().messagesByConversationId[conversationId] ?? []
       const prev = list.find((m) => m.id === optimisticId)
       const prevMeta =

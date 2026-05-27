@@ -19,10 +19,13 @@ import {
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
+import { RestrictedControl } from '../components/RestrictedControl.jsx'
 
-function SettingsCard({ to, icon: Icon, iconClass, title, description, badge, titleExtra }) {
-  const className =
-    'flex w-full flex-col items-start rounded-xl border border-[#2b3858] bg-[#12192c] p-4 text-left transition hover:border-[#3ECF8E]/35 hover:bg-[#151b2e]'
+function SettingsCard({ to, icon: Icon, iconClass, title, description, badge, titleExtra, dimmed }) {
+  const className = `flex w-full flex-col items-start rounded-xl border border-[#2b3858] bg-[#12192c] p-4 text-left transition ${
+    dimmed ? 'opacity-50' : 'hover:border-[#3ECF8E]/35 hover:bg-[#151b2e]'
+  }`
   const inner = (
     <>
       <div className={`mb-3 flex h-10 w-10 items-center justify-center rounded-lg ${iconClass}`}>
@@ -41,7 +44,7 @@ function SettingsCard({ to, icon: Icon, iconClass, title, description, badge, ti
     </>
   )
 
-  if (to) {
+  if (to && !dimmed) {
     return (
       <Link to={to} className={className}>
         {inner}
@@ -50,10 +53,23 @@ function SettingsCard({ to, icon: Icon, iconClass, title, description, badge, ti
   }
 
   return (
-    <button type="button" className={className}>
+    <button type="button" className={className} disabled={dimmed}>
       {inner}
     </button>
   )
+}
+
+function GatedSettingsCard({ permission, hideWhenDenied = true, ...cardProps }) {
+  const { can, deny } = useOrgPermissionsContext()
+  if (permission && !can(permission)) {
+    if (hideWhenDenied) return null
+    return (
+      <RestrictedControl restricted reason={deny(permission)} className="h-full">
+        <SettingsCard {...cardProps} dimmed />
+      </RestrictedControl>
+    )
+  }
+  return <SettingsCard {...cardProps} />
 }
 
 export default function OrgSettingsHomePage() {
@@ -98,7 +114,8 @@ export default function OrgSettingsHomePage() {
               title="General"
               description="Set your workspace name, time zone, languages, and more."
             />
-            <SettingsCard
+            <GatedSettingsCard
+              permission="team.invite"
               to={`/org/${orgId}/settings/teammates`}
               icon={Users}
               iconClass="bg-violet-600"
@@ -165,21 +182,24 @@ export default function OrgSettingsHomePage() {
         <section className="mb-10">
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Inbox</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <SettingsCard
+            <GatedSettingsCard
+              permission="ai.manage_settings"
               to={`/org/${orgId}/settings/tags`}
               icon={Tag}
               iconClass="bg-emerald-700"
               title="Conversation tags"
               description="Create and manage tags for filtering conversations and AI auto-tagging."
             />
-            <SettingsCard
+            <GatedSettingsCard
+              permission="automation.manage_assignment"
               to={`/org/${orgId}/settings/assignment`}
               icon={GitBranch}
               iconClass="bg-emerald-800"
               title="Assignment"
               description="Auto-route strategy, VIP rules, agent skills, and reassignment toggles."
             />
-            <SettingsCard
+            <GatedSettingsCard
+              permission="ai.manage_settings"
               to={`/org/${orgId}/settings/lifecycle`}
               icon={Clock}
               iconClass="bg-teal-800"
@@ -194,14 +214,16 @@ export default function OrgSettingsHomePage() {
             AI &amp; Automation
           </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <SettingsCard
+            <GatedSettingsCard
+              permission="ai.manage_settings"
               to={`/org/${orgId}/settings/ai`}
               icon={Bot}
               iconClass="bg-violet-600"
               title="AI & Automation"
               description="Enable AI features, defaults for new conversations, and notification automation."
             />
-            <SettingsCard
+            <GatedSettingsCard
+              permission="ai.manage_workflows"
               to={`/org/${orgId}/settings/workflows`}
               icon={Bot}
               iconClass="bg-violet-700"
@@ -214,7 +236,8 @@ export default function OrgSettingsHomePage() {
         <section>
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Channels</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            <SettingsCard
+            <GatedSettingsCard
+              permission="channels.manage_email"
               to={`/org/${orgId}/settings/email`}
               icon={Mail}
               iconClass="bg-violet-600"

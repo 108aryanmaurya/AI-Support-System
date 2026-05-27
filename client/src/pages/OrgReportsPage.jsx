@@ -12,13 +12,14 @@ import {
   fetchAnalyticsOverview,
   fetchAnalyticsTeam,
 } from '../services/analyticsApi.js'
+import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
 
 const TABS = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'conversations', label: 'Conversations' },
-  { id: 'team', label: 'Team' },
-  { id: 'knowledge', label: 'Knowledge' },
-  { id: 'ai', label: 'AI' },
+  { id: 'overview', label: 'Overview', permission: 'analytics.view_org' },
+  { id: 'conversations', label: 'Conversations', permission: 'analytics.view_org' },
+  { id: 'team', label: 'Team', permission: 'analytics.view_self' },
+  { id: 'knowledge', label: 'Knowledge', permission: 'analytics.view_org' },
+  { id: 'ai', label: 'AI', permission: 'analytics.view_org' },
 ]
 
 function AiTabPanel({ data, loading, error, organizationId, range }) {
@@ -120,6 +121,8 @@ function AiTabPanel({ data, loading, error, organizationId, range }) {
 
 export default function OrgReportsPage() {
   const { orgId } = useParams()
+  const { can, deny } = useOrgPermissionsContext()
+  const visibleTabs = TABS.filter((t) => can(t.permission))
   const [tab, setTab] = useState('overview')
   const [range, setRange] = useState(defaultReportRange)
   const [loading, setLoading] = useState(true)
@@ -135,28 +138,42 @@ export default function OrgReportsPage() {
     setLoading(true)
     setError(null)
     try {
-      const [ov, conv, tm, kb, aiData] = await Promise.all([
-        fetchAnalyticsOverview(orgId, range),
-        fetchAnalyticsConversations(orgId, range),
-        fetchAnalyticsTeam(orgId, range),
-        fetchAnalyticsKnowledge(orgId, range),
-        fetchAnalyticsAi(orgId, range),
-      ])
-      setOverview(ov)
-      setConversations(conv)
+      const canOrg = can('analytics.view_org')
+      const tm = await fetchAnalyticsTeam(orgId, range)
       setTeam(tm)
-      setKnowledge(kb)
-      setAi(aiData)
+      if (canOrg) {
+        const [ov, conv, kb, aiData] = await Promise.all([
+          fetchAnalyticsOverview(orgId, range),
+          fetchAnalyticsConversations(orgId, range),
+          fetchAnalyticsKnowledge(orgId, range),
+          fetchAnalyticsAi(orgId, range),
+        ])
+        setOverview(ov)
+        setConversations(conv)
+        setKnowledge(kb)
+        setAi(aiData)
+      } else {
+        setOverview(null)
+        setConversations(null)
+        setKnowledge(null)
+        setAi(null)
+      }
     } catch (e) {
       setError(e.message || 'Failed to load reports.')
     } finally {
       setLoading(false)
     }
-  }, [orgId, range])
+  }, [orgId, range, can])
 
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.id === tab)) {
+      setTab(visibleTabs[0]?.id ?? 'team')
+    }
+  }, [visibleTabs, tab])
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#0b1020] text-slate-100">
@@ -198,7 +215,7 @@ export default function OrgReportsPage() {
           </div>
         </div>
         <nav className="mt-4 flex gap-1 overflow-x-auto" aria-label="Report sections">
-          {TABS.map((t) => (
+          {visibleTabs.map((t) => (
             <button
               key={t.id}
               type="button"
@@ -213,6 +230,11 @@ export default function OrgReportsPage() {
             </button>
           ))}
         </nav>
+        {!can('analytics.view_org') ? (
+          <p className="mt-3 rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
+            {deny('analytics.view_org')} You can still view your own metrics on the Team tab.
+          </p>
+        ) : null}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-6">

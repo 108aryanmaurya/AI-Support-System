@@ -35,4 +35,16 @@ describe('resolveAssignmentLogReason', () => {
       'unassign',
     );
   });
+
+  it('uses human assignment reason when provided', () => {
+    assert.equal(
+      resolveAssignmentLogReason({
+        automationSource: false,
+        assignedToMemberId: 'm1',
+        assignmentType: 'assigned_to_agent',
+        humanAssignmentReason: 'claim',
+      }),
+      'claim',
+    );
+  });
 });

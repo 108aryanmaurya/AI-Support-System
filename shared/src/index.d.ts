@@ -279,3 +279,19 @@ export const KNOWLEDGE_MAX_UPLOAD_BYTES: number;
 export const KNOWLEDGE_ALLOWED_UPLOAD_MIMES: readonly string[];
 export const KNOWLEDGE_ALLOWED_UPLOAD_EXTENSIONS: readonly string[];
 export function isAllowedKnowledgeUploadMime(mime: string): boolean;
+
+export const ORG_PERMISSIONS_AGENT_DEFAULTS: Readonly<
+  Record<string, Readonly<Record<string, boolean>>>
+>;
+export const ORG_PERMISSIONS_ADMIN_DEFAULTS: Readonly<
+  Record<string, Readonly<Record<string, boolean>>>
+>;
+export function mergeOrgPermissions(
+  raw: unknown,
+  roleDefaults?: typeof ORG_PERMISSIONS_AGENT_DEFAULTS,
+): Record<string, Record<string, boolean>>;
+export function permissionsForRole(
+  role: 'ADMIN' | 'AGENT' | string | null | undefined,
+): Record<string, Record<string, boolean>>;
+export function hasOrgPermission(permissions: unknown, key: string): boolean;
+export function hasAllOrgPermissions(permissions: unknown, keys: string[]): boolean;

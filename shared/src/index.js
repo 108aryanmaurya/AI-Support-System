@@ -227,6 +227,15 @@ export {
 } from './ingressPolicy.js';
 
 export {
+  ORG_PERMISSIONS_ADMIN_DEFAULTS,
+  ORG_PERMISSIONS_AGENT_DEFAULTS,
+  hasAllOrgPermissions,
+  hasOrgPermission,
+  mergeOrgPermissions,
+  permissionsForRole,
+} from './orgPermissions.js';
+
+export {
   KNOWLEDGE_ALLOWED_UPLOAD_EXTENSIONS,
   KNOWLEDGE_ALLOWED_UPLOAD_MIMES,
   KNOWLEDGE_MAX_UPLOAD_BYTES,

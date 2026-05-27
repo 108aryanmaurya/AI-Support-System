@@ -11,6 +11,8 @@ Messages are rows in `messages` with a **sender_type** (customer, agent, system,
 - Generic `POST .../messages` for internal notes and advanced cases
 - @mention parsing; merge user IDs into `conversations.metadata`
 - Delivery states in UI (sending / sent / failed)
+- **Collision warning** — if another agent sent within `STALE_THREAD_WINDOW_SEC` (default 30s), API returns `409` with `code: stale_thread`; client may retry with `acknowledge_stale_thread: true`
+- **Assignee-only customer replies** — agents cannot send customer-visible messages on threads assigned to someone else (`403`); unassigned or own assignment OK; admins (`assign_others`) may override. Internal notes are not restricted.
 - Customer upsert API for tests and integrations
 
 ## Architecture
@@ -48,7 +50,8 @@ sequenceDiagram
 
 | Method | Path | Auth |
 |--------|------|------|
-| POST | `/api/org/:orgId/messages/send` | Yes (rate limit; optional `client_request_id` idempotency) |
+| POST | `/api/org/:orgId/messages/send` | Yes (rate limit; optional `client_request_id`; optional `acknowledge_stale_thread`) |
+| POST | `/api/org/:orgId/conversations/:id/claim` | Yes (self-assign unassigned) |
 | POST | `/api/org/:orgId/messages` | Yes |
 | POST | `/api/org/:orgId/messages/incoming` | No (ingress rate limit) |
 | POST | `/api/org/:orgId/customers` | Yes |

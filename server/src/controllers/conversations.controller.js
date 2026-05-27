@@ -1,5 +1,6 @@
 import { HttpError } from '../utils/httpError.js';
 import { isConversationPriority } from '@ai-support/shared';
+import { supabaseAdmin } from '../config/supabase.js';
 import {
   CONVERSATION_INBOX_FILTER_TYPES,
   getConversationFilterCounts,
@@ -140,6 +141,7 @@ export async function patchConversationSpamController(req, res, next) {
       conversationId,
       isSpam,
       actorUserId: req.userId ?? req.user.id,
+      orgPermissions: req.orgPermissions,
     });
 
     res.json({ conversation });
@@ -217,6 +219,7 @@ export async function patchConversationController(req, res, next) {
       priority: hasPriority ? body.priority : undefined,
       assignmentType: hasAssignmentType ? body.assignmentType : undefined,
       aiEnabled: hasAiEnabled ? body.aiEnabled : undefined,
+      orgPermissions: req.orgPermissions,
     });
 
     if (hasAssign || hasAssignmentType) {
@@ -230,6 +233,64 @@ export async function patchConversationController(req, res, next) {
     }
 
     res.json({ conversation });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function claimConversationController(req, res, next) {
+  try {
+    const conversationId = req.params.id;
+    const organizationId = orgIdOrThrow(req);
+    if (!conversationId) throw new HttpError(400, 'conversation id is required.');
+
+    const actorMember = req.orgMembership;
+    if (!actorMember?.id) {
+      throw new HttpError(500, 'Organization membership missing.');
+    }
+
+    const { data: prior, error: priorErr } = await supabaseAdmin
+      .from('conversations')
+      .select('*')
+      .eq('id', conversationId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (priorErr) {
+      throw new HttpError(500, priorErr.message || 'Failed to load conversation.');
+    }
+    if (!prior) {
+      throw new HttpError(404, 'Conversation not found in this organization.');
+    }
+
+    const priorAssignee = prior.assigned_to_member_id ?? null;
+    if (priorAssignee === actorMember.id) {
+      res.json({ conversation: prior, claimed: false });
+      return;
+    }
+    if (priorAssignee) {
+      throw new HttpError(409, 'Conversation is already assigned to another agent.');
+    }
+
+    const { conversation, priorAssignedToMemberId } = await updateConversationFields({
+      organizationId,
+      conversationId,
+      actorUserId: req.userId ?? req.user.id,
+      assignedToMemberId: actorMember.id,
+      assignmentType: 'assigned_to_agent',
+      assignmentMode: 'claim',
+      orgPermissions: req.orgPermissions,
+    });
+
+    void scheduleAssignmentWithFallback({
+      organizationId,
+      conversation,
+      assignedToMemberId: conversation.assigned_to_member_id ?? null,
+      actorUserId: req.userId ?? req.user.id,
+      priorAssignedToMemberId,
+    });
+
+    res.json({ conversation, claimed: true });
   } catch (error) {
     next(error);
   }

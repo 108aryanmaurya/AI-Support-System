@@ -1,6 +1,8 @@
 import { HttpError } from '../utils/httpError.js';
 import { createMessage } from '../services/support.service.js';
 import { MESSAGE_SENDER_TYPES, isMessageSenderType } from '@ai-support/shared';
+import { assertConversationCustomerReplyAllowed } from '../services/conversationAssignmentPolicy.service.js';
+import { supabaseAdmin } from '../config/supabase.js';
 import {
   getMaxMessageLength,
   isValidEmail,
@@ -42,6 +44,8 @@ export async function sendInboxMessageController(req, res, next) {
       aiRunId: aiRunIdCamel,
       parent_message_id: parentMessageIdSnake,
       parentMessageId: parentMessageIdCamel,
+      acknowledge_stale_thread: acknowledgeStaleSnake,
+      acknowledgeStaleThread: acknowledgeStaleCamel,
     } = req.body ?? {};
     const result = await sendInboxAgentOutboundMessage({
       userId: req.userId ?? req.user.id,
@@ -52,6 +56,8 @@ export async function sendInboxMessageController(req, res, next) {
       isAiGenerated: isAiGeneratedSnake ?? isAiGeneratedCamel ?? false,
       aiRunId: aiRunIdSnake ?? aiRunIdCamel ?? null,
       parentMessageId: parentMessageIdSnake ?? parentMessageIdCamel ?? null,
+      acknowledgeStaleThread:
+        acknowledgeStaleSnake === true || acknowledgeStaleCamel === true,
     });
     res.status(200).json(result);
   } catch (error) {
@@ -93,6 +99,28 @@ export async function createMessageController(req, res, next) {
 
     const memberBacked = senderType === 'agent' || senderType === 'internal_note';
     const resolvedSenderMemberId = memberBacked ? senderMemberId ?? member.id : null;
+
+    if (senderType === 'agent') {
+      const { data: conv, error: convErr } = await supabaseAdmin
+        .from('conversations')
+        .select('id, assigned_to_member_id')
+        .eq('id', conversationId)
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+
+      if (convErr) {
+        throw new HttpError(500, convErr.message || 'Failed to load conversation.');
+      }
+      if (!conv) {
+        throw new HttpError(404, 'Conversation not found in this organization.');
+      }
+
+      assertConversationCustomerReplyAllowed({
+        actorMember: member,
+        assignedToMemberId: conv.assigned_to_member_id ?? null,
+        permissions: req.orgPermissions,
+      });
+    }
 
     const message = await createMessage({
       organizationId,

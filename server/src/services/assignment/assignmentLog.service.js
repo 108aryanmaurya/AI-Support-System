@@ -146,11 +146,18 @@ export function resolveAssignmentLogReason({
   workflowMeta,
   assignedToMemberId,
   assignmentType,
+  humanAssignmentReason = null,
 }) {
   if (workflowMeta?.autoRoute === true) return 'auto_route';
   if (workflowMeta?.reassign === true) return 'reassign';
   if (automationSource && workflowMeta?.ruleId) return 'workflow';
   if (automationSource) return 'system';
   if (!assignedToMemberId && assignmentType === 'unassigned') return 'unassign';
+  if (
+    humanAssignmentReason &&
+    isAssignmentLogReason(humanAssignmentReason)
+  ) {
+    return humanAssignmentReason;
+  }
   return 'manual';
 }

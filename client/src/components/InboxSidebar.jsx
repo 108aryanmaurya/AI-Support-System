@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { INBOX_AI_INTENT_OPTIONS, INBOX_SIDEBAR_FILTERS } from '../config/inboxFilters.js'
+import { RestrictedControl } from './RestrictedControl.jsx'
 
 const finForServiceOptions = [
   { label: 'All conversations', icon: ListFilter },
@@ -42,6 +43,8 @@ export function InboxSidebar({
   mentionCue,
   autoAssignOnSelect,
   setAutoAssignOnSelect,
+  autoAssignRestricted = false,
+  autoAssignRestrictedReason = null,
   orgTags = [],
   activeTagId = null,
   onTagFilterChange,
@@ -73,15 +76,28 @@ export function InboxSidebar({
         >
           <Search size={14} aria-hidden /> Search
         </button>
-        <label className="mb-3 flex cursor-pointer items-center gap-2 rounded-lg border border-[#27314a] bg-[#0e1526] px-2 py-2 text-xs text-slate-400">
-          <input
-            type="checkbox"
-            className="rounded border-[#4f6290] bg-[#0f1728]"
-            checked={autoAssignOnSelect}
-            onChange={(e) => setAutoAssignOnSelect(e.target.checked)}
-          />
-          <span>Auto-assign when opening</span>
-        </label>
+        <RestrictedControl
+          restricted={autoAssignRestricted}
+          reason={autoAssignRestrictedReason}
+          className="mb-3 w-full"
+        >
+          <label
+            className={`flex items-center gap-2 rounded-lg border border-[#27314a] bg-[#0e1526] px-2 py-2 text-xs text-slate-400 ${
+              autoAssignRestricted ? 'cursor-not-allowed' : 'cursor-pointer'
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="rounded border-[#4f6290] bg-[#0f1728]"
+              checked={autoAssignOnSelect}
+              disabled={autoAssignRestricted}
+              onChange={(e) => {
+                if (!autoAssignRestricted) setAutoAssignOnSelect(e.target.checked)
+              }}
+            />
+            <span>Auto-assign when opening</span>
+          </label>
+        </RestrictedControl>
         <div className="space-y-1 text-sm">
           {INBOX_SIDEBAR_FILTERS.map((item) => {
             const isActive = activeFilter === item.id

@@ -3,6 +3,7 @@ import { Navigate, Outlet, useNavigate, useParams } from 'react-router-dom'
 import { HoverSidebar } from '../components/HoverSidebar.jsx'
 import { WorkspaceNavbar } from '../components/WorkspaceNavbar.jsx'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { OrgPermissionsProvider } from '../context/OrgPermissionsContext.jsx'
 import { setLastOrgId } from '../utils/lastOrgStorage.js'
 
 /**
@@ -45,7 +46,7 @@ export function OrgWorkspaceLayout() {
   }
 
   return (
-    <>
+    <OrgPermissionsProvider orgId={orgId}>
       <HoverSidebar />
       <div className="flex h-svh min-h-0 min-w-0 flex-1 flex-col overflow-hidden pl-[72px] md:ml-0">
         <WorkspaceNavbar />
@@ -53,6 +54,6 @@ export function OrgWorkspaceLayout() {
           <Outlet />
         </div>
       </div>
-    </>
+    </OrgPermissionsProvider>
   )
 }

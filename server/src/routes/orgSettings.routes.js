@@ -1,11 +1,15 @@
 import { Router } from 'express';
-import { requireRole } from '../middleware/orgAccess.js';
+import { requirePermission, requireRole } from '../middleware/orgAccess.js';
 import {
   getOrgAiSettingsController,
   getOrgLifecycleSettingsController,
   patchOrgAiSettingsController,
   patchOrgLifecycleSettingsController,
 } from '../controllers/orgSettings.controller.js';
+import {
+  getOrgPermissionsController,
+  patchOrgPermissionsController,
+} from '../controllers/orgPermissions.controller.js';
 import {
   deleteOrgEmailSettingsController,
   getOrgEmailSettingsController,
@@ -18,6 +22,13 @@ import {
 } from '../controllers/orgEmailSettings.controller.js';
 
 const router = Router({ mergeParams: true });
+
+router.get('/permissions', getOrgPermissionsController);
+router.patch(
+  '/permissions',
+  requirePermission('team.configure_permissions'),
+  patchOrgPermissionsController,
+);
 
 router.get('/ai', getOrgAiSettingsController);
 router.patch('/ai', requireRole('ADMIN'), patchOrgAiSettingsController);

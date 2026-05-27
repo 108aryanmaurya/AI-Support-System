@@ -1,4 +1,6 @@
+import { hasOrgPermission } from '@ai-support/shared';
 import { getActiveMembership } from '../services/org.service.js';
+import { getOrgPermissionsForMember } from '../services/orgPermissions.service.js';
 
 const DEFAULT_ORG_ID_KEYS = ['organizationId', 'orgId'];
 
@@ -72,6 +74,7 @@ export function requireOrgAccess(options = {}) {
       req.orgId = organizationId;
       req.organizationId = organizationId;
       req.userId = uid;
+      req.orgPermissions = await getOrgPermissionsForMember(organizationId, membership);
 
       next();
     } catch (e) {
@@ -99,6 +102,31 @@ export function requireRole(...allowedRoles) {
     if (!role || !allowed.has(role)) {
       res.status(403).json({ error: 'Insufficient permissions for this organization.' });
       return;
+    }
+    next();
+  };
+}
+
+/**
+ * Must run after {@link requireOrgAccess}. Checks capability flags on `req.orgPermissions`.
+ * ADMIN role presets satisfy all org-scoped keys.
+ *
+ * @param {...string} permissionKeys — e.g. `team.invite`, `conversations.mark_spam`
+ */
+export function requirePermission(...permissionKeys) {
+  const keys = permissionKeys.flat().filter(Boolean);
+
+  return function requirePermissionMiddleware(req, res, next) {
+    const permissions = req.orgPermissions;
+    if (!permissions) {
+      res.status(500).json({ error: 'Permissions not loaded (middleware misconfigured).' });
+      return;
+    }
+    for (const key of keys) {
+      if (!hasOrgPermission(permissions, key)) {
+        res.status(403).json({ error: 'Insufficient permissions for this action.' });
+        return;
+      }
     }
     next();
   };

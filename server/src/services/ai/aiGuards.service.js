@@ -1,5 +1,7 @@
+import { hasOrgPermission } from '@ai-support/shared';
 import { HttpError } from '../../utils/httpError.js';
 import { supabaseAdmin } from '../../config/supabase.js';
+import { getOrgPermissionsForMember } from '../orgPermissions.service.js';
 import {
   getOrgAiSettings,
   isOrgAiMasterEnabled,
@@ -26,6 +28,10 @@ export async function assertAiAssistAllowed({
   }
 
   const member = await ensureOrgMembership(actorUserId, organizationId);
+  const permissions = await getOrgPermissionsForMember(organizationId, member);
+  if (!hasOrgPermission(permissions, 'ai.use_copilot')) {
+    throw new HttpError(403, 'AI copilot is not enabled for your role.');
+  }
 
   if (!(await isOrgAiMasterEnabled(organizationId))) {
     throw new HttpError(403, 'AI is disabled for this organization.');

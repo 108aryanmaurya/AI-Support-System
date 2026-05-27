@@ -11,6 +11,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useAuthContext } from '../context/AuthContext.jsx'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
+import { RestrictedControl } from '../components/RestrictedControl.jsx'
 import { fetchOrgMembers, fetchOrgPendingInvites } from '../services/orgWorkspaceApi.js'
 
 const teammateTabs = [
@@ -61,7 +63,9 @@ export default function OrgTeammatesPage() {
   const { user } = useAuthContext()
   const { organizations } = useOrganizationContext()
   const current = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(current?.role ?? '').toUpperCase() === 'ADMIN'
+  const { can, deny } = useOrgPermissionsContext()
+  const canInvite = can('team.invite')
+  const inviteDenyReason = deny('team.invite')
 
   const [bannerOpen, setBannerOpen] = useState(true)
   const [activeTab, setActiveTab] = useState('teammates')
@@ -157,14 +161,24 @@ export default function OrgTeammatesPage() {
               Learn
               <ChevronDown className="h-4 w-4 text-slate-500" />
             </button>
-            {isAdmin ? (
-              <Link
-                to={invitePath}
-                className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
-              >
-                + New teammate
-              </Link>
-            ) : null}
+            <RestrictedControl restricted={!canInvite} reason={inviteDenyReason}>
+              {canInvite ? (
+                <Link
+                  to={invitePath}
+                  className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
+                >
+                  + New teammate
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="rounded-lg bg-white/60 px-4 py-2 text-sm font-semibold text-slate-600"
+                >
+                  + New teammate
+                </button>
+              )}
+            </RestrictedControl>
           </div>
         </header>
 
@@ -185,14 +199,24 @@ export default function OrgTeammatesPage() {
                   You can add them one by one or upload many with a CSV file. You&apos;ll also be able to set up
                   their permissions and roles.
                 </p>
-                {isAdmin ? (
-                  <Link
-                    to={invitePath}
-                    className="mt-2 inline-flex items-center rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
-                  >
-                    + Add new teammates
-                  </Link>
-                ) : null}
+                <RestrictedControl restricted={!canInvite} reason={inviteDenyReason} className="mt-2 inline-flex">
+                  {canInvite ? (
+                    <Link
+                      to={invitePath}
+                      className="inline-flex items-center rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100"
+                    >
+                      + Add new teammates
+                    </Link>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled
+                      className="inline-flex items-center rounded-lg bg-white/60 px-4 py-2 text-sm font-semibold text-slate-600"
+                    >
+                      + Add new teammates
+                    </button>
+                  )}
+                </RestrictedControl>
               </div>
               <div className="hidden shrink-0 md:block">
                 <div className="flex h-28 w-52 flex-col justify-between rounded-lg bg-gradient-to-br from-violet-600 to-violet-900 p-3 shadow-lg">
@@ -378,7 +402,7 @@ export default function OrgTeammatesPage() {
             ) : invites.length === 0 ? (
               <p className="rounded-xl border border-[#2b3858] bg-[#111827]/50 px-6 py-12 text-center text-sm text-slate-500">
                 No pending invitations.
-                {isAdmin ? (
+                {canInvite ? (
                   <>
                     {' '}
                     <Link to={invitePath} className="text-[#3ECF8E] hover:underline">

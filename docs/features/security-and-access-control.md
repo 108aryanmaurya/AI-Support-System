@@ -8,7 +8,9 @@ Security layers: **Supabase Auth JWT** for agents, **org membership** for worksp
 
 - Bearer token validation on protected Express routes
 - `requireOrgAccess` — org id from URL only (no body override)
-- `requireRole('ADMIN')` for invite mutations
+- `requireRole('ADMIN')` for legacy admin-only settings routes
+- **`requirePermission(...)`** — capability flags on `req.orgPermissions` (role preset ⊕ `organizations.settings.permissions`)
+- **Assignment policy** — human PATCH cannot steal threads; automation (`automationSource`) bypasses
 - Service role on server only; anon key + RLS on client
 - Rate limiting on public incoming messages
 - Email webhook resolves channel by recipient address (tenant isolation)
@@ -38,6 +40,8 @@ flowchart TB
 |-------|------|
 | Auth middleware | `server/src/middleware/auth.js` |
 | Org middleware | `server/src/middleware/orgAccess.js` |
+| Permissions | `shared/src/orgPermissions.js`, `server/src/services/orgPermissions.service.js` |
+| Assignment policy | `server/src/services/conversationAssignmentPolicy.service.js` |
 | Rate limit | `server/src/middleware/incomingRateLimit.js` |
 | Errors | `server/src/middleware/errorHandler.js` |
 | Supabase admin | `server/src/config/supabase.js` |
@@ -50,7 +54,10 @@ flowchart TB
 | Agent REST | JWT + active membership for `:orgId` |
 | Realtime | Same user session; RLS on tables |
 | Web incoming | Knows `orgId` in URL — ingress rate limits (org + email), optional channel secrets |
-| Agent send | JWT + membership; per-org+user send rate limit |
+| Agent send | JWT + membership; per-org+user send rate limit; optional `stale_thread` collision warning |
+| Conversation assign | Policy in `conversationUpdate.service.js`; `POST .../conversations/:id/claim` |
+| Org analytics / audit | `analytics.view_org` for overview; audit `GET .../audit/events` |
+| Invites | `team.invite` permission (ADMIN preset) |
 | Ops | `GET /api/internal/ops/rate-limits` requires `x-automation-cron-secret` |
 | Email webhook | Match `to` address to `channel_integrations` config |
 | Cron | `x-automation-cron-secret` header |
@@ -64,7 +71,22 @@ flowchart TB
 | [Multi-organization](./multi-organization.md) | Membership and roles |
 | [Multi-channel](./multi-channel.md) | Ingress without end-user JWT |
 | [Platform](./platform-and-monorepo.md) | CORS origins from `env.corsOrigins` |
+| [RBAC sprints](./rba-sprints.md) | Sprint plan and capability matrix |
+
+## RBAC (ADMIN / AGENT)
+
+| Layer | Behavior |
+|-------|----------|
+| DB role | `organization_members.role` remains `ADMIN` \| `AGENT` |
+| Capabilities | `permissionsForRole` + optional `organizations.settings.permissions` overrides |
+| Middleware | `requireOrgAccess` loads `req.orgPermissions`; routes use `requirePermission('dotted.key')` |
+| Assignment | Agents: self-claim unassigned, own unassign; no steal. Admins: `assign_others` / override |
+| Customer reply | Assignee (or unassigned queue) only; admins may reply on any thread. Internal notes unrestricted |
+| Automation | `updateConversationFromAutomation` skips human assignment rules |
+| AI copilot | `ai.use_copilot` checked in `aiGuards.service.js` |
+
+`GET /api/org/:orgId/settings/permissions` returns effective permissions for the signed-in member.
 
 ## Status
 
-**Complete** for current agent and ingress models. Review RLS policies when adding new tables.
+**Complete** for current agent and ingress models, including capability-based RBAC (Sprints 1–6). Review RLS policies when adding new tables. Team/VIP visibility (Sprint 7) deferred.

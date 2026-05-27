@@ -36,6 +36,9 @@ import { useInboxPeriodicSync } from '../hooks/useInboxPeriodicSync.js'
 import { useRealtimeInbox } from '../hooks/useRealtimeInbox.js'
 import { useAgentPresence } from '../hooks/useAgentPresence.js'
 import { formatTypingIndicator, useTypingPresence } from '../hooks/useTypingPresence.js'
+import { RestrictedControl } from '../components/RestrictedControl.jsx'
+import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
+import { useInboxConversationPermissions } from '../hooks/useInboxConversationPermissions.js'
 import { InboxSidebar } from '../components/InboxSidebar.jsx'
 import { ConversationTagsPanel } from '../components/inbox/ConversationTagsPanel.jsx'
 import AssignmentAuditHint from '../components/inbox/AssignmentAuditHint.jsx'
@@ -375,14 +378,26 @@ export default function InboxPage() {
     return row?.ai_enabled
   }, [conversations, activeConversationId])
 
+  const { can, deny, loading: permissionsLoading } = useOrgPermissionsContext()
+
   const composerAiDisabledReason = useMemo(() => {
     if (!organizationId) return 'No organization selected.'
     if (!activeConversationId) return 'Select a conversation first.'
+    if (permissionsLoading) return 'Loading permissions…'
+    const copilotDeny = deny('ai.use_copilot')
+    if (copilotDeny) return copilotDeny
     if (orgAiSettings?.ai_enabled === false) return 'AI is disabled for this organization.'
     if (orgAiSettings?.assist_enabled === false) return 'AI assist is turned off.'
     if (activeConversationAiEnabled === false) return 'AI is disabled for this conversation.'
     return null
-  }, [organizationId, activeConversationId, orgAiSettings, activeConversationAiEnabled])
+  }, [
+    organizationId,
+    activeConversationId,
+    orgAiSettings,
+    activeConversationAiEnabled,
+    permissionsLoading,
+    deny,
+  ])
 
   const captureComposerSelection = useCallback(() => {
     const el = composerTextareaRef.current
@@ -619,6 +634,13 @@ export default function InboxPage() {
     () => conversations.find((item) => item.id === activeConversationId) ?? null,
     [conversations, activeConversationId],
   )
+
+  const inboxPerms = useInboxConversationPermissions({
+    can,
+    myMemberId: myMembership?.id,
+    conversation: selectedConversation,
+  })
+
   const messages = useMemo(
     () => messagesByConversationId[activeConversationId] ?? [],
     [activeConversationId, messagesByConversationId],
@@ -830,7 +852,7 @@ export default function InboxPage() {
         myMid &&
         conv &&
         CONVERSATION_ACTIVE_STATUSES.includes(conv.status ?? 'open') &&
-        conv.assigned_to_member_id !== myMid
+        !conv.assigned_to_member_id
       ) {
         void assignConversation(id, myMid)
       }
@@ -890,7 +912,10 @@ export default function InboxPage() {
   )
 
   const trimmedDraft = draftMessage.trim()
-  const canSendMessage = Boolean(activeConversationId && organizationId && trimmedDraft) && !sendingMessage
+  const canSendMessage =
+    Boolean(activeConversationId && organizationId && trimmedDraft) &&
+    !sendingMessage &&
+    !inboxPerms.reply.restricted
 
   const handleSendMessage = useCallback(async () => {
     if (!activeConversationId || !organizationId) return
@@ -994,6 +1019,8 @@ export default function InboxPage() {
           mentionCue={mentionCue}
           autoAssignOnSelect={autoAssignOnSelect}
           setAutoAssignOnSelect={setAutoAssignOnSelect}
+          autoAssignRestricted={inboxPerms.autoAssignOnSelect.restricted}
+          autoAssignRestrictedReason={inboxPerms.autoAssignOnSelect.reason}
           orgTags={orgTags}
           activeTagId={activeTagId}
           onTagFilterChange={onTagFilterChange}
@@ -1176,18 +1203,28 @@ export default function InboxPage() {
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <MessageSquare size={14} /> Reply
               </div>
-              <ComposerAiMenu
-                disabled={Boolean(composerAiDisabledReason) || sendingMessage}
-                disabledReason={composerAiDisabledReason}
-                onTranslate={(lang) => void runComposerTranslate(lang)}
-                onRewrite={(tone) => void runComposerRewrite(tone)}
-              />
+              <RestrictedControl
+                restricted={Boolean(composerAiDisabledReason) || sendingMessage}
+                reason={composerAiDisabledReason}
+              >
+                <ComposerAiMenu
+                  disabled={Boolean(composerAiDisabledReason) || sendingMessage}
+                  disabledReason={composerAiDisabledReason}
+                  onTranslate={(lang) => void runComposerTranslate(lang)}
+                  onRewrite={(tone) => void runComposerRewrite(tone)}
+                />
+              </RestrictedControl>
             </div>
             {pendingSuggestLineage?.runId ? (
               <p className="mb-2 text-[10px] text-violet-300/90">
                 AI-assisted draft — tracked when you send.
               </p>
             ) : null}
+            <RestrictedControl
+              restricted={inboxPerms.reply.restricted}
+              reason={inboxPerms.reply.reason}
+              className="mb-3 block w-full"
+            >
             <textarea
               ref={composerTextareaRef}
               value={draftMessage}
@@ -1204,20 +1241,35 @@ export default function InboxPage() {
               onKeyDown={onComposerKeyDown}
               onBlur={() => stopTypingImmediately()}
               rows={3}
-              placeholder={activeConversationId ? 'Type a reply...' : 'Select a conversation first'}
+              placeholder={
+                inboxPerms.reply.restricted
+                  ? 'Replies disabled for your role'
+                  : activeConversationId
+                    ? 'Type a reply...'
+                    : 'Select a conversation first'
+              }
               className="mb-3 w-full resize-none rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-slate-100 outline-none focus:border-[#4f6290]"
-              disabled={!activeConversationId || sendingMessage}
+              disabled={
+                !activeConversationId || sendingMessage || inboxPerms.reply.restricted
+              }
             />
+            </RestrictedControl>
             <div className="flex items-center justify-between text-xs text-slate-400">
               <span>Use Ctrl/Cmd + Enter to send</span>
-              <button
-                type="button"
-                onClick={handleSendMessage}
-                disabled={!canSendMessage}
-                className="rounded-md bg-[#334680] px-3 py-1 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+              <RestrictedControl
+                restricted={!canSendMessage && Boolean(inboxPerms.reply.reason)}
+                reason={inboxPerms.reply.reason}
+                className="shrink-0"
               >
-                {sendingMessage ? 'Sending...' : 'Send'}
-              </button>
+                <button
+                  type="button"
+                  onClick={handleSendMessage}
+                  disabled={!canSendMessage}
+                  className="rounded-md bg-[#334680] px-3 py-1 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {sendingMessage ? 'Sending...' : 'Send'}
+                </button>
+              </RestrictedControl>
             </div>
           </div>
           <ComposerAiPreviewModal
@@ -1257,19 +1309,25 @@ export default function InboxPage() {
           </div>
           <div className="inbox-scrollbar min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 text-slate-300 [scrollbar-gutter:stable]">
             {sidebarTab === 'copilot' ? (
-              <InboxCopilotPanel
-                organizationId={organizationId}
-                conversationId={activeConversationId}
-                conversationAiEnabled={selectedConversation?.ai_enabled}
-                conversationClassification={
-                  selectedConversation?.metadata?.ai &&
-                  typeof selectedConversation.metadata.ai === 'object'
-                    ? selectedConversation.metadata.ai
-                    : null
-                }
-                orgAi={orgAiSettings}
-                onInsertReply={handleCopilotInsertReply}
-              />
+              inboxPerms.aiCopilot.restricted ? (
+                <p className="rounded-lg border border-amber-900/40 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
+                  {inboxPerms.aiCopilot.reason}
+                </p>
+              ) : (
+                <InboxCopilotPanel
+                  organizationId={organizationId}
+                  conversationId={activeConversationId}
+                  conversationAiEnabled={selectedConversation?.ai_enabled}
+                  conversationClassification={
+                    selectedConversation?.metadata?.ai &&
+                    typeof selectedConversation.metadata.ai === 'object'
+                      ? selectedConversation.metadata.ai
+                      : null
+                  }
+                  orgAi={orgAiSettings}
+                  onInsertReply={handleCopilotInsertReply}
+                />
+              )
             ) : null}
             {sidebarTab === 'details' ? (
             <>
@@ -1287,22 +1345,40 @@ export default function InboxPage() {
               ) : null}
               <AssignmentAuditHint log={assignmentAudit} isAdmin={isOrgAdmin} orgId={organizationId} />
               <div ref={assignMenuRef} className="relative">
-                <button
-                  type="button"
-                  disabled={!selectedConversation || assigningConversation}
-                  aria-expanded={assignMenuOpen}
-                  aria-haspopup="listbox"
-                  aria-controls="inbox-assign-member-list"
-                  onClick={() => setAssignMenuOpen((open) => !open)}
-                  className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#334060] bg-[#18233b] px-3 py-2 text-xs font-medium text-white hover:bg-[#1f2d4d] disabled:cursor-not-allowed disabled:opacity-40"
+                <RestrictedControl
+                  restricted={
+                    !selectedConversation ||
+                    assigningConversation ||
+                    inboxPerms.assignMenu.restricted
+                  }
+                  reason={
+                    !selectedConversation
+                      ? 'Select a conversation first.'
+                      : inboxPerms.assignMenu.reason
+                  }
+                  className="w-full"
                 >
-                  Assign
-                  <ChevronDown
-                    size={14}
-                    aria-hidden
-                    className={`shrink-0 transition-transform ${assignMenuOpen ? 'rotate-180' : ''}`}
-                  />
-                </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !selectedConversation ||
+                      assigningConversation ||
+                      inboxPerms.assignMenu.restricted
+                    }
+                    aria-expanded={assignMenuOpen}
+                    aria-haspopup="listbox"
+                    aria-controls="inbox-assign-member-list"
+                    onClick={() => setAssignMenuOpen((open) => !open)}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#334060] bg-[#18233b] px-3 py-2 text-xs font-medium text-white hover:bg-[#1f2d4d] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Assign
+                    <ChevronDown
+                      size={14}
+                      aria-hidden
+                      className={`shrink-0 transition-transform ${assignMenuOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                </RestrictedControl>
                 {assignMenuOpen ? (
                   <div
                     id="inbox-assign-member-list"
@@ -1313,55 +1389,98 @@ export default function InboxPage() {
                       <p className="px-3 py-2 text-xs text-slate-500">No organization context.</p>
                     ) : (
                       <>
-                        <button
-                          type="button"
-                          role="option"
-                          disabled={
+                        <RestrictedControl
+                          restricted={
                             !selectedConversation ||
                             assigningConversation ||
-                            !selectedConversation?.assigned_to_member_id
+                            inboxPerms.unassign.restricted
                           }
-                          onClick={() => {
-                            if (!selectedConversation) return
-                            setAssignMenuOpen(false)
-                            void assignConversation(selectedConversation.id, null)
-                          }}
-                          className="flex w-full flex-col items-start gap-0.5 border-b border-[#2a3654] px-3 py-2 text-left text-xs hover:bg-[#1a2540] disabled:cursor-not-allowed disabled:opacity-40"
+                          reason={inboxPerms.unassign.reason}
+                          className="w-full"
                         >
-                          <span className="font-medium text-amber-100/90">Unassign</span>
-                          <span className="text-[11px] text-slate-500">Clear assignee</span>
-                        </button>
+                          <button
+                            type="button"
+                            role="option"
+                            disabled={
+                              !selectedConversation ||
+                              assigningConversation ||
+                              inboxPerms.unassign.restricted
+                            }
+                            onClick={() => {
+                              if (!selectedConversation || inboxPerms.unassign.restricted) return
+                              setAssignMenuOpen(false)
+                              void assignConversation(selectedConversation.id, null)
+                            }}
+                            className="flex w-full flex-col items-start gap-0.5 border-b border-[#2a3654] px-3 py-2 text-left text-xs hover:bg-[#1a2540] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <span className="font-medium text-amber-100/90">Unassign</span>
+                            <span className="text-[11px] text-slate-500">Clear assignee</span>
+                          </button>
+                        </RestrictedControl>
                         {sortedOrgMembersForAssign.length === 0 ? (
                           <p className="px-3 py-2 text-xs text-slate-500">No members loaded.</p>
                         ) : (
                           sortedOrgMembersForAssign.map((member) => {
                             const isCurrent = member.id === selectedConversation?.assigned_to_member_id
                             const isYou = member.userId === user?.id
+                            const memberGate = inboxPerms.assignMember(member.id)
                             return (
-                              <button
+                              <RestrictedControl
                                 key={member.id}
-                                type="button"
-                                role="option"
-                                aria-selected={isCurrent}
-                                disabled={assigningConversation || isCurrent || !selectedConversation}
-                                onClick={() => {
-                                  if (!selectedConversation || isCurrent) return
-                                  setAssignMenuOpen(false)
-                                  void assignConversation(selectedConversation.id, member.id)
-                                }}
-                                className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-xs hover:bg-[#1a2540] disabled:cursor-not-allowed disabled:opacity-40"
+                                restricted={
+                                  assigningConversation ||
+                                  isCurrent ||
+                                  !selectedConversation ||
+                                  memberGate.restricted
+                                }
+                                reason={
+                                  isCurrent
+                                    ? 'Already assigned to this agent.'
+                                    : memberGate.reason
+                                }
+                                className="w-full"
                               >
-                                <span className="font-medium text-white">
-                                  {member.displayName}
-                                  {isYou ? <span className="ml-1 font-normal text-slate-400">(you)</span> : null}
-                                  {isCurrent ? (
-                                    <span className="ml-1 font-normal text-emerald-400/90">· current</span>
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isCurrent}
+                                  disabled={
+                                    assigningConversation ||
+                                    isCurrent ||
+                                    !selectedConversation ||
+                                    memberGate.restricted
+                                  }
+                                  onClick={() => {
+                                    if (
+                                      !selectedConversation ||
+                                      isCurrent ||
+                                      memberGate.restricted
+                                    ) {
+                                      return
+                                    }
+                                    setAssignMenuOpen(false)
+                                    void assignConversation(selectedConversation.id, member.id)
+                                  }}
+                                  className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-xs hover:bg-[#1a2540] disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <span className="font-medium text-white">
+                                    {member.displayName}
+                                    {isYou ? (
+                                      <span className="ml-1 font-normal text-slate-400">(you)</span>
+                                    ) : null}
+                                    {isCurrent ? (
+                                      <span className="ml-1 font-normal text-emerald-400/90">
+                                        · current
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                  {member.email ? (
+                                    <span className="truncate text-[11px] text-slate-500">
+                                      {member.email}
+                                    </span>
                                   ) : null}
-                                </span>
-                                {member.email ? (
-                                  <span className="truncate text-[11px] text-slate-500">{member.email}</span>
-                                ) : null}
-                              </button>
+                                </button>
+                              </RestrictedControl>
                             )
                           })
                         )}
@@ -1391,24 +1510,46 @@ export default function InboxPage() {
                 </p>
               ) : null}
               <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  disabled={!selectedConversation || conversationDetailSaving}
-                  onClick={() => void patchConversationDetails({ status: 'resolved' })}
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-emerald-900/50 bg-emerald-950/40 px-2 py-1.5 text-xs font-medium text-emerald-100 hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-40"
+                <RestrictedControl
+                  restricted={!selectedConversation || conversationDetailSaving}
+                  reason={!selectedConversation ? 'Select a conversation first.' : null}
+                  className="flex flex-1"
                 >
-                  <CheckCircle2 size={14} aria-hidden />
-                  Resolve
-                </button>
-                <button
-                  type="button"
-                  disabled={!selectedConversation || conversationDetailSaving}
-                  onClick={() => void patchConversationDetails({ status: 'closed' })}
-                  className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-600/60 bg-slate-900/50 px-2 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  <button
+                    type="button"
+                    disabled={!selectedConversation || conversationDetailSaving}
+                    onClick={() => void patchConversationDetails({ status: 'resolved' })}
+                    className="inline-flex w-full flex-1 items-center justify-center gap-1.5 rounded-md border border-emerald-900/50 bg-emerald-950/40 px-2 py-1.5 text-xs font-medium text-emerald-100 hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <CheckCircle2 size={14} aria-hidden />
+                    Resolve
+                  </button>
+                </RestrictedControl>
+                <RestrictedControl
+                  restricted={
+                    !selectedConversation || conversationDetailSaving || inboxPerms.close.restricted
+                  }
+                  reason={
+                    !selectedConversation
+                      ? 'Select a conversation first.'
+                      : inboxPerms.close.reason
+                  }
+                  className="flex flex-1"
                 >
-                  <Archive size={14} aria-hidden />
-                  Close
-                </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !selectedConversation ||
+                      conversationDetailSaving ||
+                      inboxPerms.close.restricted
+                    }
+                    onClick={() => void patchConversationDetails({ status: 'closed' })}
+                    className="inline-flex w-full flex-1 items-center justify-center gap-1.5 rounded-md border border-slate-600/60 bg-slate-900/50 px-2 py-1.5 text-xs font-medium text-slate-100 hover:bg-slate-800/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <Archive size={14} aria-hidden />
+                    Close
+                  </button>
+                </RestrictedControl>
               </div>
               <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">Workspace</span>
               <label className="flex flex-col gap-1 text-xs text-slate-400">
@@ -1479,29 +1620,61 @@ export default function InboxPage() {
             <div className="flex flex-col gap-2 border-t border-[#27314a] pt-3">
               <span className="text-xs text-slate-400">Spam (quick)</span>
               {selectedConversation?.is_spam === true || selectedConversation?.status === 'spam' ? (
-                <button
-                  type="button"
-                  disabled={!selectedConversation || spamUpdating}
-                  onClick={() =>
-                    selectedConversation && applySpamFlag(selectedConversation.id, false)
+                <RestrictedControl
+                  restricted={
+                    !selectedConversation || spamUpdating || inboxPerms.spam.restricted
                   }
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-emerald-900/60 bg-emerald-950/40 px-3 py-2 text-xs font-medium text-emerald-100 hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  reason={
+                    !selectedConversation
+                      ? 'Select a conversation first.'
+                      : inboxPerms.spam.reason
+                  }
+                  className="w-full"
                 >
-                  <ShieldAlert size={14} aria-hidden />
-                  Remove from spam
-                </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !selectedConversation || spamUpdating || inboxPerms.spam.restricted
+                    }
+                    onClick={() =>
+                      selectedConversation &&
+                      !inboxPerms.spam.restricted &&
+                      applySpamFlag(selectedConversation.id, false)
+                    }
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-emerald-900/60 bg-emerald-950/40 px-3 py-2 text-xs font-medium text-emerald-100 hover:bg-emerald-950/60 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ShieldAlert size={14} aria-hidden />
+                    Remove from spam
+                  </button>
+                </RestrictedControl>
               ) : (
-                <button
-                  type="button"
-                  disabled={!selectedConversation || spamUpdating}
-                  onClick={() =>
-                    selectedConversation && applySpamFlag(selectedConversation.id, true)
+                <RestrictedControl
+                  restricted={
+                    !selectedConversation || spamUpdating || inboxPerms.spam.restricted
                   }
-                  className="inline-flex items-center justify-center gap-2 rounded-md border border-amber-900/50 bg-amber-950/30 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-950/50 disabled:cursor-not-allowed disabled:opacity-40"
+                  reason={
+                    !selectedConversation
+                      ? 'Select a conversation first.'
+                      : inboxPerms.spam.reason
+                  }
+                  className="w-full"
                 >
-                  <ShieldAlert size={14} aria-hidden />
-                  Mark as spam
-                </button>
+                  <button
+                    type="button"
+                    disabled={
+                      !selectedConversation || spamUpdating || inboxPerms.spam.restricted
+                    }
+                    onClick={() =>
+                      selectedConversation &&
+                      !inboxPerms.spam.restricted &&
+                      applySpamFlag(selectedConversation.id, true)
+                    }
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-amber-900/50 bg-amber-950/30 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-950/50 disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ShieldAlert size={14} aria-hidden />
+                    Mark as spam
+                  </button>
+                </RestrictedControl>
               )}
             </div>
             <div className="pt-2 text-xs text-slate-400">Links</div>

@@ -172,7 +172,7 @@ async function loadOrgEmailDomain(organizationId) {
     .select('*')
     .eq('organization_id', organizationId)
     .maybeSingle();
-
+console.log('data', data)
   if (error) {
     throw new HttpError(500, error.message || 'Failed to load email domain settings.');
   }
