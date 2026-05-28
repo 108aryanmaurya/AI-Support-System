@@ -157,8 +157,11 @@ function normalizeMessageId(raw) {
   if (!raw || typeof raw !== 'string') return null;
   const t = raw.trim();
   if (!t) return null;
-  if (t.startsWith('<') && t.endsWith('>')) return t;
-  return `<${t}>`;
+  const unwrapped =
+    t.startsWith('<') && t.endsWith('>') ? t.slice(1, -1).trim() : t;
+  // RFC-like Message-ID must have local@domain token; reject provider UUIDs.
+  if (!/^[^\s<>@]+@[^\s<>@]+$/.test(unwrapped)) return null;
+  return `<${unwrapped}>`;
 }
 
 function referencesHeaderFromAnchors(primary, chainFromMetadata = null) {
@@ -218,9 +221,15 @@ async function httpSendResend({
   if (referencesHeader) {
     headers.References = referencesHeader;
   }
-  if (typeof threadKey === 'string' && threadKey.trim()) {
-    headers['X-Thread-Key'] = threadKey.trim();
-  }
+  const escapedHtml = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>');
+  const fromAddress =
+    fromEmail.includes('<') && fromEmail.includes('>')
+      ? fromEmail
+      : `Support <${fromEmail}>`;
 
   const response = await fetch('https://api.resend.com/emails', {
     method: 'POST',
@@ -229,10 +238,11 @@ async function httpSendResend({
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      from: fromEmail,
+      from: fromAddress,
       to: [toEmail],
       subject,
       text,
+      html: `<div>${escapedHtml}</div>`,
       headers,
     }),
   });

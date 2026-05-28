@@ -71,10 +71,11 @@ export async function sendReply(conversation_id, message) {
 export async function sendReplyOutbound(conversation_id, message) {
   const conversationId = normalizeConversationId(conversation_id);
   const conversation = await fetchConversationRouting(conversationId);
-
+  console.log('conversation', conversation);
   switch (conversation.channel_type) {
     case 'email': {
       const customer = await loadReplyCustomer(conversation);
+      console.log('customer', customer);
       return EmailAdapter.sendOutboundOnly({ conversation, customer, message });
     }
     case 'web':

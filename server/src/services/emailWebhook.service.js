@@ -60,6 +60,20 @@ function configMatchesToEmail(config, toEmail) {
   return domainFromEmail(toEmail) === configDomain;
 }
 
+function isLikelyInternalRoutingNotification(payload) {
+  const subject = typeof payload?.subject === 'string' ? payload.subject.trim().toLowerCase() : '';
+  const body = typeof payload?.textBody === 'string' ? payload.textBody : '';
+  const subjectMatch =
+    subject.startsWith('unassigned conversation') || subject.startsWith('new customer message');
+  const bodyMatch =
+    body.includes('A new customer message arrived but intelligent routing could not assign an agent.') ||
+    (body.includes('Message from customer') &&
+      body.includes('Top eligibility drop codes:') &&
+      body.includes('Open inbox:') &&
+      body.includes('— AI Support'));
+  return subjectMatch && bodyMatch;
+}
+
 export async function resolveOrganizationEmailChannel(toEmail) {
   const { data, error } = await supabaseAdmin
     .from('channel_integrations')
@@ -340,6 +354,20 @@ export async function updateConversationLastMessageAt(conversationId, organizati
 export async function processInboundEmail(payload) {
   const { channel, integration } = await resolveOrganizationEmailChannel(payload.toEmail);
 
+  if (isLikelyInternalRoutingNotification(payload)) {
+    // eslint-disable-next-line no-console
+    console.warn('[email-webhook] ignored internal routing notification loop', {
+      organization_id: channel.organization_id,
+      subject: payload.subject || null,
+      from_email: payload.fromEmail || null,
+    });
+    return {
+      status: 'ignored_internal_notification',
+      organizationId: channel.organization_id,
+      reason: 'notification_loop',
+    };
+  }
+
   const duplicate = await findExistingInboundMessage({
     organizationId: channel.organization_id,
     externalMessageId: payload.messageId,
@@ -401,7 +429,7 @@ export async function processInboundEmail(payload) {
     email: payload.fromEmail,
     name: payload.fromName || null,
   });
-
+  console.log('customer', customer);
   const threadResult = await findOrCreateEmailThread({
     organizationId: channel.organization_id,
     customerId: customer.id,
@@ -411,7 +439,7 @@ export async function processInboundEmail(payload) {
     messageId: payload.messageId,
     subject: payload.subject,
   });
-
+  console.log('threadResult', threadResult);
   const reopenResult = await maybeReopenEmailThreadConversation({
     organizationId: channel.organization_id,
     conversation: threadResult.conversation,

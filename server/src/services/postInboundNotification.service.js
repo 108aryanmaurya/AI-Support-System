@@ -174,6 +174,7 @@ export async function deliverPostInboundNotification(p) {
  * @param {string | null} [params.assignedToMemberId]
  */
 export async function schedulePostInboundNotification(params) {
+  console.log('params', params);
   const {
     organizationId,
     conversationId,
@@ -198,6 +199,7 @@ export async function schedulePostInboundNotification(params) {
   let resolvedChannel = channelLabel;
   if (!customerMessage || !customerEmail || resolvedChannel === 'routing' || resolvedChannel === 'chat') {
     const ctx = await loadInboundNotifyContext(organizationId, conversationId, messageId);
+    console.log('ctx', ctx);
     if (!customerMessage) customerMessage = ctx.customerMessage;
     if (!customerEmail) customerEmail = ctx.customerEmail;
     if (resolvedChannel === 'routing' || resolvedChannel === 'chat') {

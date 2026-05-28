@@ -1,37 +1,10 @@
 import {
-  ChevronDown,
-  ChevronRight,
-  Flame,
-  Folder,
-  Handshake,
-  HelpCircle,
-  ListFilter,
-  Plus,
   Search,
-  ShieldAlert,
   Sparkles,
-  UserRoundPlus,
 } from 'lucide-react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { INBOX_AI_INTENT_OPTIONS, INBOX_SIDEBAR_FILTERS } from '../config/inboxFilters.js'
 import { RestrictedControl } from './RestrictedControl.jsx'
-
-const finForServiceOptions = [
-  { label: 'All conversations', icon: ListFilter },
-  { label: 'Resolved', icon: Folder },
-  { label: 'Needs teammate input', icon: UserRoundPlus },
-  { label: 'Escalated & Handoff', icon: Handshake },
-  { label: 'Pending', icon: HelpCircle },
-  { label: 'Spam', icon: ShieldAlert },
-]
-
-const viewOptions = [
-  { label: 'Messenger', count: 1 },
-  { label: 'Email', count: 1 },
-  { label: 'WhatsApp & Social', count: 1 },
-  { label: 'Phone & SMS', count: 1 },
-  { label: 'Tickets', count: 0 },
-]
 
 /**
  * Left navigation rail for the org inbox workspace (filters, Fin, views).
@@ -41,10 +14,6 @@ export function InboxSidebar({
   filterCounts,
   onSelectSidebarFilter,
   mentionCue,
-  autoAssignOnSelect,
-  setAutoAssignOnSelect,
-  autoAssignRestricted = false,
-  autoAssignRestrictedReason = null,
   orgTags = [],
   activeTagId = null,
   onTagFilterChange,
@@ -76,28 +45,7 @@ export function InboxSidebar({
         >
           <Search size={14} aria-hidden /> Search
         </button>
-        <RestrictedControl
-          restricted={autoAssignRestricted}
-          reason={autoAssignRestrictedReason}
-          className="mb-3 w-full"
-        >
-          <label
-            className={`flex items-center gap-2 rounded-lg border border-[#27314a] bg-[#0e1526] px-2 py-2 text-xs text-slate-400 ${
-              autoAssignRestricted ? 'cursor-not-allowed' : 'cursor-pointer'
-            }`}
-          >
-            <input
-              type="checkbox"
-              className="rounded border-[#4f6290] bg-[#0f1728]"
-              checked={autoAssignOnSelect}
-              disabled={autoAssignRestricted}
-              onChange={(e) => {
-                if (!autoAssignRestricted) setAutoAssignOnSelect(e.target.checked)
-              }}
-            />
-            <span>Auto-assign when opening</span>
-          </label>
-        </RestrictedControl>
+     
         <div className="space-y-1 text-sm">
           {INBOX_SIDEBAR_FILTERS.map((item) => {
             const isActive = activeFilter === item.id
@@ -155,58 +103,7 @@ export function InboxSidebar({
           ) : null}
         </div>
 
-        <div className="mt-4 rounded-lg border border-[#27314a] bg-[#0f1728] p-2">
-          <div className="mb-2 flex items-center justify-between px-1">
-            <p className="text-sm font-semibold text-white">Fin for Service</p>
-            <div className="flex items-center gap-1 text-slate-400">
-              <button type="button" className="rounded-md p-1 hover:bg-[#1a2440]">
-                <Plus size={12} />
-              </button>
-              <ChevronDown size={12} />
-            </div>
-          </div>
-          <div className="space-y-0.5">
-            {finForServiceOptions.map((item) => (
-              <div key={item.label} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-slate-300">
-                <item.icon size={13} />
-                <span>{item.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-4 flex items-center justify-between px-1 text-xs text-slate-400">
-          <span>Team inboxes</span>
-          <span className="inline-flex items-center gap-1">
-            <Plus size={12} />
-            <ChevronRight size={12} />
-          </span>
-        </div>
-        <div className="mt-2 flex items-center justify-between px-1 text-xs text-slate-400">
-          <span>Teammates</span>
-          <span className="inline-flex items-center gap-1">
-            <Plus size={12} />
-            <ChevronRight size={12} />
-          </span>
-        </div>
-
-        <div className="mt-5 border-t border-[#27314a] pt-3 text-xs text-slate-400">Views</div>
-        <div className="mt-2 space-y-1 text-sm">
-          {viewOptions.map((item) => (
-            <div key={item.label} className="flex items-center justify-between rounded-md px-2 py-1.5 text-slate-300">
-              <span className="inline-flex items-center gap-2">
-                <Flame size={13} className="text-slate-400" />
-                {item.label}
-              </span>
-              <span className="text-xs text-slate-400">{item.count}</span>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-2 rounded-lg border border-[#334060] bg-[#1b2741] p-2 text-sm">
-          <p className="font-semibold text-white">Get set up</p>
-          <p className="mt-1 text-xs text-slate-300">Set up channels to connect with your customers</p>
-        </div>
+       
       </div>
     </aside>
   )

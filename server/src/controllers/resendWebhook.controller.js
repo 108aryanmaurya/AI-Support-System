@@ -51,6 +51,7 @@ export async function receiveResendWebhookController(req, res, next) {
         res.status(202).json({ status: 'ignored', reason: 'empty_body' });
         return;
       }
+      console.log('payload', payload);
 
       const result = await processInboundEmail(payload);
 
@@ -68,6 +69,14 @@ export async function receiveResendWebhookController(req, res, next) {
         res.status(422).json({
           status: 'rejected',
           reason: 'ingress_spam_policy',
+        });
+        return;
+      }
+
+      if (result.status === 'ignored_internal_notification') {
+        res.status(200).json({
+          status: 'ignored',
+          reason: result.reason ?? 'internal_notification_loop',
         });
         return;
       }

@@ -138,6 +138,7 @@ export async function sendInboxAgentOutboundMessage({
     clientRequestId: rawClientRequestId,
     conversationId,
   });
+  console.log('idempotency', idempotency);
 
   if (idempotency.mode === 'replay') {
     return idempotency.result;
@@ -160,7 +161,7 @@ export async function sendInboxAgentOutboundMessage({
     actorMemberId: member.id,
     acknowledgeStaleThread,
   });
-
+  console.log('acknowledgeStaleThread', acknowledgeStaleThread);
   const membersPayload = await listOrganizationMembersWithProfiles({
     organizationId: conversation.organization_id,
     actorUserId: userId,
@@ -260,7 +261,7 @@ export async function sendInboxAgentOutboundMessage({
 
   try {
     const outbound = await sendReplyOutbound(conversation.id, body);
-
+console.log('outbound', outbound);
     let updated;
     if (conversation.channel_type === 'email') {
       const externalId =

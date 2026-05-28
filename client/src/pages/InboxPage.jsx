@@ -141,7 +141,6 @@ function toConversationViewModel(item) {
   return {
     ...item,
     title: `${item.source ?? 'chat'} - ${item.id.slice(0, 8)}`,
-    body: item.last_message_preview ?? 'No messages yet',
     time: getRelativeTimeLabel(item.last_message_at),
     channel,
     automationBadges: [
@@ -162,7 +161,6 @@ const ConversationListRow = memo(
   function ConversationListRow({
     conversationId,
     title,
-    body,
     timeLabel,
     channelLetter,
     automationBadges = [],
@@ -193,7 +191,6 @@ const ConversationListRow = memo(
               <p className="truncate text-sm font-semibold text-[#d8deef]">{title}</p>
               {title.startsWith('Email') ? <Star size={14} className="fill-yellow-400 text-yellow-400" /> : null}
             </div>
-            <p className="mt-1 truncate text-sm text-slate-300">{body}</p>
             {automationBadges.length > 0 ? (
               <div className="mt-1.5 flex flex-wrap gap-1">
                 {automationBadges.map((badge) => (
@@ -1062,7 +1059,6 @@ export default function InboxPage() {
                   key={item.id}
                   conversationId={item.id}
                   title={item.title}
-                  body={item.body}
                   timeLabel={item.time}
                   channelLetter={item.channel}
                   automationBadges={item.automationBadges}
@@ -1107,32 +1103,12 @@ export default function InboxPage() {
             className="inbox-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 pt-3 [scrollbar-gutter:stable]"
             onScroll={updateStickToBottom}
           >
+              {error ? 
             <div className="rounded-xl border border-[#2a3654] bg-[#242c3f] p-4">
-              <div className="mb-3 rounded-lg border border-[#334060] bg-[#2a3040] p-4 text-center">
-                <div className="mb-3 flex justify-center gap-2 text-slate-200">
-                  <PhoneCall size={14} />
-                  <X size={14} />
-                  <MessageCircle size={14} />
-                  <X size={14} />
-                  <Mail size={14} />
-                </div>
-                <div className="flex items-center justify-center gap-4">
-                  <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-900">
-                    <MessageSquare size={22} />
-                  </div>
-                  <span className="h-0.5 w-16 bg-slate-500" />
-                  <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-slate-900">
-                    <Inbox size={22} />
-                  </div>
-                </div>
-              </div>
-              <p className="text-sm text-slate-100">
-                {selectedConversation
-                  ? `Conversation ${selectedConversation.id.slice(0, 8)} is live. Incoming customer messages appear below in real-time.`
-                  : 'Select a conversation from the list to view live messages.'}
-              </p>
-              {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
+             
+              <p className="mt-3 text-sm text-red-300">{error}</p> 
             </div>
+              : null}
 
             {typingLabel ? (
               <p className="mt-4 text-sm italic text-slate-400" aria-live="polite">
