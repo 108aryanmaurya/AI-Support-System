@@ -64,8 +64,8 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ## 5. Team invitations & membership
 
-- **Create invite** — `POST /api/org/:orgId/invite` (ADMIN)
-- **Batch invites** — `POST /api/org/:orgId/invites/batch` (ADMIN)
+- **Create invite** — `POST /api/org/:orgId/invite` (ADMIN); sends invite email via Resend notification config
+- **Batch invites** — `POST /api/org/:orgId/invites/batch` (ADMIN); emails each created invite
 - **List pending invites** — `GET /api/org/:orgId/invites`
 - **Public invite preview** — `GET /api/org/invite/:token` (org name, role, expiry state)
 - **Accept invite** — `POST /api/org/accept-invite` (authenticated)
@@ -186,11 +186,14 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Job types**
   - `notify.staff_inbound` — post-routing staff email (assignee after auto-route, fallback list/admin when unassigned; not at raw ingress)
   - `notify.assignment` — email assignee on conversation assignment
-  - `sla.scan_org` — detect first-response SLA breaches per org
+  - `notify.unassignment` — email prior assignee when conversation is reassigned or returned to queue
+  - `notify.sla_warning` — dedicated SLA breach email from `sla.scan_org` (and optional workflow `notify`); assignee when assigned, else assignment fallback or org admin; first- vs next-response copy
+  - `assignment.scan_unassigned_org` — daily cron backstop: enqueue `assignment.auto_route` for active unassigned conversations (batch 100/org/day)
+  - `sla.scan_org` — detect first- and next-response SLA breaches per org; enqueue breach notify when `sla_notify_enabled`
   - `knowledge.ingest_source` — file upload → article → publish → chunks
 - **Org automation settings** — JSON in `organizations.settings.automation` (SLA minutes, notify toggles); editable in AI settings UI
 - **Internal notification email** — optional Resend via `NOTIFICATION_RESEND_API_KEY` / `NOTIFICATION_EMAIL_FROM`
-- **Cron trigger** — `POST /api/internal/cron/sla-scan` (protected by `x-automation-cron-secret`)
+- **Cron triggers** — `POST /api/internal/cron/sla-scan`, `/lifecycle-scan` (every 15 min), `/unassigned-auto-route-scan` (daily backstop for unassigned auto-route), `/workflow-schedule-scan` (header: `x-automation-cron-secret`)
 - **Enqueue on key events** — inbound customer messages, conversation assignment changes
 
 ---

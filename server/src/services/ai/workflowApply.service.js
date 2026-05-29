@@ -3,7 +3,7 @@ import { HttpError } from '../../utils/httpError.js';
 import { updateConversationFromAutomation } from '../conversationUpdate.service.js';
 import { listTagDefinitions, mergeConversationTagsByIds } from '../tags.service.js';
 import {
-  scheduleSlaWarningNotification,
+  scheduleSlaBreachNotification,
   scheduleStaffInboundNotification,
 } from '../automation/automationNotify.service.js';
 import { emitSupportEvent } from '../analytics/supportEvents.service.js';
@@ -90,6 +90,7 @@ function emitWorkflowActionApplied(params) {
  * @param {string} [ctx.customerEmail]
  * @param {string} [ctx.workflowTrigger]
  * @param {number} [ctx.slaMinutes]
+ * @param {'first_response' | 'next_response'} [ctx.breachType]
  */
 /**
  * @returns {'applied' | 'skipped'}
@@ -222,13 +223,16 @@ async function applyWorkflowAction(action, ctx) {
     const idempotencyKey = `post-inbound:${ctx.organizationId}:${ctx.messageId ?? ctx.conversationId}:standard`;
 
     if (ctx.workflowTrigger === 'sla_warning') {
-      scheduleSlaWarningNotification({
+      const breachType =
+        ctx.breachType === 'next_response' ? 'next_response' : 'first_response';
+      void scheduleSlaBreachNotification({
         organizationId: ctx.organizationId,
         conversationId: ctx.conversationId,
         slaMinutes: ctx.slaMinutes,
+        breachType,
+        source: 'workflow',
         channel,
         ruleId: ctx.ruleId,
-        idempotencyKey: `workflow:sla_notify:${ctx.ruleId}:${ctx.conversationId}:${channel}`,
       });
       emitWorkflowActionApplied({
         organizationId: ctx.organizationId,
@@ -323,6 +327,7 @@ async function applyWorkflowAction(action, ctx) {
  * @param {string} [params.messageId]
  * @param {string} [params.workflowTrigger]
  * @param {number} [params.slaMinutes]
+ * @param {'first_response' | 'next_response'} [params.breachType]
  * @param {Array<{ ruleId: string, name: string, actions: object[] }>} params.matched
  */
 export async function applyMatchedWorkflowRules({
@@ -331,6 +336,7 @@ export async function applyMatchedWorkflowRules({
   messageId,
   workflowTrigger,
   slaMinutes,
+  breachType,
   matched,
 }) {
   if (!matched?.length) return { applied: 0, skipped: 0, failed: 0 };
@@ -380,6 +386,7 @@ export async function applyMatchedWorkflowRules({
           customerMessage,
           workflowTrigger,
           slaMinutes,
+          breachType,
         });
         if (outcome === 'applied') applied += 1;
         else skipped += 1;

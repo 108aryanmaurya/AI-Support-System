@@ -1,6 +1,7 @@
 import { CONVERSATION_ACTIVE_STATUSES } from '@ai-support/shared';
 import { supabaseAdmin } from '../../config/supabase.js';
 import { emitSupportEvent } from '../analytics/supportEvents.service.js';
+import { scheduleAssignmentWithFallback } from '../automation/automationNotify.service.js';
 import { updateConversationFromAutomation } from '../conversationUpdate.service.js';
 import { schedulePostInboundNotification } from '../postInboundNotification.service.js';
 import { getOrgAssignmentSettings } from './assignmentSettings.service.js';
@@ -242,16 +243,13 @@ export async function runAutoAssignConversation({
       },
     });
 
-    if (messageId) {
-     
-        void schedulePostInboundNotification({
-          organizationId,
-          conversationId,
-          messageId,
-          mode: 'auto_assigned_first_touch',
-          assignedToMemberId: winnerId,
-        });
-    }
+    void scheduleAssignmentWithFallback({
+      organizationId,
+      conversation: updated,
+      assignedToMemberId: winnerId,
+      actorUserId: null,
+      priorAssignedToMemberId: conv.assigned_to_member_id ?? null,
+    });
 
     const durationMs = Date.now() - startedAt;
     logAssignmentStructured('info', {

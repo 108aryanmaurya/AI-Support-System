@@ -7,6 +7,47 @@ function displayNameFromUser(u) {
   return full || (typeof u?.email === 'string' ? u.email.split('@')[0] : '') || 'Teammate';
 }
 
+async function loadMemberUser(organizationId, memberId) {
+  const { data: memberRow, error: memErr } = await supabaseAdmin
+    .from('organization_members')
+    .select('user_id')
+    .eq('id', memberId)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+
+  if (memErr || !memberRow?.user_id) return null;
+
+  const { data: user, error: uErr } = await supabaseAdmin
+    .from('users')
+    .select('id, email, first_name, last_name')
+    .eq('id', memberRow.user_id)
+    .maybeSingle();
+
+  if (uErr || !user) return null;
+  return user;
+}
+
+function conversationDetailLines(conversation, organizationId) {
+  const conv = conversation ?? {};
+  const convShort = typeof conv.id === 'string' ? conv.id.slice(0, 8) : '';
+  const source = typeof conv.source === 'string' ? conv.source : 'chat';
+  const status = typeof conv.status === 'string' ? conv.status : 'open';
+  const subjectLine =
+    typeof conv.subject === 'string' && conv.subject.trim() ? conv.subject.trim() : null;
+  const inboxUrl = `${env.publicAppUrl}/org/${organizationId}/inbox`;
+
+  const lines = [
+    'Conversation',
+    `  ID: ${conv.id ?? '—'}`,
+    `  Short ID: ${convShort}…`,
+    `  Source: ${source}`,
+    `  Status: ${status}`,
+  ];
+  if (subjectLine) lines.push(`  Subject: ${subjectLine}`);
+  lines.push('', `Open inbox: ${inboxUrl}`, '', '— AI Support');
+  return { lines, convShort, inboxUrl };
+}
+
 /**
  * After a successful assignment change, email the new assignee (not on self-assign or no-op).
  * Failures are logged only; does not throw.
@@ -23,28 +64,16 @@ export async function notifyConversationAssignee({
 
  
   try {
-    const { data: memberRow, error: memErr } = await supabaseAdmin
-      .from('organization_members')
-      .select('user_id')
-      .eq('id', assignedToMemberId)
-      .eq('organization_id', organizationId)
-      .maybeSingle();
-
-    if (memErr || !memberRow?.user_id) {
+    const assigneeUser = await loadMemberUser(organizationId, assignedToMemberId);
+    if (!assigneeUser) {
       // eslint-disable-next-line no-console
-      console.error('[assignment-notify] could not load assignee member', memErr?.message);
+      console.error('[assignment-notify] could not load assignee member');
       return;
     }
 
-    if (memberRow.user_id === actorUserId) return;
+    if (assigneeUser.id === actorUserId) return;
 
-    const { data: assigneeUser } = await supabaseAdmin
-      .from('users')
-      .select('id, email, first_name, last_name')
-      .eq('id', memberRow.user_id)
-      .maybeSingle();
-
-    const toEmail = typeof assigneeUser?.email === 'string' ? assigneeUser.email.trim() : '';
+    const toEmail = typeof assigneeUser.email === 'string' ? assigneeUser.email.trim() : '';
     if (!toEmail) {
       // eslint-disable-next-line no-console
       console.log('[assignment-notify] assignee has no email; skipping send');
@@ -71,39 +100,22 @@ export async function notifyConversationAssignee({
     });
     const assignedAtNote = `${assignedAt} (UTC)`;
 
-    const conv = conversation ?? {};
-    const convShort = typeof conv.id === 'string' ? conv.id.slice(0, 8) : '';
-    const source = typeof conv.source === 'string' ? conv.source : 'chat';
-    const status = typeof conv.status === 'string' ? conv.status : 'open';
-    const subjectLine =
-      typeof conv.subject === 'string' && conv.subject.trim()
-        ? conv.subject.trim()
-        : null;
-    const inboxUrl = `${env.publicAppUrl}/org/${organizationId}/inbox`;
+    const { lines: detailLines, convShort } = conversationDetailLines(conversation, organizationId);
 
     const lines = [
       `Hello ${assigneeName},`,
       '',
       assignmentIntro,
       '',
-      'Conversation',
-      `  ID: ${conv.id ?? '—'}`,
-      `  Short ID: ${convShort}…`,
-      `  Source: ${source}`,
-      `  Status: ${status}`,
-    ];
-    if (subjectLine) lines.push(`  Subject: ${subjectLine}`);
-    lines.push(
+      ...detailLines.slice(0, -3),
       '',
       'Assignment',
       `  Assigned by: ${assignerName}`,
       `  Assigned to: ${assigneeName} (you)`,
       `  Time: ${assignedAtNote}`,
       '',
-      `Open inbox: ${inboxUrl}`,
-      '',
-      '— AI Support',
-    );
+      ...detailLines.slice(-3),
+    ];
 
     const text = lines.join('\n');
     const subject = `Conversation assigned to you (${convShort}…)`;
@@ -116,5 +128,91 @@ export async function notifyConversationAssignee({
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error('[assignment-notify]', e);
+  }
+}
+
+/**
+ * Email the prior assignee when a conversation is reassigned or returned to the queue.
+ * Failures are logged only; does not throw.
+ */
+export async function notifyConversationPriorAssigneeUnassigned({
+  organizationId,
+  conversation,
+  priorAssignedToMemberId,
+  assignedToMemberId = null,
+  actorUserId = null,
+}) {
+  if (!priorAssignedToMemberId) return;
+  if (priorAssignedToMemberId === assignedToMemberId) return;
+
+  try {
+    const priorUser = await loadMemberUser(organizationId, priorAssignedToMemberId);
+    if (!priorUser) {
+      // eslint-disable-next-line no-console
+      console.error('[unassignment-notify] could not load prior assignee member');
+      return;
+    }
+
+    if (priorUser.id === actorUserId) return;
+
+    const toEmail = typeof priorUser.email === 'string' ? priorUser.email.trim() : '';
+    if (!toEmail) {
+      // eslint-disable-next-line no-console
+      console.log('[unassignment-notify] prior assignee has no email; skipping send');
+      return;
+    }
+
+    const priorName = displayNameFromUser(priorUser);
+
+    let changerName = 'Intelligent routing';
+    if (actorUserId) {
+      const { data: actorUser } = await supabaseAdmin
+        .from('users')
+        .select('first_name, last_name, email')
+        .eq('id', actorUserId)
+        .maybeSingle();
+      changerName = displayNameFromUser(actorUser);
+    }
+
+    let reassignmentNote = 'This conversation was returned to the unassigned queue.';
+    if (assignedToMemberId) {
+      const newUser = await loadMemberUser(organizationId, assignedToMemberId);
+      const newName = newUser ? displayNameFromUser(newUser) : 'another teammate';
+      reassignmentNote = `This conversation is now assigned to ${newName}.`;
+    }
+
+    const changedAt = new Date().toLocaleString('en-US', {
+      timeZone: 'UTC',
+      dateStyle: 'medium',
+      timeStyle: 'short',
+    });
+
+    const { lines: detailLines, convShort } = conversationDetailLines(conversation, organizationId);
+
+    const lines = [
+      `Hello ${priorName},`,
+      '',
+      `${changerName} unassigned you from a conversation.`,
+      reassignmentNote,
+      '',
+      ...detailLines.slice(0, -3),
+      '',
+      'Change',
+      `  Changed by: ${changerName}`,
+      `  Previous assignee: ${priorName} (you)`,
+      `  Time: ${changedAt} (UTC)`,
+      '',
+      ...detailLines.slice(-3),
+    ];
+
+    const subject = `Conversation unassigned from you (${convShort}…)`;
+    const result = await sendNotificationEmailIfConfigured({ to: toEmail, subject, text: lines.join('\n') });
+    if (!result.ok) {
+      // eslint-disable-next-line no-console
+      console.error('[unassignment-notify] send failed', result.error);
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[unassignment-notify]', e);
   }
 }

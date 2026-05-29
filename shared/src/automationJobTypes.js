@@ -13,11 +13,13 @@ export const AUTOMATION_JOB_TYPES = Object.freeze([
   'notify.staff_inbound',
   'notify.sla_warning',
   'notify.assignment',
+  'notify.unassignment',
   'sla.scan_org',
   ...LIFECYCLE_AUTOMATION_JOB_TYPES,
   'knowledge.ingest_source',
   'ai.classify_inbound',
   'assignment.auto_route',
+  'assignment.scan_unassigned_org',
   'assignment.reassign',
   ...WORKFLOW_AUTOMATION_JOB_TYPES,
 ]);

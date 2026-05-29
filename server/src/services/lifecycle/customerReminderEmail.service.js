@@ -73,7 +73,7 @@ export async function sendCustomerLifecycleReminder({
     senderType: 'system',
     senderUserId: null,
     senderMemberId: null,
-    content: body,
+    content: "Automated reminder sent to customer on date " + new Date().toISOString(),
     metadata: {
       channel: 'email',
       lifecycle: { event: 'customer_reminder' },

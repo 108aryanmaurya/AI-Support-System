@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  autoRouteDailyBackstopIdempotencyKey,
   autoRouteIdempotencyKey,
   fifteenMinuteBucketKey,
+  slaBreachNotifyIdempotencyKey,
   slaScanOrgIdempotencyKey,
+  unassignedScanOrgIdempotencyKey,
+  utcCalendarDayKey,
   workflowInboundIdempotencyKey,
   workflowSlaWarningIdempotencyKey,
   workflowTagAddedIdempotencyKey,
@@ -29,6 +33,19 @@ describe('workflow idempotency keys', () => {
       autoRouteIdempotencyKey('org', 'conv', 'msg'),
       'assignment:auto_route:org:conv:msg',
     );
+    assert.equal(
+      autoRouteDailyBackstopIdempotencyKey('org', 'conv', '2026-05-23'),
+      'assignment:auto_route_daily:org:conv:2026-05-23',
+    );
+  });
+
+  it('builds daily unassigned scan keys', () => {
+    const at = new Date('2026-05-23T14:37:00.000Z');
+    assert.equal(utcCalendarDayKey(at), '2026-05-23');
+    assert.equal(
+      unassignedScanOrgIdempotencyKey('org-1', '2026-05-23'),
+      'assignment:scan_unassigned:org-1:2026-05-23',
+    );
   });
 
   it('builds tag and sla keys', () => {
@@ -39,6 +56,10 @@ describe('workflow idempotency keys', () => {
     assert.equal(
       workflowSlaWarningIdempotencyKey('org', 'conv', '2026-05-20'),
       'workflow:sla:org:conv:2026-05-20',
+    );
+    assert.equal(
+      slaBreachNotifyIdempotencyKey('org', 'conv', 'next_response', '2026-05-20'),
+      'sla:breach_notify:org:conv:next_response:2026-05-20',
     );
   });
 });

@@ -47,6 +47,18 @@ export function workflowSlaNextResponseIdempotencyKey(organizationId, conversati
 }
 
 /**
+ * One SLA breach notification email per conversation per breach type per calendar day (scan + workflow notify).
+ *
+ * @param {string} organizationId
+ * @param {string} conversationId
+ * @param {'first_response' | 'next_response'} breachType
+ * @param {string} dayKey — e.g. `YYYY-MM-DD`
+ */
+export function slaBreachNotifyIdempotencyKey(organizationId, conversationId, breachType, dayKey) {
+  return `sla:breach_notify:${organizationId}:${conversationId}:${breachType}:${dayKey}`;
+}
+
+/**
  * One schedule workflow scan per org per hour bucket.
  *
  * @param {string} organizationId
@@ -54,6 +66,20 @@ export function workflowSlaNextResponseIdempotencyKey(organizationId, conversati
  */
 export function workflowScheduleScanIdempotencyKey(organizationId, hourKey) {
   return `workflow:schedule:${organizationId}:${hourKey}`;
+}
+
+/**
+ * UTC calendar day for daily cron dedupe.
+ *
+ * @param {Date} [date]
+ * @returns {string} e.g. `2026-05-23`
+ */
+export function utcCalendarDayKey(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getUTCFullYear();
+  const mo = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(d.getUTCDate()).padStart(2, '0');
+  return `${y}-${mo}-${day}`;
 }
 
 /**
@@ -131,6 +157,27 @@ export function lifecycleAutoCloseWaitingIdempotencyKey(organizationId, conversa
  */
 export function autoRouteIdempotencyKey(organizationId, conversationId, messageId) {
   return `assignment:auto_route:${organizationId}:${conversationId}:${messageId}`;
+}
+
+/**
+ * One daily backstop auto-route attempt per unassigned conversation per UTC day.
+ *
+ * @param {string} organizationId
+ * @param {string} conversationId
+ * @param {string} dayKey — from {@link utcCalendarDayKey}
+ */
+export function autoRouteDailyBackstopIdempotencyKey(organizationId, conversationId, dayKey) {
+  return `assignment:auto_route_daily:${organizationId}:${conversationId}:${dayKey}`;
+}
+
+/**
+ * One org unassigned-conversation scan per UTC calendar day.
+ *
+ * @param {string} organizationId
+ * @param {string} dayKey — from {@link utcCalendarDayKey}
+ */
+export function unassignedScanOrgIdempotencyKey(organizationId, dayKey) {
+  return `assignment:scan_unassigned:${organizationId}:${dayKey}`;
 }
 
 /**

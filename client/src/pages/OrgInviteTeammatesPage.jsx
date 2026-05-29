@@ -59,11 +59,39 @@ export default function OrgInviteTeammatesPage() {
       const data = await postOrgInvitesBatch(orgId, { emails: validEmails, role: 'AGENT' })
       const created = Array.isArray(data?.created) ? data.created : []
       const errs = Array.isArray(data?.errors) ? data.errors : []
-      if (errs.length > 0 && created.length === 0) {
-        setError(errs.map((x) => `${x.email}: ${x.error}`).join('\n'))
+      const emailFailed = created.filter((x) => x.emailSent === false && !x.emailSkipped)
+      const emailSkipped = created.filter((x) => x.emailSkipped === true)
+
+      if (errs.length > 0) {
+        const errMsg = errs.map((x) => `${x.email}: ${x.error}`).join('\n')
+        if (created.length === 0) {
+          setError(errMsg)
+          return
+        }
+      }
+
+      if (emailFailed.length > 0) {
+        setError(
+          `Invites created, but email could not be sent to: ${emailFailed.map((x) => x.email).join(', ')}. Check NOTIFICATION_EMAIL_FROM and NOTIFICATION_RESEND_API_KEY on the server.`,
+        )
         return
       }
-      navigate(`/org/${orgId}/settings/teammates`, { replace: true })
+      if (emailSkipped.length > 0 && created.length > 0) {
+        setError(
+          `Invites created. Email was not sent (notification mail not configured). Links are in server logs when EMAIL_PROVIDER_MOCK is enabled.`,
+        )
+        return
+      }
+      if (created.length === 0) return
+      navigate(`/org/${orgId}/settings/teammates`, {
+        replace: true,
+        state:
+          errs.length > 0
+            ? {
+                inviteNotice: `Invited ${created.length} teammate(s). Skipped: ${errs.map((x) => x.email).join(', ')}`,
+              }
+            : undefined,
+      })
     } catch (e) {
       setError(e?.message || 'Could not send invites.')
     } finally {

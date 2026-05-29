@@ -70,6 +70,9 @@ function buildAutomationPatch(body) {
   if (Object.prototype.hasOwnProperty.call(autoBody, 'sla_enabled')) {
     patch.sla_enabled = parseBool(autoBody.sla_enabled, 'automation.sla_enabled');
   }
+  if (Object.prototype.hasOwnProperty.call(autoBody, 'sla_notify_enabled')) {
+    patch.sla_notify_enabled = parseBool(autoBody.sla_notify_enabled, 'automation.sla_notify_enabled');
+  }
   if (Object.prototype.hasOwnProperty.call(autoBody, 'first_response_sla_minutes')) {
     const n = Number(autoBody.first_response_sla_minutes);
     if (!Number.isFinite(n) || n < 1 || n > 10080) {

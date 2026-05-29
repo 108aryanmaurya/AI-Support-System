@@ -47,7 +47,6 @@ export async function sendInboxMessageController(req, res, next) {
       acknowledge_stale_thread: acknowledgeStaleSnake,
       acknowledgeStaleThread: acknowledgeStaleCamel,
     } = req.body ?? {};
-    console.log('req.body', req.body);
     const result = await sendInboxAgentOutboundMessage({
       userId: req.userId ?? req.user.id,
       conversationId,

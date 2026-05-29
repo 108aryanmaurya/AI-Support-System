@@ -2,6 +2,7 @@ import { env } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { decryptConfigApiKey } from '../utils/secretsCrypto.js';
+import { isValidEmail, normalizeEmail } from '../utils/incomingMessageValidation.js';
 
 function isMissingColumnError(error, column) {
   if (!error) return false;
@@ -185,6 +186,34 @@ function referencesHeaderFromAnchors(primary, chainFromMetadata = null) {
   return normalizedTokens.length ? normalizedTokens.join(' ') : normalizedPrimary;
 }
 
+/** Org default when the conversation is not tied to an email channel row. */
+export async function resolveOrgActiveEmailChannelId(organizationId) {
+  const { data, error } = await supabaseAdmin
+    .from('channels')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .eq('type', 'email')
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load email channel.');
+  }
+  return data?.id ?? null;
+}
+
+/**
+ * Email channel on the conversation, else the org's active email channel integration.
+ */
+export async function resolveOutboundEmailChannelId(conversation) {
+  if (conversation.channel_type === 'email' && conversation.channel_id) {
+    return conversation.channel_id;
+  }
+  return resolveOrgActiveEmailChannelId(conversation.organization_id);
+}
+
 async function fetchChannelIntegration(channelId) {
   const { data, error } = await supabaseAdmin
     .from('channel_integrations')
@@ -283,27 +312,20 @@ export async function sendEmailViaProvider({
       };
     }
 
-    if (conversation.channel_type !== 'email') {
+    const channelId = await resolveOutboundEmailChannelId(conversation);
+    if (!channelId) {
       return {
         ok: false,
         external_message_id: null,
         provider: env.emailProvider,
-        error: 'Conversation is not an email channel.',
+        error: 'No active email channel configured for this organization.',
       };
     }
 
-    if (!conversation.channel_id) {
-      return {
-        ok: false,
-        external_message_id: null,
-        provider: env.emailProvider,
-        error: 'Conversation is missing channel_id.',
-      };
-    }
-
-    const recipient =
-      typeof customer?.email === 'string' ? customer.email.trim().toLowerCase() : '';
-    if (!recipient) {
+    const recipient = normalizeEmail(
+      typeof customer?.email === 'string' ? customer.email : '',
+    );
+    if (!recipient || !isValidEmail(recipient)) {
       return {
         ok: false,
         external_message_id: null,
@@ -336,7 +358,7 @@ export async function sendEmailViaProvider({
       };
     }
 
-    const integration = await fetchChannelIntegration(conversation.channel_id);
+    const integration = await fetchChannelIntegration(channelId);
     const providerNorm = integration.provider ?? 'unknown';
 
     if (providerNorm !== 'resend') {

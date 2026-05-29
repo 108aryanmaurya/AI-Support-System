@@ -2,7 +2,6 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { getOrgAssignmentSettings } from './assignment/assignmentSettings.service.js';
 import {
   emailForMember,
-  isCustomerMessageFreshForNotification,
   notifyAutoAssignedFirstTouch,
   notifyRoutingFallbackUnassigned,
   notifyStaffOfCustomerMessage,
@@ -174,7 +173,6 @@ export async function deliverPostInboundNotification(p) {
  * @param {string | null} [params.assignedToMemberId]
  */
 export async function schedulePostInboundNotification(params) {
-  console.log('params', params);
   const {
     organizationId,
     conversationId,
@@ -191,15 +189,11 @@ export async function schedulePostInboundNotification(params) {
 
   if (!organizationId || !conversationId || !messageId) return;
 
-  const fresh = await isCustomerMessageFreshForNotification(messageId);
-  if (!fresh) return;
-
   let customerMessage = msgIn ?? '';
   let customerEmail = emailIn ?? '';
   let resolvedChannel = channelLabel;
   if (!customerMessage || !customerEmail || resolvedChannel === 'routing' || resolvedChannel === 'chat') {
     const ctx = await loadInboundNotifyContext(organizationId, conversationId, messageId);
-    console.log('ctx', ctx);
     if (!customerMessage) customerMessage = ctx.customerMessage;
     if (!customerEmail) customerEmail = ctx.customerEmail;
     if (resolvedChannel === 'routing' || resolvedChannel === 'chat') {
@@ -228,7 +222,10 @@ export async function schedulePostInboundNotification(params) {
     },
   });
 
-  if (result.reason === 'automation_table_missing' || result.reason === 'enqueue_error') {
+  if (
+    result.skipped &&
+    (result.reason === 'automation_table_missing' || result.reason === 'enqueue_error')
+  ) {
     await deliverPostInboundNotification({
       organizationId,
       conversationId,

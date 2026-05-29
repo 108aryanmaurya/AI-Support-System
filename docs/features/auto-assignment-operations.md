@@ -12,6 +12,16 @@ Parent: [auto-assignment-sprint.md](./auto-assignment-sprint.md) · Architecture
 
 Auto-route **does not** run in the API process alone — the worker must be running.
 
+## Cron (daily unassigned backstop)
+
+`POST /api/internal/cron/unassigned-auto-route-scan` with header `x-automation-cron-secret` (same secret as SLA/lifecycle cron). Schedule **once per UTC day**.
+
+1. Enqueues `assignment.scan_unassigned_org` per organization (idempotent per org/day).
+2. Worker scans up to **100** active, non-spam, unassigned conversations (`assignment_type` unassigned/null, no assignee).
+3. For each thread with at least one customer message, enqueues `assignment.auto_route` (daily idempotency key; uses latest customer message id).
+
+Requires org **AI enabled**, **`auto_route_enabled`**, Redis, and the automation worker. Inbound auto-route remains the primary path; this catches threads that never got routed.
+
 ## Metrics API
 
 `GET /api/org/:orgId/assignment/metrics?days=7` (org member)

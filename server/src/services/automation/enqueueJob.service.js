@@ -11,9 +11,11 @@ import { processAutomationJobById } from './processJob.service.js';
 function isJobTypeAllowedBySettings(jobType, automationSettings, aiSettings) {
   if (jobType === 'notify.staff_inbound') return automationSettings.inbound_notify_enabled;
   if (jobType === 'notify.sla_warning') {
-    return automationSettings.sla_enabled && automationSettings.inbound_notify_enabled;
+    return automationSettings.sla_enabled && automationSettings.sla_notify_enabled;
   }
-  if (jobType === 'notify.assignment') return automationSettings.assignment_notify_enabled;
+  if (jobType === 'notify.assignment' || jobType === 'notify.unassignment') {
+    return automationSettings.assignment_notify_enabled;
+  }
   if (jobType === 'sla.scan_org') return automationSettings.sla_enabled;
   if (isWorkflowAutomationJobType(jobType)) {
     return Boolean(aiSettings.ai_enabled && aiSettings.workflow_automation_enabled);
@@ -55,6 +57,7 @@ export async function enqueueAutomationJob({
       inbound_notify_enabled: true,
       assignment_notify_enabled: true,
       sla_enabled: true,
+      sla_notify_enabled: true,
     };
     aiSettings = { ai_enabled: false, workflow_automation_enabled: false };
   }

@@ -47,10 +47,16 @@ export function waitingReminderAnchor(row) {
  * @returns {boolean}
  */
 export function isWaitingReminderCandidate(row, reminderCutoffIso) {
+  console.log('isWaitingOnCustomerRow', isWaitingOnCustomerRow(row));
   if (!row || !isWaitingOnCustomerRow(row)) return false;
+  console.log('row.customer_reminder_sent_at', row.customer_reminder_sent_at);
+
   if (row.customer_reminder_sent_at) return false;
   const anchor = waitingReminderAnchor(row);
   if (!anchor) return false;
+  console.log("reminderCutoffIso", reminderCutoffIso);
+  console.log("anchor", anchor);
+  console.log("String(anchor) < reminderCutoffIso", String(anchor) < reminderCutoffIso);
   return String(anchor) < reminderCutoffIso;
 }
 

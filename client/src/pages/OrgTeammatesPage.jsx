@@ -8,7 +8,7 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useLocation, useParams } from 'react-router-dom'
 import { useAuthContext } from '../context/AuthContext.jsx'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
 import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
@@ -60,6 +60,7 @@ function permissionLabel(role) {
 
 export default function OrgTeammatesPage() {
   const { orgId } = useParams()
+  const location = useLocation()
   const { user } = useAuthContext()
   const { organizations } = useOrganizationContext()
   const current = organizations.find((o) => o.orgId === orgId)
@@ -68,6 +69,9 @@ export default function OrgTeammatesPage() {
   const inviteDenyReason = deny('team.invite')
 
   const [bannerOpen, setBannerOpen] = useState(true)
+  const [inviteNotice, setInviteNotice] = useState(
+    () => location.state?.inviteNotice ?? '',
+  )
   const [activeTab, setActiveTab] = useState('teammates')
   const [search, setSearch] = useState('')
   const [members, setMembers] = useState([])
@@ -145,6 +149,19 @@ export default function OrgTeammatesPage() {
   return (
     <main className="h-full min-h-0 overflow-y-auto bg-[#0b1020] px-4 py-6 text-slate-100 sm:px-8 lg:px-10">
       <div className="mx-auto max-w-6xl">
+        {inviteNotice ? (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <p>{inviteNotice}</p>
+            <button
+              type="button"
+              onClick={() => setInviteNotice('')}
+              className="shrink-0 text-amber-200/80 transition hover:text-amber-50"
+              aria-label="Dismiss"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        ) : null}
         <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-2">
             <span className="flex h-9 w-9 items-center justify-center rounded-md border border-[#2b3858] bg-[#151b2e] text-slate-300">

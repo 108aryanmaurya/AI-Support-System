@@ -364,6 +364,15 @@ export default function OrgAiSettingsPage() {
                   disabled={!isAdmin}
                   onChange={(v) => setAutomation((prev) => ({ ...prev, sla_enabled: v }))}
                 />
+                <ToggleRow
+                  label="Email on SLA breach"
+                  description="Notify assignee or routing fallback when a breach is detected (not only via workflow rules)."
+                  checked={automation.sla_notify_enabled ?? true}
+                  disabled={!isAdmin || !automation.sla_enabled}
+                  onChange={(v) =>
+                    setAutomation((prev) => ({ ...prev, sla_notify_enabled: v }))
+                  }
+                />
               </div>
 
               <div className="mt-4 grid gap-4 sm:grid-cols-2">

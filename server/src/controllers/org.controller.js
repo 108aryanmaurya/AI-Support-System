@@ -6,6 +6,7 @@ import {
   createInviteRecord,
   createInvitesBatchForOrganization,
   createOrganizationWithAdmin,
+  assertInviteEmailNotExistingMember,
   getInviteByToken,
   isValidInviteRole,
   listChannelsForOrganization,
@@ -15,8 +16,15 @@ import {
   newInviteToken,
   validateInviteEmail,
 } from '../services/org.service.js';
+import { sendTeammateInviteEmail } from '../services/orgInviteEmail.service.js';
+import { supabaseAdmin } from '../config/supabase.js';
 
 const INVITE_TTL_MS = 48 * 60 * 60 * 1000;
+
+function displayNameFromUser(user) {
+  const full = [user?.first_name, user?.last_name].filter(Boolean).join(' ').trim();
+  return full || (typeof user?.email === 'string' ? user.email.split('@')[0] : '') || null;
+}
 
 export async function createOrgController(req, res, next) {
   try {
@@ -60,6 +68,8 @@ export async function createInviteController(req, res, next) {
     const role = isValidInviteRole(roleRaw);
     if (!role) throw new HttpError(400, 'role must be ADMIN or AGENT.');
 
+    await assertInviteEmailNotExistingMember(organizationId, email);
+
     const token = newInviteToken();
     const expiresAt = new Date(Date.now() + INVITE_TTL_MS);
     const expiresAtIso = expiresAt.toISOString();
@@ -74,9 +84,22 @@ export async function createInviteController(req, res, next) {
 
     const absoluteLink = `${env.publicAppUrl}/invite?token=${encodeURIComponent(token)}`;
 
-    console.log(
-      `[invite] organization=${organizationId} email=${email} role=${role} link=${absoluteLink}`,
-    );
+    const { data: orgRow } = await supabaseAdmin
+      .from('organizations')
+      .select('name')
+      .eq('id', organizationId)
+      .limit(1)
+      .maybeSingle();
+
+    const emailResult = await sendTeammateInviteEmail({
+      organizationId,
+      organizationName: orgRow?.name ?? null,
+      toEmail: email,
+      inviteLink: absoluteLink,
+      role,
+      expiresAtIso,
+      inviterDisplayName: displayNameFromUser(req.user),
+    });
 
     res.status(201).json({
       invite: {
@@ -87,11 +110,9 @@ export async function createInviteController(req, res, next) {
         expiresAt: invite.expires_at,
         createdAt: invite.created_at,
       },
-      /** Mock provider — replace with transactional email in production */
-      mockEmail: {
-        to: email,
-        link: absoluteLink,
-      },
+      emailSent: emailResult.ok === true && emailResult.skipped !== true,
+      emailSkipped: emailResult.skipped === true,
+      ...(emailResult.ok ? {} : { emailError: emailResult.error || 'Invite email failed.' }),
     });
   } catch (error) {
     next(error);
@@ -194,8 +215,6 @@ export async function createInvitesBatchController(req, res, next) {
     res.status(200).json({
       created: result.created,
       errors: result.errors,
-      mockEmailNote:
-        'Invite links are logged on the server; configure transactional email to notify recipients.',
     });
   } catch (error) {
     next(error);

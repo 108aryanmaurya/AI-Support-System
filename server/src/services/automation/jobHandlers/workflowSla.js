@@ -22,11 +22,16 @@ export async function handleWorkflowSla(job) {
   }
 
   const slaMinutes = Number(p.slaMinutes ?? p.sla_minutes);
+  const breachType =
+    p.breachType === 'next_response' || p.breach_type === 'next_response'
+      ? 'next_response'
+      : 'first_response';
 
   await runSlaWarningWorkflowAutomation({
     organizationId: job.organization_id,
     conversationId,
     slaMinutes: Number.isFinite(slaMinutes) ? slaMinutes : undefined,
+    breachType,
   });
 
   const routing = await getOrgAssignmentSettings(job.organization_id);

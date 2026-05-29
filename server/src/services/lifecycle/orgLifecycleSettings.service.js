@@ -44,20 +44,27 @@ export async function putOrgLifecycleSettings(organizationId, body) {
       ? { ...priorSettings.lifecycle }
       : {};
 
-  const nextLifecycle = { ...priorLifecycle, ...patch };
+  const nextLifecycle = mergeOrgLifecycleSettings({ ...priorLifecycle, ...patch });
   const nextSettings = {
     ...priorSettings,
     lifecycle: nextLifecycle,
   };
 
-  const { error } = await supabaseAdmin
+  const { data: updated, error } = await supabaseAdmin
     .from('organizations')
     .update({ settings: nextSettings })
-    .eq('id', organizationId);
+    .eq('id', organizationId)
+    .select('settings')
+    .maybeSingle();
 
   if (error) {
     throw new HttpError(500, error.message || 'Failed to save lifecycle settings.');
   }
+  if (!updated) {
+    throw new HttpError(404, 'Organization not found.');
+  }
 
-  return { lifecycle: mergeOrgLifecycleSettings(nextLifecycle) };
+  const persistedSettings =
+    updated.settings && typeof updated.settings === 'object' ? updated.settings : {};
+  return { lifecycle: mergeOrgLifecycleSettings(persistedSettings.lifecycle) };
 }

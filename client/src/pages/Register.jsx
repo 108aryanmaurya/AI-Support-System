@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { Button } from '../components/Button.jsx'
 import { Logo } from '../components/Logo.jsx'
 import { StepAccount } from '../components/onboarding/StepAccount.jsx'
@@ -19,10 +19,22 @@ const INITIAL_FORM = {
 
 export default function Register() {
   const navigate = useNavigate()
-  const [form, setForm] = useState(INITIAL_FORM)
+  const location = useLocation()
+  const inviteEmail =
+    typeof location.state?.inviteEmail === 'string' ? location.state.inviteEmail.trim() : ''
+  const [form, setForm] = useState(() => ({
+    ...INITIAL_FORM,
+    ...(inviteEmail ? { email: inviteEmail } : {}),
+  }))
   const [errors, setErrors] = useState({})
   const [globalError, setGlobalError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    if (inviteEmail) {
+      setForm((prev) => (prev.email ? prev : { ...prev, email: inviteEmail }))
+    }
+  }, [inviteEmail])
 
   function navigateAfterRegistration() {
     const pending = getPendingInviteToken()
@@ -93,9 +105,13 @@ export default function Register() {
           <Logo variant="dark" />
         </div>
 
-        <h1 className="text-center text-2xl font-bold tracking-tight text-slate-900">Create your account</h1>
+        <h1 className="text-center text-2xl font-bold tracking-tight text-slate-900">
+          {inviteEmail ? 'Create your account to join' : 'Create your account'}
+        </h1>
         <p className="mt-2 text-center text-sm text-slate-600">
-          Next you&apos;ll create or join a workspace from the onboarding screen.
+          {inviteEmail
+            ? 'Use the invited email address, then accept the invitation.'
+            : "Next you'll create or join a workspace from the onboarding screen."}
         </p>
 
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
@@ -120,7 +136,7 @@ export default function Register() {
           Already have an account?{' '}
           <button
             type="button"
-            onClick={() => navigate('/login')}
+            onClick={() => navigate('/login', { state: location.state })}
             className="font-semibold text-[#1f8d5f] transition hover:text-[#166c46]"
           >
             Log in

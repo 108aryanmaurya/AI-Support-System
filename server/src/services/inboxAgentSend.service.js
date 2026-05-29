@@ -138,7 +138,6 @@ export async function sendInboxAgentOutboundMessage({
     clientRequestId: rawClientRequestId,
     conversationId,
   });
-  console.log('idempotency', idempotency);
 
   if (idempotency.mode === 'replay') {
     return idempotency.result;
@@ -161,7 +160,6 @@ export async function sendInboxAgentOutboundMessage({
     actorMemberId: member.id,
     acknowledgeStaleThread,
   });
-  console.log('acknowledgeStaleThread', acknowledgeStaleThread);
   const membersPayload = await listOrganizationMembersWithProfiles({
     organizationId: conversation.organization_id,
     actorUserId: userId,
@@ -261,11 +259,15 @@ export async function sendInboxAgentOutboundMessage({
 
   try {
     const outbound = await sendReplyOutbound(conversation.id, body);
-console.log('outbound', outbound);
+    const emailExternalId =
+      conversation.channel_type === 'email'
+        ? outbound.providerMessageId
+        : outbound.emailDelivery?.providerMessageId ?? outbound.emailDelivery?.external_message_id;
+    const externalId = emailExternalId != null ? String(emailExternalId) : null;
+    const emailDelivered = externalId != null;
+
     let updated;
-    if (conversation.channel_type === 'email') {
-      const externalId =
-        outbound.providerMessageId != null ? String(outbound.providerMessageId) : null;
+    if (emailDelivered) {
       updated = await replaceMessageMetadataExact({
         organizationId: conversation.organization_id,
         messageId: inserted.id,
@@ -273,7 +275,10 @@ console.log('outbound', outbound);
           ...(inserted.metadata && typeof inserted.metadata === 'object' ? inserted.metadata : {}),
           status: 'sent',
           external_message_id: externalId,
-          channel: 'email',
+          channel: conversation.channel_type,
+          ...(outbound.emailDelivery
+            ? { email_delivery: { provider: outbound.emailDelivery.provider ?? 'resend' } }
+            : {}),
         },
       });
 

@@ -35,7 +35,7 @@ export async function handleLifecycleScanOrg(job) {
     });
     return;
   }
-
+console.log('lifecycleScanOrg');
   const startedAt = Date.now();
   const resolvedCutoff = resolvedIdleCutoffIso(lifecycle.resolved_auto_close_days);
   const reminderCutoff = daysAgoIso(lifecycle.waiting_reminder_days);
@@ -56,7 +56,9 @@ export async function handleLifecycleScanOrg(job) {
   }
 
   let enqueuedResolved = 0;
+  console.log('resolvedRows', resolvedRows);
   for (const conv of resolvedRows ?? []) {
+    console.log('conv', conv?.id);
     const result = await enqueueAutomationJob({
       organizationId,
       jobType: 'lifecycle.auto_close_resolved',
@@ -68,6 +70,7 @@ export async function handleLifecycleScanOrg(job) {
       idempotencyKey: lifecycleAutoCloseResolvedIdempotencyKey(organizationId, conv.id),
       maxAttempts: 5,
     });
+    console.log('result', result);
     if (result.jobId && !result.skipped) enqueuedResolved += 1;
   }
 
@@ -77,7 +80,7 @@ export async function handleLifecycleScanOrg(job) {
     const { data: reminderRows, error: reminderErr } = await supabaseAdmin
       .from('conversations')
       .select(
-        'id, status, last_customer_message_at, last_agent_message_at, last_message_at, created_at, customer_reminder_sent_at',
+        'id, status, last_customer_message_at, last_agent_message_at, last_message_at, created_at, customer_reminder_sent_at, waiting_status',
       )
       .eq('organization_id', organizationId)
       .eq('waiting_status', 'waiting_customer')
@@ -90,9 +93,13 @@ export async function handleLifecycleScanOrg(job) {
       throw new Error(reminderErr.message || 'lifecycle waiting reminder scan failed');
     }
 
+    console.log('reminderRows', reminderRows);
     for (const conv of reminderRows ?? []) {
+        console.log('conv', conv?.id);
       if (!isWaitingReminderCandidate(conv, reminderCutoff)) continue;
+      console.log('isWaitingReminderCandidate', isWaitingReminderCandidate(conv, reminderCutoff));
       reminderCandidates += 1;
+      console.log('enqueueing reminder for conversation', conv.id);
       const result = await enqueueAutomationJob({
         organizationId,
         jobType: 'lifecycle.send_customer_reminder',
@@ -103,6 +110,7 @@ export async function handleLifecycleScanOrg(job) {
         idempotencyKey: lifecycleCustomerReminderIdempotencyKey(organizationId, conv.id),
         maxAttempts: 5,
       });
+      console.log('result', result);
       if (result.jobId && !result.skipped) enqueuedReminders += 1;
     }
   }
@@ -110,7 +118,7 @@ export async function handleLifecycleScanOrg(job) {
   const { data: waitingCloseRows, error: waitingCloseErr } = await supabaseAdmin
     .from('conversations')
     .select(
-      'id, status, customer_reminder_sent_at, last_customer_message_at',
+      'id, status, customer_reminder_sent_at, last_customer_message_at, waiting_status',
     )
     .eq('organization_id', organizationId)
     .eq('waiting_status', 'waiting_customer')
@@ -126,7 +134,10 @@ export async function handleLifecycleScanOrg(job) {
 
   let waitingCloseCandidates = 0;
   let enqueuedWaitingClose = 0;
+  console.log('waitingCloseRows', waitingCloseRows);
   for (const conv of waitingCloseRows ?? []) {
+    console.log('conv', conv?.id);
+    console.log('isWaitingCloseAfterReminderCandidate', isWaitingCloseAfterReminderCandidate(conv, waitingCloseCutoff));
     if (!isWaitingCloseAfterReminderCandidate(conv, waitingCloseCutoff)) continue;
     waitingCloseCandidates += 1;
     const result = await enqueueAutomationJob({
@@ -139,6 +150,7 @@ export async function handleLifecycleScanOrg(job) {
       idempotencyKey: lifecycleAutoCloseWaitingIdempotencyKey(organizationId, conv.id),
       maxAttempts: 5,
     });
+    console.log('result auto close waiting', result);
     if (result.jobId && !result.skipped) enqueuedWaitingClose += 1;
   }
 
@@ -169,6 +181,7 @@ export async function enqueueLifecycleScansForAllOrgs(scanBucketKey) {
   if (error) throw new Error(error.message);
 
   for (const org of orgs ?? []) {
+    console.log('enqueueing lifecycle scan for organization', org.id);
     await enqueueAutomationJob({
       organizationId: org.id,
       jobType: 'lifecycle.scan_org',

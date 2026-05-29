@@ -31,6 +31,13 @@ async function fetchInvitePreview(token) {
   return body
 }
 
+function inviteReturnPath(token) {
+  return {
+    pathname: '/invite',
+    search: `?token=${encodeURIComponent(token)}`,
+  }
+}
+
 export default function InvitePage() {
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
@@ -54,25 +61,8 @@ export default function InvitePage() {
   const [acceptError, setAcceptError] = useState('')
   const [accepting, setAccepting] = useState(false)
 
-  /** Guests: send to login with return path (token stays in localStorage too). */
-  useEffect(() => {
-    if (authLoading) return
-    if (!resolvedToken) return
-    if (user) return
-
-    navigate('/login', {
-      replace: true,
-      state: {
-        from: {
-          pathname: '/invite',
-          search: `?token=${encodeURIComponent(resolvedToken)}`,
-        },
-      },
-    })
-  }, [authLoading, resolvedToken, user, navigate])
-
   const loadPreview = useCallback(async () => {
-    if (!resolvedToken || !user) return
+    if (!resolvedToken) return
     setPreviewPhase('loading')
     setFetchError(null)
     try {
@@ -86,12 +76,12 @@ export default function InvitePage() {
       else setFetchError('invalid')
       setPreviewPhase('error')
     }
-  }, [resolvedToken, user])
+  }, [resolvedToken])
 
   useEffect(() => {
-    if (authLoading || !resolvedToken || !user) return
+    if (!resolvedToken) return
     void loadPreview()
-  }, [authLoading, resolvedToken, user, loadPreview])
+  }, [resolvedToken, loadPreview])
 
   async function accept() {
     if (!resolvedToken) return
@@ -144,10 +134,6 @@ export default function InvitePage() {
     )
   }
 
-  if (!user) {
-    return <InviteLoading message="Redirecting to sign in…" />
-  }
-
   if (previewPhase === 'loading' || previewPhase === 'idle') {
     return <InviteLoading message="Loading invitation…" />
   }
@@ -182,6 +168,54 @@ export default function InvitePage() {
 
   const orgName = preview?.organization?.name ?? 'Workspace'
   const role = preview?.invite?.role ?? '—'
+  const invitedEmail = preview?.invite?.email ?? null
+
+  if (!user) {
+    return (
+      <InviteShell>
+        <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#3ECF8E]/90">You&apos;re invited</p>
+        <h1 className="mt-2 text-2xl font-semibold text-white">{orgName}</h1>
+        <p className="mt-3 text-sm text-slate-400">
+          Role: <span className="font-medium text-slate-200">{role}</span>
+        </p>
+        {invitedEmail ? (
+          <p className="mt-2 text-xs text-slate-500">
+            Invited email: <span className="text-slate-400">{invitedEmail}</span>
+          </p>
+        ) : null}
+        <p className="mt-6 text-sm leading-relaxed text-slate-400">
+          Create an account with the invited email address, or sign in if you already have one.
+        </p>
+        <div className="mt-8 flex flex-col gap-3">
+          <button
+            type="button"
+            onClick={() =>
+              navigate('/register', {
+                state: {
+                  inviteEmail: invitedEmail,
+                  from: inviteReturnPath(resolvedToken),
+                },
+              })
+            }
+            className="rounded-lg bg-[#3ECF8E] py-3 text-sm font-semibold text-slate-900 transition hover:bg-[#35c883]"
+          >
+            Create account to join
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              navigate('/login', {
+                state: { from: inviteReturnPath(resolvedToken) },
+              })
+            }
+            className="rounded-lg border border-[#2b3858] py-3 text-sm font-medium text-slate-200 transition hover:border-[#3ECF8E]/40"
+          >
+            I already have an account
+          </button>
+        </div>
+      </InviteShell>
+    )
+  }
 
   return (
     <InviteShell>
@@ -190,9 +224,9 @@ export default function InvitePage() {
       <p className="mt-3 text-sm text-slate-400">
         Role: <span className="font-medium text-slate-200">{role}</span>
       </p>
-      {preview?.invite?.email ? (
+      {invitedEmail ? (
         <p className="mt-2 text-xs text-slate-500">
-          Invited email: <span className="text-slate-400">{preview.invite.email}</span>
+          Invited email: <span className="text-slate-400">{invitedEmail}</span>
         </p>
       ) : null}
 

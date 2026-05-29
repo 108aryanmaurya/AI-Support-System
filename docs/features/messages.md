@@ -13,6 +13,7 @@ Messages are rows in `messages` with a **sender_type** (customer, agent, system,
 - Delivery states in UI (sending / sent / failed)
 - **Collision warning** — if another agent sent within `STALE_THREAD_WINDOW_SEC` (default 30s), API returns `409` with `code: stale_thread`; client may retry with `acknowledge_stale_thread: true`
 - **Assignee-only customer replies** — agents cannot send customer-visible messages on threads assigned to someone else (`403`); unassigned or own assignment OK; admins (`assign_others`) may override. Internal notes are not restricted.
+- **Email by default** — inbox agent send emails the customer when they have a valid address and the org has an active email channel, regardless of `conversation.channel_type` (email threads require delivery; web threads still update in-app if email sidecar fails).
 - Customer upsert API for tests and integrations
 
 ## Architecture

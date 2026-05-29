@@ -52,26 +52,6 @@ export class EmailAdapter {
       };
     }
 
-    if (conversation.channel_type !== 'email') {
-      return {
-        ok: false,
-        status: 'failed',
-        external_message_id: null,
-        error: 'Conversation is not an email channel.',
-        messageId: null,
-      };
-    }
-
-    if (!conversation.channel_id) {
-      return {
-        ok: false,
-        status: 'failed',
-        external_message_id: null,
-        error: 'Conversation is missing channel_id.',
-        messageId: null,
-      };
-    }
-
     if (!conversation.assigned_to_member_id) {
       return {
         ok: false,

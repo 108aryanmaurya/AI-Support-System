@@ -39,9 +39,14 @@ export function useInboxSidebarActions(organizationId, handlers) {
       if (!silent) setLoadingConversations(true)
       if (!silent) setError('')
       try {
-        const { activeTagId: tagId, activeAiIntent: aiIntent } = useInboxStore.getState()
+        const { activeTagId: tagId, activeAiIntent: aiIntent, conversationPagination } =
+          useInboxStore.getState()
+        const page = opts.page ?? conversationPagination.page ?? 1
+        const pageSize = opts.pageSize ?? conversationPagination.pageSize ?? 50
         const response = await apiFetch(
           conversationsListUrl(organizationId, filterType, {
+            page,
+            pageSize,
             tagId: tagId || undefined,
             aiIntent: filterType === 'ai_intent' ? aiIntent || undefined : undefined,
           }),

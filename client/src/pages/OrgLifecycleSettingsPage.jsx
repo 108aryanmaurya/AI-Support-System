@@ -42,7 +42,11 @@ function NumberField({ label, description, value, onChange, disabled, min = 1, m
         max={max}
         disabled={disabled}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => {
+          const parsed = Number(e.target.value)
+          if (!Number.isFinite(parsed)) return
+          onChange(parsed)
+        }}
         className="mt-1 w-full max-w-[8rem] rounded-md border border-[#334060] bg-[#0f1728] px-2 py-1.5 text-white outline-none focus:border-[#4f6290] disabled:opacity-40"
       />
     </label>
@@ -60,6 +64,35 @@ export default function OrgLifecycleSettingsPage() {
   const [error, setError] = useState('')
   const [saved, setSaved] = useState(false)
   const [lifecycle, setLifecycle] = useState(null)
+
+  const sanitizeLifecyclePayload = useCallback((raw) => {
+    if (!raw || typeof raw !== 'object') return {}
+    const out = {}
+    const boolKeys = [
+      'enabled',
+      'reopen_on_customer_message',
+      'set_waiting_customer_on_agent_reply',
+      'set_waiting_agent_on_customer_reply',
+      'customer_reminder_enabled',
+    ]
+    for (const key of boolKeys) {
+      if (Object.prototype.hasOwnProperty.call(raw, key)) {
+        out[key] = Boolean(raw[key])
+      }
+    }
+    const dayKeys = [
+      'resolved_auto_close_days',
+      'waiting_reminder_days',
+      'waiting_auto_close_after_reminder_days',
+      'new_conversation_after_closed_days',
+    ]
+    for (const key of dayKeys) {
+      if (!Object.prototype.hasOwnProperty.call(raw, key)) continue
+      const n = Number(raw[key])
+      if (Number.isFinite(n) && n >= 1) out[key] = Math.round(n)
+    }
+    return out
+  }, [])
 
   const load = useCallback(async () => {
     if (!orgId) return
@@ -85,9 +118,11 @@ export default function OrgLifecycleSettingsPage() {
     setError('')
     setSaved(false)
     try {
-      const res = await patchOrgLifecycleSettings(orgId, lifecycle)
+      const payload = sanitizeLifecyclePayload(lifecycle)
+      const res = await patchOrgLifecycleSettings(orgId, payload)
       setLifecycle(res?.lifecycle ?? lifecycle)
       setSaved(true)
+      await load()
     } catch (e) {
       setError(e.message || 'Failed to save lifecycle settings.')
     } finally {

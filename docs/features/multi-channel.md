@@ -10,7 +10,7 @@ Each **conversation** belongs to exactly one **channel** (`channel_type` + `chan
 - `channel_integrations` for provider config (e.g. Resend, inbound addresses)
 - List channels: `GET /api/org/:orgId/channels`
 - **Web**: public incoming POST + web adapter for outbound
-- **Email**: inbound webhook, threading, Resend outbound (or mock)
+- **Email**: inbound webhook, threading, Resend outbound (or mock); agent inbox send also emails the customer on **any** channel when `customers.email` is set and an org email channel exists
 - **Email DNS setup (admin UI)** — subdomain verification via Resend; see [org-email-channel.md](./org-email-channel.md)
 - WhatsApp / Messenger: types in DB only; outbound **501**
 

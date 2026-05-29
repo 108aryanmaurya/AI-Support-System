@@ -153,6 +153,7 @@ export async function dryRunWorkflowForConversation({
  * @param {boolean} [params.applyActions]
  * @param {boolean} [params.isBusinessHours]
  * @param {number} [params.slaMinutes]
+ * @param {'first_response' | 'next_response'} [params.breachType]
  */
 export async function evaluateWorkflowForConversation({
   organizationId,
@@ -163,6 +164,7 @@ export async function evaluateWorkflowForConversation({
   applyActions = false,
   isBusinessHours,
   slaMinutes,
+  breachType,
 }) {
   if (!(await isWorkflowAutomationEnabled(organizationId))) {
     return { skipped: true, reason: 'workflow_disabled', matched: [], apply: null };
@@ -234,6 +236,7 @@ export async function evaluateWorkflowForConversation({
       messageId,
       workflowTrigger: trigger,
       slaMinutes,
+      breachType,
       matched,
     });
     if (trigger === 'sla_warning' && matched.length > 0) {
@@ -282,6 +285,7 @@ export async function runSlaWarningWorkflowAutomation({
   organizationId,
   conversationId,
   slaMinutes,
+  breachType,
 }) {
   if (!organizationId || !conversationId) {
     throw new WorkflowFatalError(
@@ -294,6 +298,7 @@ export async function runSlaWarningWorkflowAutomation({
     trigger: 'sla_warning',
     applyActions: true,
     slaMinutes,
+    breachType,
   });
 }
 

@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../../config/supabase.js';
 import { handleNotifyAssignment } from './jobHandlers/notifyAssignment.js';
+import { handleNotifyUnassignment } from './jobHandlers/notifyUnassignment.js';
 import { handleNotifyStaffInbound } from './jobHandlers/notifyStaffInbound.js';
 import { handleNotifySlaWarning } from './jobHandlers/notifySlaWarning.js';
 import { handleSlaScanOrg } from './jobHandlers/slaScanOrg.js';
@@ -10,6 +11,7 @@ import { handleWorkflowTagAdded } from './jobHandlers/workflowTagAdded.js';
 import { handleWorkflowSla } from './jobHandlers/workflowSla.js';
 import { handleWorkflowScheduleOrg } from './jobHandlers/workflowScheduleOrg.js';
 import { handleAutoRoute } from './jobHandlers/autoRoute.js';
+import { handleUnassignedScanOrg } from './jobHandlers/unassignedScanOrg.js';
 import { handleReassignConversation } from './jobHandlers/reassignConversation.js';
 import { handleLifecycleScanOrg } from './jobHandlers/lifecycleScanOrg.js';
 import { handleLifecycleAutoCloseResolved } from './jobHandlers/lifecycleAutoCloseResolved.js';
@@ -24,6 +26,7 @@ const HANDLERS = {
   'notify.staff_inbound': handleNotifyStaffInbound,
   'notify.sla_warning': handleNotifySlaWarning,
   'notify.assignment': handleNotifyAssignment,
+  'notify.unassignment': handleNotifyUnassignment,
   'sla.scan_org': handleSlaScanOrg,
   'knowledge.ingest_source': handleKnowledgeIngestSource,
   'ai.classify_inbound': handleClassifyInbound,
@@ -32,6 +35,7 @@ const HANDLERS = {
   'ai.workflow_sla': handleWorkflowSla,
   'ai.workflow_schedule_org': handleWorkflowScheduleOrg,
   'assignment.auto_route': handleAutoRoute,
+  'assignment.scan_unassigned_org': handleUnassignedScanOrg,
   'assignment.reassign': handleReassignConversation,
   'lifecycle.scan_org': handleLifecycleScanOrg,
   'lifecycle.auto_close_resolved': handleLifecycleAutoCloseResolved,

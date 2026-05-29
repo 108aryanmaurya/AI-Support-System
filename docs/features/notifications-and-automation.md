@@ -6,7 +6,7 @@ Side effects that must not block HTTP requests (staff email, SLA scanning) run t
 
 ## Capabilities
 
-- Job types: `notify.staff_inbound`, `notify.sla_warning`, `notify.assignment`, `sla.scan_org`, `knowledge.ingest_source`, `ai.classify_inbound`, `ai.workflow_inbound`, `ai.workflow_tag_added`, `ai.workflow_sla`, `ai.workflow_schedule_org`, `assignment.auto_route`
+- Job types: `notify.staff_inbound`, `notify.sla_warning`, `notify.assignment`, `notify.unassignment`, `sla.scan_org`, `knowledge.ingest_source`, `ai.classify_inbound`, `ai.workflow_inbound`, `ai.workflow_tag_added`, `ai.workflow_sla`, `ai.workflow_schedule_org`, `assignment.auto_route`
 - Worker polls via `claim_automation_jobs` RPC
 - Org settings in `organizations.settings.automation` (SLA minutes, notify toggles) — edited via [org-ai-settings](./org-ai-settings.md)
 - Optional internal email via Resend env vars
@@ -46,10 +46,12 @@ flowchart LR
 | Event | Job / action |
 |-------|----------------|
 | Customer inbound message | `notify.staff_inbound` (from `messages.controller`, `emailWebhook.service`) |
-| Conversation assigned | `notify.assignment` (from `conversations.controller` / `conversationUpdate.service`) |
+| Conversation assigned | `notify.assignment` (new assignee) + `notify.unassignment` (prior assignee when reassigned or unassigned) — manual PATCH, auto-route, reassign |
+| SLA breach detected | `notify.sla_warning` from `sla.scan_org` when `sla_notify_enabled` (assignee if assigned, else `fallback_notify_member_ids` / admin); workflow `notify` uses same job with dedupe key per breach type/day |
 | Cron SLA scan | `POST /api/internal/cron/sla-scan` → `sla.scan_org` per org per **15-minute UTC bucket** (`slaScanOrgIdempotencyKey`) — run cron **every 15 minutes** → `sla.first_response_breach` + enqueue `ai.workflow_sla` |
 | Cron lifecycle scan | `POST /api/internal/cron/lifecycle-scan` → `lifecycle.scan_org` per org per 15-minute bucket → `lifecycle.auto_close_resolved`, `lifecycle.send_customer_reminder`, `lifecycle.auto_close_waiting` (requires `settings.lifecycle.enabled`) — see [conversation-status-handling.md](./conversation-status-handling.md) |
 | Cron schedule workflow | `POST /api/internal/cron/workflow-schedule-scan` → `ai.workflow_schedule_org` (orgs with `workflow.schedule.enabled`) |
+| Cron unassigned backstop | `POST /api/internal/cron/unassigned-auto-route-scan` → `assignment.scan_unassigned_org` per org per UTC day → `assignment.auto_route` for up to 100 active unassigned threads (requires `auto_route_enabled` + org AI on) — run **once daily** |
 | Knowledge file upload | `knowledge.ingest_source` → article publish + chunks |
 
 ## Connections

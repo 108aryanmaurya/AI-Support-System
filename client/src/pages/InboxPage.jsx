@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import {
   Bell,
   ChevronDown,
@@ -63,7 +63,6 @@ import {
   conversationCountsUrl,
   conversationMembersUrl,
   conversationMessagesUrl,
-  conversationsListUrl,
   patchConversationSpamUrl,
 } from '../services/inboxApi.js'
 import {
@@ -72,7 +71,13 @@ import {
   getConversationLifecycleListBadges,
 } from '@ai-support/shared'
 import { fetchOrgLifecycleSettings } from '../services/lifecycleSettingsApi.js'
-import { DEFAULT_INBOX_FILTER, useInboxStore } from '../stores/inboxStore.js'
+import { useInboxStore } from '../stores/inboxStore.js'
+import { INBOX_AI_INTENT_OPTIONS } from '../config/inboxFilters.js'
+import {
+  inboxListParamsReady,
+  mergeInboxSearchParams,
+  parseInboxListParams,
+} from '../utils/inboxUrlParams.js'
 import {
   CONVERSATION_ACTIVE_STATUSES,
   CONVERSATION_ASSIGNMENT_TYPES,
@@ -104,7 +109,9 @@ function messageBubbleClassName(senderType, delivery) {
   if (delivery === 'sending') return 'border border-amber-400/40 bg-[#2f3a5c]'
   const st = typeof senderType === 'string' ? senderType : 'customer'
   if (st === 'internal_note') return 'border border-amber-500/35 bg-[#2d2418]'
-  if (st === 'system') return 'border border-slate-600/60 bg-[#242a38]'
+  if (st === 'system') return 'bg-[#242a38]'
+  if (st === 'agent') return 'bg-emerald-700'
+  if (st === 'customer') return 'bg-[#334680]'
   if (st === 'ai') return 'border border-violet-500/35 bg-[#2a2438]'
   return 'bg-[#334680]'
 }
@@ -225,24 +232,45 @@ const ConversationListRow = memo(
     prev.onSelect === next.onSelect,
 )
 
+function InboxChatEmptyState() {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col items-center justify-center px-6 text-center">
+      <div className="mb-4 inline-flex h-14 w-14 items-center justify-center rounded-full bg-[#1a2338] text-slate-300">
+        <MessageSquare size={28} aria-hidden />
+      </div>
+      <h3 className="text-lg font-semibold text-white">No conversation selected</h3>
+      <p className="mt-2 max-w-sm text-sm text-slate-400">
+        Choose a conversation from the list to view messages and reply.
+      </p>
+    </div>
+  )
+}
+
 export default function InboxPage() {
   const { orgId: orgFromRoute } = useParams()
+  const [searchParams, setSearchParams] = useSearchParams()
+  const inboxListParams = useMemo(() => parseInboxListParams(searchParams), [searchParams])
+  const conversationIdFromUrl = inboxListParams.conversation
+  /** Active thread is driven by `?conversation=` in the URL. */
+  const activeConversationId = conversationIdFromUrl
+  const listParamsKey = useMemo(
+    () =>
+      `${inboxListParams.filter}|${inboxListParams.page}|${inboxListParams.pageSize}|${inboxListParams.tagId ?? ''}|${inboxListParams.aiIntent ?? ''}`,
+    [inboxListParams],
+  )
   const organizationId =
     (typeof orgFromRoute === 'string' && orgFromRoute.trim()) ||
     ''
   const { user } = useAuth()
   const { organizations } = useOrganizationContext()
   const conversations = useInboxStore((state) => state.conversations)
-  const activeConversationId = useInboxStore((state) => state.activeConversationId)
   const conversationPagination = useInboxStore((state) => state.conversationPagination)
   const messagesByConversationId = useInboxStore((state) => state.messagesByConversationId)
   const activeViewersByConversationId = useInboxStore((state) => state.activeViewersByConversationId)
   const typingState = useInboxStore((state) => state.typingState)
-  const setConversationsPage = useInboxStore((state) => state.setConversationsPage)
   const setActiveConversationId = useInboxStore((state) => state.setActiveConversationId)
   const setMessagesForConversation = useInboxStore((state) => state.setMessagesForConversation)
   const setFilterCounts = useInboxStore((state) => state.setFilterCounts)
-  const cacheConversationFilterPage = useInboxStore((state) => state.cacheConversationFilterPage)
   const invalidateConversationFilterCache = useInboxStore((state) => state.invalidateConversationFilterCache)
   const upsertConversation = useInboxStore((state) => state.upsertConversation)
 
@@ -274,13 +302,7 @@ export default function InboxPage() {
   const {
     runConversationQuery,
     loadFilterCounts,
-    onSelectSidebarFilter,
-    onTagFilterChange,
     mentionCue,
-    activeFilter,
-    activeTagId,
-    activeAiIntent,
-    onAiIntentFilterChange,
     filterCounts,
     autoAssignOnSelect,
     setAutoAssignOnSelect,
@@ -588,14 +610,14 @@ export default function InboxPage() {
   )
 
   const handleRealtimeReconnect = useCallback(async () => {
-    const filter = useInboxStore.getState().activeFilter
-    await runConversationQuery(filter, { silent: true })
+    const { filter, page, pageSize } = parseInboxListParams(searchParams)
+    await runConversationQuery(filter, { silent: true, page, pageSize })
     await loadFilterCounts()
-    const convId = useInboxStore.getState().activeConversationId
+    const convId = conversationIdFromUrl
     if (convId) {
       await loadMessages(convId, { silent: true })
     }
-  }, [runConversationQuery, loadFilterCounts, loadMessages])
+  }, [runConversationQuery, loadFilterCounts, loadMessages, searchParams, conversationIdFromUrl])
 
   useRealtimeInbox({
     organizationId,
@@ -631,7 +653,6 @@ export default function InboxPage() {
     () => conversations.find((item) => item.id === activeConversationId) ?? null,
     [conversations, activeConversationId],
   )
-
   const inboxPerms = useInboxConversationPermissions({
     can,
     myMemberId: myMembership?.id,
@@ -761,38 +782,50 @@ export default function InboxPage() {
 
   const listTotal = conversationPagination.total ?? conversations.length
 
+  const patchInboxUrl = useCallback(
+    (updates) => {
+      setSearchParams((prev) => mergeInboxSearchParams(prev, updates), { replace: true })
+    },
+    [setSearchParams],
+  )
+
   useEffect(() => {
-    if (!organizationId) return undefined
+    if (!organizationId) return
     invalidateConversationFilterCache()
-    useInboxStore.setState({ activeFilter: DEFAULT_INBOX_FILTER })
+  }, [organizationId, invalidateConversationFilterCache])
+
+  useEffect(() => {
+    if (!organizationId) return
+    if (inboxListParamsReady(searchParams)) return
+    setSearchParams((prev) => mergeInboxSearchParams(prev, {}), { replace: true })
+  }, [organizationId, searchParams, setSearchParams])
+
+  useEffect(() => {
+    if (!organizationId || !inboxListParamsReady(searchParams)) return undefined
+
+    const { filter, page, pageSize, tagId, aiIntent } = inboxListParams
+    useInboxStore.setState({
+      activeFilter: filter,
+      activeTagId: tagId,
+      activeAiIntent: filter === 'ai_intent' ? aiIntent : null,
+    })
+
     let cancelled = false
     ;(async () => {
-      setLoadingConversations(true)
       setError('')
       try {
-        const filter = DEFAULT_INBOX_FILTER
-        const response = await apiFetch(conversationsListUrl(organizationId, filter))
+        await runConversationQuery(filter, { page, pageSize })
         if (cancelled) return
-        setConversationsPage({
-          items: response?.items ?? [],
-          pagination: response?.pagination,
-        })
-        cacheConversationFilterPage(filter, {
-          items: response?.items ?? [],
-          pagination: response?.pagination,
-        })
         const counts = await apiFetch(conversationCountsUrl(organizationId))
         if (!cancelled) setFilterCounts(counts)
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Failed to load conversations.')
-      } finally {
-        if (!cancelled) setLoadingConversations(false)
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [organizationId, invalidateConversationFilterCache, setConversationsPage, cacheConversationFilterPage, setFilterCounts])
+  }, [organizationId, listParamsKey, searchParams, inboxListParams, runConversationQuery, setFilterCounts])
 
   useEffect(() => {
     if (!activeConversationId) return undefined
@@ -838,9 +871,53 @@ export default function InboxPage() {
     [organizationId, upsertConversation, loadFilterCounts],
   )
 
+  const handleSelectSidebarFilter = useCallback(
+    (filterType) => {
+      patchInboxUrl({
+        filter: filterType,
+        page: 1,
+        pageSize: inboxListParams.pageSize,
+        conversation: null,
+        aiIntent:
+          filterType === 'ai_intent'
+            ? inboxListParams.aiIntent ?? INBOX_AI_INTENT_OPTIONS[0]?.value ?? 'general_inquiry'
+            : null,
+      })
+    },
+    [patchInboxUrl, inboxListParams.pageSize, inboxListParams.aiIntent],
+  )
+
+  const handleTagFilterChange = useCallback(
+    (tagId) => {
+      patchInboxUrl({
+        filter: inboxListParams.filter,
+        page: 1,
+        pageSize: inboxListParams.pageSize,
+        tagId: tagId || null,
+        conversation: null,
+      })
+    },
+    [patchInboxUrl, inboxListParams.filter, inboxListParams.pageSize],
+  )
+
+  const handleAiIntentFilterChange = useCallback(
+    (intent) => {
+      patchInboxUrl({
+        filter: 'ai_intent',
+        page: 1,
+        pageSize: inboxListParams.pageSize,
+        aiIntent: intent || null,
+        conversation: null,
+      })
+    },
+    [patchInboxUrl, inboxListParams.pageSize],
+  )
+
   const handleSelectConversation = useCallback(
     (id) => {
-      setActiveConversationId(id)
+      if (organizationId && id) {
+        setSearchParams((prev) => mergeInboxSearchParams(prev, { conversation: id }), { replace: true })
+      }
       const conv = useInboxStore.getState().conversations.find((c) => c.id === id)
       const myMid = myMembership?.id
       if (
@@ -854,8 +931,23 @@ export default function InboxPage() {
         void assignConversation(id, myMid)
       }
     },
-    [setActiveConversationId, organizationId, myMembership?.id, assignConversation],
+    [organizationId, setSearchParams, myMembership?.id, assignConversation],
   )
+
+  useEffect(() => {
+    if (!organizationId) return
+    const storeId = useInboxStore.getState().activeConversationId
+    if (conversationIdFromUrl === storeId) return
+    setActiveConversationId(conversationIdFromUrl)
+  }, [organizationId, conversationIdFromUrl, setActiveConversationId])
+
+  useEffect(() => {
+    if (conversationIdFromUrl) return
+    setDraftMessage('')
+    setPendingSuggestLineage(null)
+    setAiPreview(null)
+    setError('')
+  }, [conversationIdFromUrl])
 
   const patchConversationDetails = useCallback(
     async (patch) => {
@@ -871,8 +963,8 @@ export default function InboxPage() {
           keys.length > 0 &&
           keys.every((k) => k === 'assignedToMemberId' || k === 'assignmentType')
         if (!assignmentOnly) {
-          const filterNow = useInboxStore.getState().activeFilter
-          await runConversationQuery(filterNow, { silent: true })
+          const { filter: filterNow, page, pageSize } = parseInboxListParams(searchParams)
+          await runConversationQuery(filterNow, { silent: true, page, pageSize })
         }
         await loadFilterCounts()
       } catch (err) {
@@ -881,7 +973,7 @@ export default function InboxPage() {
         setConversationDetailSaving(false)
       }
     },
-    [organizationId, activeConversationId, upsertConversation, runConversationQuery, loadFilterCounts],
+    [organizationId, activeConversationId, upsertConversation, runConversationQuery, loadFilterCounts, searchParams],
   )
 
   const applySpamFlag = useCallback(
@@ -896,8 +988,8 @@ export default function InboxPage() {
         })
         const updated = res?.conversation
         if (updated) upsertConversation(updated)
-        const filterNow = useInboxStore.getState().activeFilter
-        await runConversationQuery(filterNow, { silent: true })
+        const { filter: filterNow, page, pageSize } = parseInboxListParams(searchParams)
+        await runConversationQuery(filterNow, { silent: true, page, pageSize })
         await loadFilterCounts()
       } catch (err) {
         setError(err?.message || 'Could not update spam flag.')
@@ -905,7 +997,7 @@ export default function InboxPage() {
         setSpamUpdating(false)
       }
     },
-    [organizationId, upsertConversation, runConversationQuery, loadFilterCounts],
+    [organizationId, upsertConversation, runConversationQuery, loadFilterCounts, searchParams],
   )
 
   const trimmedDraft = draftMessage.trim()
@@ -1010,19 +1102,19 @@ export default function InboxPage() {
     <main className="flex h-full min-h-0 flex-1 flex-col overflow-hidden bg-[#0f1422] text-slate-100">
       <div className="grid h-full min-h-0 flex-1 grid-cols-[260px_minmax(0,1fr)_minmax(0,2fr)_minmax(0,1.1fr)] gap-0 overflow-hidden">
         <InboxSidebar
-          activeFilter={activeFilter}
+          activeFilter={inboxListParams.filter}
           filterCounts={filterCounts}
-          onSelectSidebarFilter={onSelectSidebarFilter}
+          onSelectSidebarFilter={handleSelectSidebarFilter}
           mentionCue={mentionCue}
           autoAssignOnSelect={autoAssignOnSelect}
           setAutoAssignOnSelect={setAutoAssignOnSelect}
           autoAssignRestricted={inboxPerms.autoAssignOnSelect.restricted}
           autoAssignRestrictedReason={inboxPerms.autoAssignOnSelect.reason}
           orgTags={orgTags}
-          activeTagId={activeTagId}
-          onTagFilterChange={onTagFilterChange}
-          activeAiIntent={activeAiIntent}
-          onAiIntentFilterChange={onAiIntentFilterChange}
+          activeTagId={inboxListParams.tagId}
+          onTagFilterChange={handleTagFilterChange}
+          activeAiIntent={inboxListParams.aiIntent}
+          onAiIntentFilterChange={handleAiIntentFilterChange}
         />
 
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-[#27314a] bg-[#101729]">
@@ -1076,6 +1168,15 @@ export default function InboxPage() {
         </section>
 
         <section className="relative flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-[#27314a] bg-[#181f32]">
+          {!activeConversationId ? (
+            <>
+              <div className="flex shrink-0 items-center justify-between border-b border-[#27314a] px-3 py-4">
+                <h3 className="text-2xl font-semibold text-slate-400">Inbox</h3>
+              </div>
+              <InboxChatEmptyState />
+            </>
+          ) : (
+            <>
           <div className="flex shrink-0 items-center justify-between border-b border-[#27314a] px-3 py-4">
             <h3 className="text-2xl font-semibold">{selectedConversation ? selectedConversation.source ?? 'Messenger' : 'Messenger'}</h3>
             <div className="flex items-center gap-2 text-slate-300">
@@ -1094,7 +1195,7 @@ export default function InboxPage() {
           </div>
           {selectedConversation ? (
             <div className="shrink-0 border-b border-[#27314a] px-3 py-2 text-xs text-slate-300">
-              Active viewers: {activeViewers.length}
+              Active viewers: {activeViewers.length} {"       "} {selectedConversation?.id} {" ------ "} {selectedConversation?.customer_id} 
             </div>
           ) : null}
 
@@ -1123,18 +1224,36 @@ export default function InboxPage() {
             {messages.map((message) => {
               const delivery = getMessageDeliveryStatus(message)
               const st = message.sender_type ?? 'customer'
+              const isSystem = st === 'system'
+              const isAgent = st === 'agent'
+              const isCustomer = st === 'customer'
               const showAgentDelivery = st === 'agent'
               const statusLabel =
                 delivery === 'sending' ? 'Sending' : delivery === 'failed' ? 'Failed' : 'Sent'
               return (
-                <div key={message.id} className="mt-4 flex items-end justify-between gap-2">
+                <div
+                  key={message.id}
+                  className={`mt-4 flex items-end gap-2 ${
+                    isSystem
+                      ? 'justify-center'
+                      : isAgent
+                        ? 'justify-end'
+                        : isCustomer
+                          ? 'justify-start'
+                          : 'justify-start'
+                  }`}
+                >
+                  {!isAgent && !isSystem ? (
+                    <div
+                      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${messageAvatarClass(st)}`}
+                    >
+                      {messageSenderInitial(st)}
+                    </div>
+                  ) : null}
                   <div
-                    className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${messageAvatarClass(st)}`}
-                  >
-                    {messageSenderInitial(st)}
-                  </div>
-                  <div
-                    className={`max-w-[75%] rounded-2xl px-4 py-2 text-sm ${messageBubbleClassName(st, delivery)}`}
+                    className={`${isSystem ? 'max-w-[60%] px-3 py-1.5 text-xs' : 'max-w-[75%] px-4 py-2 text-sm'} rounded-2xl ${messageBubbleClassName(st, delivery)} ${
+                      isSystem ? 'text-center' : ''
+                    }`}
                   >
                     <p className="whitespace-pre-wrap">
                       <MessageContentRich text={message.content} />
@@ -1169,6 +1288,13 @@ export default function InboxPage() {
                       ) : null}
                     </div>
                   </div>
+                  {isAgent ? (
+                    <div
+                      className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${messageAvatarClass(st)}`}
+                    >
+                      {messageSenderInitial(st)}
+                    </div>
+                  ) : null}
                 </div>
               )
             })}
@@ -1264,6 +1390,8 @@ export default function InboxPage() {
               setAiPreview(null)
             }}
           />
+            </>
+          )}
         </section>
 
         <aside className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#141b2d] text-sm">

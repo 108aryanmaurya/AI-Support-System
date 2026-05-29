@@ -100,10 +100,10 @@ export default function LoginPage() {
           New here?{' '}
           <button
             type="button"
-            onClick={() => navigate('/register')}
+            onClick={() => navigate('/register', { state: location.state })}
             className="font-semibold text-[#1f8d5f] transition hover:text-[#166c46]"
           >
-            Start free trial
+            Create account
           </button>
         </p>
 

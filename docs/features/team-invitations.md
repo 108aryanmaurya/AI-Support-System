@@ -6,7 +6,8 @@
 
 ## Capabilities
 
-- Single and batch invite creation
+- Single and batch invite creation with **transactional invite email** (Resend via `NOTIFICATION_RESEND_API_KEY` / `NOTIFICATION_EMAIL_FROM`)
+- Rejects invites for emails that are **already ACTIVE teammates** or have a **pending invite** in the same org
 - List pending invites (settings + API)
 - Public preview by token (no auth)
 - Accept invite (authenticated)
@@ -34,6 +35,7 @@ sequenceDiagram
 | Pages | `client/src/pages/InvitePage.jsx`, `OrgTeammatesPage.jsx`, `OrgInviteTeammatesPage.jsx`, `TeammatesInviteDeepLink.jsx` |
 | Utils | `client/src/utils/pendingInviteStorage.js`, `parseInviteEmails.js` |
 | Service | `server/src/services/org.service.js` (`createInviteRecord`, `acceptInviteForUser`, …) |
+| Invite email | `server/src/services/orgInviteEmail.service.js` → `internalNotificationMail.service.js` |
 | Controller | `server/src/controllers/org.controller.js` |
 | Routes | `server/src/routes/org.routes.js`, `orgWorkspace.routes.js` (invite endpoints) |
 | Schema | `supabase/migrations/20260512100000_multi_organization_saas.sql` (`invites`) |

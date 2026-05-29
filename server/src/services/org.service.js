@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { env } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
+import { sendTeammateInviteEmail } from './orgInviteEmail.service.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -309,6 +310,62 @@ export function newInviteToken() {
 
 const INVITE_TTL_MS = 48 * 60 * 60 * 1000;
 
+/** Normalized emails of ACTIVE members in this organization. */
+async function loadActiveMemberEmailsSet(organizationId) {
+  const { data: rows, error } = await supabaseAdmin
+    .from('organization_members')
+    .select('user_id')
+    .eq('organization_id', organizationId)
+    .eq('status', 'ACTIVE');
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load members.');
+  }
+
+  const ids = [...new Set((rows ?? []).map((r) => r.user_id).filter(Boolean))];
+  const emailSet = new Set();
+  if (ids.length === 0) return emailSet;
+
+  const { data: users, error: uErr } = await supabaseAdmin
+    .from('users')
+    .select('email')
+    .in('id', ids);
+
+  if (uErr) {
+    throw new HttpError(500, uErr.message || 'Failed to load member emails.');
+  }
+
+  for (const u of users ?? []) {
+    const e = normalizeEmail(u?.email ?? '');
+    if (e) emailSet.add(e);
+  }
+  return emailSet;
+}
+
+/** Normalized emails with a non-expired PENDING invite in this organization. */
+async function loadPendingInviteEmailsSet(organizationId) {
+  const pending = await listPendingInvitesForOrganization(organizationId);
+  const emailSet = new Set();
+  for (const row of pending) {
+    const e = normalizeEmail(row?.email ?? '');
+    if (e) emailSet.add(e);
+  }
+  return emailSet;
+}
+
+/**
+ * Rejects invite when the email already belongs to an ACTIVE org member.
+ */
+export async function assertInviteEmailNotExistingMember(organizationId, email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) throw new HttpError(400, 'A valid email is required.');
+
+  const memberEmails = await loadActiveMemberEmailsSet(organizationId);
+  if (memberEmails.has(normalized)) {
+    throw new HttpError(409, 'This person is already a teammate in this workspace.');
+  }
+}
+
 /** Active members with profile rows from `public.users`. */
 export async function listMembersForOrganization(organizationId) {
   const { data: rows, error } = await supabaseAdmin
@@ -412,10 +469,39 @@ export async function createInvitesBatchForOrganization({
   const r = isValidInviteRole(role) ?? 'AGENT';
   const expiresAtIso = new Date(Date.now() + INVITE_TTL_MS).toISOString();
 
+  const { data: orgRow } = await supabaseAdmin
+    .from('organizations')
+    .select('name')
+    .eq('id', organizationId)
+    .limit(1)
+    .maybeSingle();
+  const organizationName =
+    typeof orgRow?.name === 'string' && orgRow.name.trim() ? orgRow.name.trim() : null;
+
+  const memberEmails = await loadActiveMemberEmailsSet(organizationId);
+  const pendingInviteEmails = await loadPendingInviteEmailsSet(organizationId);
+
   const created = [];
   const errors = [];
 
   for (const email of normalized) {
+    if (memberEmails.has(email)) {
+      errors.push({
+        email,
+        code: 'already_member',
+        error: 'This person is already a teammate in this workspace.',
+      });
+      continue;
+    }
+    if (pendingInviteEmails.has(email)) {
+      errors.push({
+        email,
+        code: 'pending_invite',
+        error: 'An invite is already pending for this email.',
+      });
+      continue;
+    }
+
     try {
       const token = newInviteToken();
       const invite = await createInviteRecord({
@@ -426,14 +512,25 @@ export async function createInvitesBatchForOrganization({
         token,
       });
       const link = `${env.publicAppUrl}/invite?token=${encodeURIComponent(token)}`;
-      console.log(`[invite-batch] organization=${organizationId} email=${email} role=${r} link=${link}`);
+      const emailResult = await sendTeammateInviteEmail({
+        organizationId,
+        organizationName,
+        toEmail: email,
+        inviteLink: link,
+        role: r,
+        expiresAtIso,
+      });
       created.push({
         id: invite.id,
         email: invite.email,
         role: invite.role,
         status: invite.status,
         expiresAt: invite.expires_at,
+        emailSent: emailResult.ok === true && emailResult.skipped !== true,
+        emailSkipped: emailResult.skipped === true,
+        ...(emailResult.ok ? {} : { emailError: emailResult.error || 'Invite email failed.' }),
       });
+      pendingInviteEmails.add(email);
     } catch (e) {
       const msg = e instanceof HttpError ? e.message : 'Failed to create invite.';
       errors.push({ email, error: msg });

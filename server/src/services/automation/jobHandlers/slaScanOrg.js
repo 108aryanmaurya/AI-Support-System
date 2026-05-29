@@ -1,6 +1,7 @@
 import {
   CONVERSATION_ACTIVE_STATUSES,
   fifteenMinuteBucketKey,
+  slaBreachNotifyIdempotencyKey,
   slaScanOrgIdempotencyKey,
   workflowSlaNextResponseIdempotencyKey,
   workflowSlaWarningIdempotencyKey,
@@ -8,6 +9,7 @@ import {
 import { supabaseAdmin } from '../../../config/supabase.js';
 import { emitSupportEvent } from '../../analytics/supportEvents.service.js';
 import { getOrgAutomationSettings } from '../orgAutomationSettings.service.js';
+import { scheduleSlaBreachNotification } from '../automationNotify.service.js';
 import { enqueueAutomationJob } from '../enqueueJob.service.js';
 import { isWorkflowAutomationEnabled } from '../../ai/workflowAiGates.service.js';
 import { markConversationSlaAtRisk } from '../../ai/workflowConversationFlags.service.js';
@@ -79,6 +81,23 @@ async function scanFirstResponseSla(organizationId, settings) {
         first_customer_at: firstCustomer.created_at,
       },
     });
+
+    if (settings.sla_notify_enabled !== false) {
+      const day = new Date().toISOString().slice(0, 10);
+      await scheduleSlaBreachNotification({
+        organizationId,
+        conversationId: conv.id,
+        slaMinutes: settings.first_response_sla_minutes,
+        breachType: 'first_response',
+        source: 'scan',
+        idempotencyKey: slaBreachNotifyIdempotencyKey(
+          organizationId,
+          conv.id,
+          'first_response',
+          day,
+        ),
+      });
+    }
 
     if (await isWorkflowAutomationEnabled(organizationId)) {
       const day = new Date().toISOString().slice(0, 10);
@@ -154,6 +173,23 @@ async function scanNextResponseSla(organizationId, settings) {
         waiting_status: row.waiting_status,
       },
     });
+
+    if (settings.sla_notify_enabled !== false) {
+      const day = new Date().toISOString().slice(0, 10);
+      await scheduleSlaBreachNotification({
+        organizationId,
+        conversationId: row.id,
+        slaMinutes,
+        breachType: 'next_response',
+        source: 'scan',
+        idempotencyKey: slaBreachNotifyIdempotencyKey(
+          organizationId,
+          row.id,
+          'next_response',
+          day,
+        ),
+      });
+    }
 
     if (await isWorkflowAutomationEnabled(organizationId)) {
       const day = new Date().toISOString().slice(0, 10);
