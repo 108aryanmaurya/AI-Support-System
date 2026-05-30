@@ -11,6 +11,7 @@ import orgAiRoutes from './orgAi.routes.js';
 import orgKnowledgeRoutes from './orgKnowledge.routes.js';
 import orgTagsRoutes from './orgTags.routes.js';
 import assignmentRoutes from './assignment.routes.js';
+import inboxesRoutes from './inboxes.routes.js';
 import {
   createInviteController,
   createInvitesBatchController,
@@ -39,6 +40,7 @@ router.use('/ai', orgAiRoutes);
 router.use('/knowledge', orgKnowledgeRoutes);
 router.use('/tags', orgTagsRoutes);
 router.use('/assignment', assignmentRoutes);
+router.use('/inboxes', inboxesRoutes);
 router.use('/analytics', orgAnalyticsRoutes);
 router.use('/conversations', conversationsRoutes);
 router.use('/customers', customersRoutes);

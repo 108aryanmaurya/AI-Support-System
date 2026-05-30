@@ -18,8 +18,6 @@ export default function InboxSearchPage() {
     mentionCue,
     activeFilter,
     filterCounts,
-    autoAssignOnSelect,
-    setAutoAssignOnSelect,
   } = useInboxSidebarActions(organizationId, {
     setLoadingConversations: setLoadingNoop,
     setError: setErrorNoop,
@@ -34,8 +32,6 @@ export default function InboxSearchPage() {
           filterCounts={filterCounts}
           onSelectSidebarFilter={onSelectSidebarFilter}
           mentionCue={mentionCue}
-          autoAssignOnSelect={autoAssignOnSelect}
-          setAutoAssignOnSelect={setAutoAssignOnSelect}
         />
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#101729]">
           <div className="shrink-0 border-b border-[#27314a] px-6 py-5">

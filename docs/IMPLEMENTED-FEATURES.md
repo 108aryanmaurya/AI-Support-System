@@ -81,6 +81,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ## 6. Support inbox (conversations)
 
+- **Multiple customer-facing inboxes (v1)** — `inboxes` + `inbox_members`; `conversations.inbox_id`; inbox switcher (`?inbox=`); list/counts/send ACL by membership; admin **Settings → Inboxes**; manual `transfer-inbox` + `conversation.inbox_transferred`; routing on create + workflow `set_inbox`; migration script for legacy `settings.assignment.inboxes` — see [multiple-inbox.md](docs/features/multiple-inbox.md)
 - **Conversation CRUD (API)**
   - Create conversation (customer, channel, priority, assignment, metadata)
   - List with inbox filters and pagination
@@ -109,7 +110,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Inbox state (client)** — Zustand `inboxStore` (conversations, filters, typing, mention cues)
 - **Filter caching & debounced refetch** — faster sidebar switching
 - **Periodic HTTP sync** — backup when realtime is quiet
-- **Auto-assign on select** — optional: assign to self only when thread is **unassigned** (no steal)
+- **Claim-on-first-reply** — sending a customer reply on an **unassigned** thread self-assigns the agent (server; respects `client_request_id` idempotency)
 - **RBAC & collaboration** — org capabilities (`settings.permissions` + role presets); `requirePermission`; assignment steal prevention; `POST .../conversations/:id/claim`; spam/close/analytics/invite gates; audit `GET .../audit/events`; send collision `stale_thread` warning — see [rba-sprints.md](docs/features/rba-sprints.md)
 - **One open conversation per customer** — DB constraint for email/web threads
 - **Active thread index / RPC helpers** — migrations for performant inbox queries
@@ -125,12 +126,13 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Send idempotency** — `client_request_id` + Redis lock/result cache + `agent_send_idempotency` table (no duplicate outbound on retry)
 - **Generic message create** — `POST /api/org/:orgId/messages` (supports internal notes, metadata)
 - **Internal notes** — distinct styling; not customer-visible
-- **@Mentions**
-  - Parse `@handle` in message content
-  - Resolve to member user IDs
-  - Store on `conversations.metadata` for “Mentions” filter
-  - Highlight mentions in message bubbles
-  - Realtime “mention cue” on sidebar
+- **@Mentions & internal notes**
+  - Inbox composer: **Reply** (customer) vs **Internal note** (team-only)
+  - `@` autocomplete for org members on internal notes
+  - Mentions parsed only on internal notes; customer replies do not update mention metadata
+  - `POST .../messages/internal-note` with send idempotency
+  - Email via `notify.mention` (org `mention_notify_enabled`, default on)
+  - Mentions filter + realtime sidebar cue; highlighted `@` in bubbles
 - **Delivery status UI** — sending / sent / failed states in thread
 - **Message validation** — sanitization, max length, incoming payload checks
 - **Customers API** — create or get customer by email (`POST /api/org/:orgId/customers`)

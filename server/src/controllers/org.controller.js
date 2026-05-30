@@ -206,10 +206,15 @@ export async function createInvitesBatchController(req, res, next) {
         : [];
     const roleRaw = req.body?.role;
 
+    const inboxIdRaw = req.body?.inboxId ?? req.body?.inbox_id ?? null;
+    const inboxId =
+      typeof inboxIdRaw === 'string' && inboxIdRaw.trim() ? inboxIdRaw.trim() : null;
+
     const result = await createInvitesBatchForOrganization({
       organizationId,
       emails,
       role: roleRaw,
+      inboxId,
     });
 
     res.status(200).json({

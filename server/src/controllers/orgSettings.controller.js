@@ -67,6 +67,12 @@ function buildAutomationPatch(body) {
       'automation.assignment_notify_enabled',
     );
   }
+  if (Object.prototype.hasOwnProperty.call(autoBody, 'mention_notify_enabled')) {
+    patch.mention_notify_enabled = parseBool(
+      autoBody.mention_notify_enabled,
+      'automation.mention_notify_enabled',
+    );
+  }
   if (Object.prototype.hasOwnProperty.call(autoBody, 'sla_enabled')) {
     patch.sla_enabled = parseBool(autoBody.sla_enabled, 'automation.sla_enabled');
   }

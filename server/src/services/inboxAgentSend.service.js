@@ -1,13 +1,12 @@
-import { resolveMentionUserIdsFromContent } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { assertConversationCustomerReplyAllowed } from './conversationAssignmentPolicy.service.js';
+import { claimConversationOnAgentReplyIfUnassigned } from './claimConversationOnAgentReply.service.js';
 import { getOrgPermissionsForMember } from './orgPermissions.service.js';
 import {
   ensureOrgMembership,
-  listOrganizationMembersWithProfiles,
-  mergeConversationMentionUserIds,
 } from './support.service.js';
+import { assertCanAccessConversation } from './inboxAccess.service.js';
 import { getConversation } from './emailReply.service.js';
 import { sendReplyOutbound } from './channelReplyRouter.service.js';
 import { sanitizeMessage, getMaxMessageLength } from '../utils/incomingMessageValidation.js';
@@ -148,11 +147,38 @@ export async function sendInboxAgentOutboundMessage({
 
   const member = await ensureOrgMembership(userId, organizationId);
   const permissions = await getOrgPermissionsForMember(organizationId, member);
+  await assertCanAccessConversation({
+    organizationId,
+    conversationId,
+    membership: member,
+    orgPermissions: permissions,
+  });
   assertConversationCustomerReplyAllowed({
     actorMember: member,
     assignedToMemberId: conversation.assigned_to_member_id ?? null,
     permissions,
   });
+
+  let activeConversation = conversation;
+  let conversationClaimed = false;
+  if (idempotency.mode === 'proceed') {
+    const claimResult = await claimConversationOnAgentReplyIfUnassigned({
+      userId,
+      organizationId,
+      conversation: activeConversation,
+      actorMember: member,
+      permissions,
+    });
+    activeConversation = claimResult.conversation;
+    conversationClaimed = claimResult.claimed;
+    if (conversationClaimed) {
+      assertConversationCustomerReplyAllowed({
+        actorMember: member,
+        assignedToMemberId: activeConversation.assigned_to_member_id ?? null,
+        permissions,
+      });
+    }
+  }
 
   await assertThreadNotStale({
     organizationId,
@@ -160,17 +186,6 @@ export async function sendInboxAgentOutboundMessage({
     actorMemberId: member.id,
     acknowledgeStaleThread,
   });
-  const membersPayload = await listOrganizationMembersWithProfiles({
-    organizationId: conversation.organization_id,
-    actorUserId: userId,
-  });
-  const mentionMembers = membersPayload.map((m) => ({
-    userId: m.userId,
-    displayName: m.displayName,
-    email: m.email,
-  }));
-  const mentionIds = resolveMentionUserIdsFromContent(body, mentionMembers);
-
   const aiGenerated = isAiGenerated === true;
   const resolvedAiRunId = parseOptionalUuidField(rawAiRunId, 'ai_run_id');
   const resolvedParentMessageId = parseOptionalUuidField(
@@ -214,7 +229,6 @@ export async function sendInboxAgentOutboundMessage({
   const initialMetadata = {
     status: 'pending',
     ...(activeClientRequestId ? { client_request_id: activeClientRequestId } : {}),
-    ...(mentionIds.length ? { mentions: mentionIds } : {}),
   };
 
   let inserted;
@@ -247,14 +261,6 @@ export async function sendInboxAgentOutboundMessage({
       clientRequestId: activeClientRequestId,
     });
     throw e;
-  }
-
-  if (mentionIds.length) {
-    await mergeConversationMentionUserIds({
-      organizationId: conversation.organization_id,
-      conversationId: conversation.id,
-      userIds: mentionIds,
-    });
   }
 
   try {
@@ -304,7 +310,7 @@ export async function sendInboxAgentOutboundMessage({
     const lifecycleResult = await applyAgentOutboundLifecycle({
       organizationId: conversation.organization_id,
       conversationId: conversation.id,
-      conversation,
+      conversation: activeConversation,
       at: updated.created_at,
     });
 
@@ -332,6 +338,7 @@ export async function sendInboxAgentOutboundMessage({
       deliveryStatus: 'sent',
       waitingStatus: lifecycleResult.waitingStatus,
       waitingStatusChanged: lifecycleResult.statusChanged,
+      ...(conversationClaimed ? { conversation: activeConversation, conversationClaimed: true } : {}),
     };
 
     await commitAgentSendIdempotency({
@@ -374,6 +381,7 @@ export async function sendInboxAgentOutboundMessage({
       message: failedRow ?? inserted,
       deliveryStatus: 'failed',
       idempotentReplay: false,
+      ...(conversationClaimed ? { conversation: activeConversation, conversationClaimed: true } : {}),
     };
 
     await commitAgentSendIdempotency({

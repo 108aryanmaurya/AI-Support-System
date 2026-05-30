@@ -28,6 +28,7 @@ export {
 export {
   extractMentionHandles,
   mentionHandlesForMember,
+  primaryMentionHandle,
   resolveMentionUserIdsFromContent,
 } from './mentions.js';
 
@@ -238,6 +239,18 @@ export {
   mergeOrgPermissions,
   permissionsForRole,
 } from './orgPermissions.js';
+
+export {
+  DEFAULT_INBOX_NAME,
+  INBOX_LIMITS,
+  INBOX_MEMBER_ROLES,
+  INBOX_STATUSES,
+  isInboxMemberRole,
+  isInboxStatus,
+  mergeInboxSettings,
+  mergeOrgInboxSettings,
+  slugifyInboxName,
+} from './inboxes.js';
 
 export {
   KNOWLEDGE_ALLOWED_UPLOAD_EXTENSIONS,

@@ -122,6 +122,15 @@ function createRealtimeInboxSubscription({ organizationId, userId, subscriptionK
     return pending
   }
 
+  const isInAccessibleInbox = (conversationRow) => {
+    const { activeInboxId, accessibleInboxIds } = useInboxStore.getState()
+    const inboxId = conversationRow?.inbox_id ?? conversationRow?.inboxId ?? null
+    if (!inboxId) return true
+    if (activeInboxId && inboxId !== activeInboxId) return false
+    if (accessibleInboxIds?.length > 0 && !accessibleInboxIds.includes(inboxId)) return false
+    return true
+  }
+
   const handleMessageInsert = async (payload) => {
     const row = payload.new
     if (!row) return
@@ -163,6 +172,7 @@ function createRealtimeInboxSubscription({ organizationId, userId, subscriptionK
     }
 
     const existingConversation = store.conversations.find((item) => item.id === row.conversation_id)
+    if (existingConversation && !isInAccessibleInbox(existingConversation)) return
     if (existingConversation) {
       store.upsertConversation({
         ...existingConversation,
@@ -173,7 +183,7 @@ function createRealtimeInboxSubscription({ organizationId, userId, subscriptionK
     }
 
     const hydratedConversation = await hydrateConversationById(row.conversation_id)
-    if (!hydratedConversation) return
+    if (!hydratedConversation || !isInAccessibleInbox(hydratedConversation)) return
     useInboxStore.getState().upsertConversation({
       ...hydratedConversation,
       last_message_at: row.created_at,
@@ -194,6 +204,7 @@ function createRealtimeInboxSubscription({ organizationId, userId, subscriptionK
       return
     }
     rememberConversationOrg(row.id, row.organization_id)
+    if (!isInAccessibleInbox(row)) return
     const store = useInboxStore.getState()
     const existing = store.conversations.find((c) => c.id === row.id)
     store.upsertConversation(mergeConversationRecords(existing, row))

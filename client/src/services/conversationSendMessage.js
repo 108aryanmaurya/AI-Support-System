@@ -1,4 +1,4 @@
-import { resolveMentionUserIdsFromContent } from '@ai-support/shared'
+import { normalizeConversationRecord, resolveMentionUserIdsFromContent } from '@ai-support/shared'
 import { useInboxStore } from '../stores/inboxStore.js'
 
 /** Match server-ish limit (see TestSendMessagePage). */
@@ -164,7 +164,9 @@ export function createSendMessage(deps) {
         store.touchConversationWithMessage(conversationId, merged)
       }
 
-      if (data?.conversationStatusChanged && typeof data.conversationStatus === 'string') {
+      if (data?.conversation && typeof data.conversation === 'object') {
+        store.upsertConversation(normalizeConversationRecord(data.conversation))
+      } else if (data?.conversationStatusChanged && typeof data.conversationStatus === 'string') {
         const conv = useInboxStore.getState().conversations.find((c) => c.id === conversationId)
         if (conv) {
           store.upsertConversation({ ...conv, status: data.conversationStatus })

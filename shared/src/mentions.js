@@ -33,6 +33,23 @@ export function mentionHandlesForMember(member) {
 }
 
 /**
+ * Preferred @handle inserted from the mention picker (first name, else email local-part).
+ * @param {MentionMemberInput} member
+ * @returns {string}
+ */
+export function primaryMentionHandle(member) {
+  const rawName = typeof member.displayName === 'string' ? member.displayName.trim() : ''
+  const parts = rawName.split(/\s+/).filter(Boolean)
+  if (parts[0]) return parts[0].toLowerCase()
+  const email = typeof member.email === 'string' ? member.email.trim().toLowerCase() : ''
+  if (email.includes('@')) {
+    const local = email.split('@')[0]
+    if (local) return local
+  }
+  return 'agent'
+}
+
+/**
  * Map @handles in content to unique user ids (stable order).
  * @param {string} content
  * @param {MentionMemberInput[]} members

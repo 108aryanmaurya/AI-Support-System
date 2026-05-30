@@ -1,15 +1,17 @@
-import { ChevronDown, ChevronRight, LayoutGrid } from 'lucide-react'
+import { ChevronDown, ChevronRight, Inbox, LayoutGrid } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useNavigate, useParams } from 'react-router-dom'
+import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
 import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
-import { fetchOrgChannels, postOrgInvitesBatch } from '../services/orgWorkspaceApi.js'
+import { fetchOrgInboxes } from '../services/inboxesApi.js'
+import { postOrgInvitesBatch } from '../services/orgWorkspaceApi.js'
 import { parseInviteEmails } from '../utils/parseInviteEmails.js'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 export default function OrgInviteTeammatesPage() {
   const { orgId } = useParams()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { organizations } = useOrganizationContext()
 
@@ -18,31 +20,43 @@ export default function OrgInviteTeammatesPage() {
   const canInvite = can('team.invite')
 
   const [rawEmails, setRawEmails] = useState('')
-  const [channels, setChannels] = useState([])
-  const [primaryIds, setPrimaryIds] = useState([])
-  const [secondaryIds, setSecondaryIds] = useState([])
-  const [loadingChannels, setLoadingChannels] = useState(true)
+  const [inboxes, setInboxes] = useState([])
+  const [defaultInboxId, setDefaultInboxId] = useState('')
+  const [selectedInboxId, setSelectedInboxId] = useState('')
+  const [loadingInboxes, setLoadingInboxes] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+
+  const inboxFromUrl = searchParams.get('inbox')?.trim() ?? ''
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      setLoadingChannels(true)
+      setLoadingInboxes(true)
       try {
-        const data = await fetchOrgChannels(orgId)
-        if (!cancelled) setChannels(Array.isArray(data?.channels) ? data.channels : [])
+        const data = await fetchOrgInboxes(orgId)
+        const list = (data?.inboxes ?? []).filter((ib) => ib.status === 'active')
+        if (cancelled) return
+        setInboxes(list)
+        const def = list.find((ib) => ib.isDefault)?.id ?? list[0]?.id ?? ''
+        setDefaultInboxId(def)
+        if (inboxFromUrl && list.some((ib) => ib.id === inboxFromUrl)) {
+          setSelectedInboxId(inboxFromUrl)
+        }
       } catch {
-        if (!cancelled) setChannels([])
+        if (!cancelled) {
+          setInboxes([])
+          setDefaultInboxId('')
+        }
       } finally {
-        if (!cancelled) setLoadingChannels(false)
+        if (!cancelled) setLoadingInboxes(false)
       }
     }
     void load()
     return () => {
       cancelled = true
     }
-  }, [orgId])
+  }, [orgId, inboxFromUrl])
 
   const parsedEmails = useMemo(() => parseInviteEmails(rawEmails), [rawEmails])
   const validEmails = useMemo(
@@ -51,12 +65,20 @@ export default function OrgInviteTeammatesPage() {
   )
   const canContinue = validEmails.length > 0 && !submitting
 
+  const effectiveInboxId = selectedInboxId || defaultInboxId
+  const effectiveInbox = inboxes.find((ib) => ib.id === effectiveInboxId)
+  const usingDefaultInbox = !selectedInboxId && Boolean(defaultInboxId)
+
   async function handleContinue() {
     if (!canContinue) return
     setError('')
     setSubmitting(true)
     try {
-      const data = await postOrgInvitesBatch(orgId, { emails: validEmails, role: 'AGENT' })
+      const data = await postOrgInvitesBatch(orgId, {
+        emails: validEmails,
+        role: 'AGENT',
+        inboxId: selectedInboxId || null,
+      })
       const created = Array.isArray(data?.created) ? data.created : []
       const errs = Array.isArray(data?.errors) ? data.errors : []
       const emailFailed = created.filter((x) => x.emailSent === false && !x.emailSkipped)
@@ -83,27 +105,23 @@ export default function OrgInviteTeammatesPage() {
         return
       }
       if (created.length === 0) return
+
+      const inboxLabel = effectiveInbox?.name ?? 'default inbox'
       navigate(`/org/${orgId}/settings/teammates`, {
         replace: true,
         state:
           errs.length > 0
             ? {
-                inviteNotice: `Invited ${created.length} teammate(s). Skipped: ${errs.map((x) => x.email).join(', ')}`,
+                inviteNotice: `Invited ${created.length} teammate(s) to ${inboxLabel}. Skipped: ${errs.map((x) => x.email).join(', ')}`,
               }
-            : undefined,
+            : {
+                inviteNotice: `Invited ${created.length} teammate(s). They will join ${inboxLabel} when they accept.`,
+              },
       })
     } catch (e) {
       setError(e?.message || 'Could not send invites.')
     } finally {
       setSubmitting(false)
-    }
-  }
-
-  function toggleChannel(id, which) {
-    if (which === 'primary') {
-      setPrimaryIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-    } else {
-      setSecondaryIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
     }
   }
 
@@ -169,98 +187,124 @@ export default function OrgInviteTeammatesPage() {
               </span>
             </div>
             <p className="mt-2 text-sm text-slate-500">
-              Choose which inboxes your teammates should be added to.
+              Choose a team inbox for new teammates. If none is selected, they are added to your
+              organization&apos;s default inbox when they accept the invite.
             </p>
 
-            <div className="mt-6 space-y-6">
-              <div>
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  Primary
+            <div className="mt-6">
+              {loadingInboxes ? (
+                <p className="text-sm text-slate-600">Loading team inboxes…</p>
+              ) : inboxes.length === 0 ? (
+                <p className="text-sm text-slate-600">
+                  No team inboxes yet.{' '}
+                  <Link
+                    to={`/org/${orgId}/settings/inboxes`}
+                    className="text-[#6eb5ff] hover:underline"
+                  >
+                    Create one in settings
+                  </Link>{' '}
+                  before inviting, or apply the database migration for default inboxes.
                 </p>
-                {loadingChannels ? (
-                  <p className="text-sm text-slate-600">Loading channels…</p>
-                ) : channels.length === 0 ? (
-                  <p className="text-sm text-slate-600">
-                    No channels yet. Connect a channel in workspace settings to assign inboxes here.
+              ) : (
+                <>
+                  <InboxSingleSelect
+                    inboxes={inboxes}
+                    selectedInboxId={selectedInboxId}
+                    onSelect={setSelectedInboxId}
+                  />
+                  <p className="mt-3 text-xs text-slate-500">
+                    {usingDefaultInbox ? (
+                      <>
+                        No inbox selected — invitees will join{' '}
+                        <span className="font-medium text-slate-400">
+                          {effectiveInbox?.name ?? 'General'}
+                        </span>{' '}
+                        (default) on accept.
+                      </>
+                    ) : (
+                      <>
+                        Invitees will join{' '}
+                        <span className="font-medium text-slate-400">{effectiveInbox?.name}</span> on
+                        accept.
+                      </>
+                    )}
                   </p>
-                ) : (
-                  <ChannelMultiSelect
-                    channels={channels}
-                    selectedIds={primaryIds}
-                    onToggle={(id) => toggleChannel(id, 'primary')}
-                  />
-                )}
-              </div>
-              <div>
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-slate-500">
-                  Secondary
-                </p>
-                {loadingChannels ? (
-                  <p className="text-sm text-slate-600">Loading channels…</p>
-                ) : channels.length === 0 ? (
-                  <p className="text-sm text-slate-600">—</p>
-                ) : (
-                  <ChannelMultiSelect
-                    channels={channels}
-                    selectedIds={secondaryIds}
-                    onToggle={(id) => toggleChannel(id, 'secondary')}
-                  />
-                )}
-              </div>
+                </>
+              )}
             </div>
           </div>
 
           {error ? <p className="text-sm text-rose-400">{error}</p> : null}
-
-          <p className="text-xs text-slate-600">
-            Inbox assignment is stored for future use when routing rules support per-invite channel membership.
-          </p>
         </section>
       </div>
     </main>
   )
 }
 
-function ChannelMultiSelect({ channels, selectedIds, onToggle }) {
+function InboxSingleSelect({ inboxes, selectedInboxId, onSelect }) {
   const [open, setOpen] = useState(false)
-  const label =
-    selectedIds.length === 0
-      ? 'Select inboxes'
-      : `${selectedIds.length} inbox${selectedIds.length === 1 ? '' : 'es'} selected`
+  const selected = inboxes.find((ib) => ib.id === selectedInboxId)
+  const label = selected
+    ? selected.name
+    : 'Select inboxes (uses default if empty)'
 
   return (
-    <div className="relative">
+    <div className="relative max-w-md">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full max-w-md items-center justify-between rounded-xl border border-[#2b3858] bg-[#111827] px-4 py-3 text-left text-sm text-slate-200 transition hover:border-[#3ECF8E]/35"
+        className="flex w-full items-center justify-between gap-2 rounded-xl border border-[#2b3858] bg-[#111827] px-4 py-3 text-left text-sm text-slate-200 transition hover:border-[#3ECF8E]/35"
       >
-        <span className={selectedIds.length ? 'text-white' : 'text-slate-500'}>{label}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          <Inbox className="h-4 w-4 shrink-0 text-slate-500" aria-hidden />
+          <span className={selected ? 'truncate font-medium text-white' : 'text-slate-500'}>
+            {label}
+          </span>
+        </span>
         <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition ${open ? 'rotate-180' : ''}`} />
       </button>
       {open ? (
         <ul
-          className="absolute z-20 mt-1 max-h-56 w-full max-w-md overflow-auto rounded-xl border border-[#2b3858] bg-[#151b2e] py-1 shadow-xl"
+          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-[#2b3858] bg-[#151b2e] py-1 shadow-xl"
           role="listbox"
         >
-          {channels.map((ch) => {
-            const checked = selectedIds.includes(ch.id)
+          <li>
+            <button
+              type="button"
+              role="option"
+              aria-selected={!selectedInboxId}
+              onClick={() => {
+                onSelect('')
+                setOpen(false)
+              }}
+              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-300 hover:bg-[#1a2238]"
+            >
+              <span className="text-slate-500">Use default inbox</span>
+            </button>
+          </li>
+          {inboxes.map((ib) => {
+            const checked = selectedInboxId === ib.id
             return (
-              <li key={ch.id}>
+              <li key={ib.id}>
                 <button
                   type="button"
                   role="option"
                   aria-selected={checked}
-                  onClick={() => onToggle(ch.id)}
+                  onClick={() => {
+                    onSelect(ib.id)
+                    setOpen(false)
+                  }}
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-200 hover:bg-[#1a2238]"
                 >
                   <span
-                    className={`flex h-4 w-4 shrink-0 rounded border ${
-                      checked ? 'border-[#3ECF8E] bg-[#3ECF8E]/20' : 'border-slate-600'
+                    className={`flex h-4 w-4 shrink-0 rounded-full border ${
+                      checked ? 'border-[#3ECF8E] bg-[#3ECF8E]/30' : 'border-slate-600'
                     }`}
                   />
-                  <span className="font-medium">{ch.name}</span>
-                  <span className="text-xs text-slate-500">{ch.type}</span>
+                  <span className="min-w-0 flex-1 font-medium">{ib.name}</span>
+                  {ib.isDefault ? (
+                    <span className="text-xs text-slate-500">Default</span>
+                  ) : null}
                 </button>
               </li>
             )

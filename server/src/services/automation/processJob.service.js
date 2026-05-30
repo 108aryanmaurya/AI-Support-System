@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../../config/supabase.js';
 import { handleNotifyAssignment } from './jobHandlers/notifyAssignment.js';
 import { handleNotifyUnassignment } from './jobHandlers/notifyUnassignment.js';
+import { handleNotifyMention } from './jobHandlers/notifyMention.js';
 import { handleNotifyStaffInbound } from './jobHandlers/notifyStaffInbound.js';
 import { handleNotifySlaWarning } from './jobHandlers/notifySlaWarning.js';
 import { handleSlaScanOrg } from './jobHandlers/slaScanOrg.js';
@@ -27,6 +28,7 @@ const HANDLERS = {
   'notify.sla_warning': handleNotifySlaWarning,
   'notify.assignment': handleNotifyAssignment,
   'notify.unassignment': handleNotifyUnassignment,
+  'notify.mention': handleNotifyMention,
   'sla.scan_org': handleSlaScanOrg,
   'knowledge.ingest_source': handleKnowledgeIngestSource,
   'ai.classify_inbound': handleClassifyInbound,

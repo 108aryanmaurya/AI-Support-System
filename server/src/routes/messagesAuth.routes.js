@@ -5,6 +5,7 @@ import { agentSendRateLimit } from '../middleware/agentSendRateLimit.js';
 const router = Router({ mergeParams: true });
 
 router.post('/send', agentSendRateLimit, messagesController.sendInboxMessageController);
+router.post('/internal-note', agentSendRateLimit, messagesController.sendInternalNoteController);
 router.post('/', messagesController.createMessageController);
 
 export default router;

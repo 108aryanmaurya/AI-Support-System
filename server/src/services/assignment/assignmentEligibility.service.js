@@ -14,6 +14,7 @@ import {
   loadOrgAssignmentRouting,
   resolveTargetInbox,
 } from './assignmentInbox.service.js';
+import { loadInboxMemberIds } from '../inboxes.service.js';
 import { evaluateMemberEligibility } from './assignmentEligibility.filters.js';
 import {
   loadPreviousAgentForCustomer,
@@ -127,7 +128,7 @@ export async function previewAssignmentEligibility({
   const { data: conv, error: convErr } = await supabaseAdmin
     .from('conversations')
     .select(
-      'id, metadata, channel_type, priority, assignment_type, assigned_to_member_id, customer_id',
+      'id, metadata, channel_type, priority, assignment_type, assigned_to_member_id, customer_id, inbox_id',
     )
     .eq('id', conversationId)
     .eq('organization_id', organizationId)
@@ -182,9 +183,14 @@ export async function previewAssignmentEligibility({
     overrideInboxId: effectiveOverrideInboxId,
   });
 
-  const inbox = getInboxById(routing, targetInbox.inboxId);
-  const inboxMemberIds =
-    inbox?.memberIds?.length > 0 ? inbox.memberIds : null;
+  let inboxMemberIds = null;
+  if (conv.inbox_id) {
+    inboxMemberIds = await loadInboxMemberIds(conv.inbox_id);
+  }
+  if (!inboxMemberIds?.length) {
+    const inbox = getInboxById(routing, targetInbox.inboxId);
+    inboxMemberIds = inbox?.memberIds?.length > 0 ? inbox.memberIds : null;
+  }
 
   const members = await loadCandidateMembers(organizationId);
   const memberIds = members.map((m) => m.id);

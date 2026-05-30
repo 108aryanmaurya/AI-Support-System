@@ -5,6 +5,11 @@ import { HttpError } from '../utils/httpError.js';
 import { getDefaultConversationAiEnabled } from './orgSettings.service.js';
 import { clearConversationSlaAtRisk } from './ai/workflowConversationFlags.service.js';
 import { touchLastCustomerMessageAt } from './lifecycle/lifecycleMessageTimestamps.service.js';
+import { resolveInboxIdForNewConversation } from './inboxDefault.service.js';
+import {
+  applyResolvedInboxToConversation,
+  resolveInboxForConversation,
+} from './resolveInboxForConversation.service.js';
 
 function toInt(value, fallback) {
   const parsed = Number.parseInt(String(value ?? ''), 10);
@@ -106,6 +111,8 @@ export async function createConversation({
     aiEnabled !== undefined ? Boolean(aiEnabled) : await getDefaultConversationAiEnabled(organizationId);
 
   const resolvedChannelType = channelType ?? (source === 'email' ? 'email' : 'web');
+  const inbox_id = await resolveInboxIdForNewConversation(organizationId, metadata?.inbox_id ?? null);
+
   const insertRow = {
     organization_id: organizationId,
     customer_id: customerId,
@@ -118,6 +125,7 @@ export async function createConversation({
     created_by: createdByUserId,
     metadata,
     ai_enabled: Boolean(resolvedAiEnabled),
+    inbox_id,
   };
 
   if (resolvedChannelType === 'email') {
@@ -134,6 +142,39 @@ export async function createConversation({
     .single();
 
   if (error) throw new HttpError(500, error.message || 'Failed to create conversation.');
+
+  try {
+    const routed = await resolveInboxForConversation({
+      organizationId,
+      conversation: data,
+      channelType: resolvedChannelType,
+      tagNames: [],
+    });
+    if (routed?.inboxId && routed.inboxId !== inbox_id) {
+      await applyResolvedInboxToConversation({
+        organizationId,
+        conversationId: data.id,
+        conversation: data,
+        channelType: resolvedChannelType,
+      });
+      const { data: refreshed } = await supabaseAdmin
+        .from('conversations')
+        .select('*')
+        .eq('id', data.id)
+        .single();
+      return refreshed ?? data;
+    }
+  } catch (routeErr) {
+    console.warn(
+      JSON.stringify({
+        event: 'conversation.inbox_route_skipped',
+        organization_id: organizationId,
+        conversation_id: data.id,
+        error: routeErr?.message ?? 'routing_failed',
+      }),
+    );
+  }
+
   return data;
 }
 

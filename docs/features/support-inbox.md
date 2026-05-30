@@ -10,7 +10,8 @@ Agents work customer issues in a **conversation-centric inbox**: list threads by
 - Sidebar filters: your inbox, mentions, created by you, all, unassigned, spam, closed
 - Per-filter counts; debounced refetch and short-lived cache
 - Workspace fields: status, priority, assignment type (+ optional assignee member)
-- Spam flag; auto-assign on select (client preference)
+- Spam flag; **claim-on-first-reply** (server assigns unassigned thread to replying agent on send)
+- **Internal notes** + `@` mentions (team-only; email notify to mentioned agents)
 - `InboxPage` UI with list + thread + composer shell
 
 ## Architecture
@@ -78,6 +79,7 @@ flowchart LR
 | [Notifications](./notifications-and-automation.md) | Assignment changes enqueue `notify.assignment` |
 | [Auto assignment](./auto-assignment-sprint.md) | `assignment_logs` on PATCH assign; Settings → Assignment UI; audit hint in conversation details |
 | [Workflow automation](./workflow-automation.md) | `set_assignment` = explicit target; auto-route scores agents after rules |
+| [Multiple inboxes](./multiple-inbox.md) | Inbox switcher scopes sidebar filters; `inbox_id` on conversations; membership ACL on list/detail/send |
 | [Analytics](./analytics-and-reports.md) | Lifecycle events via `conversationUpdate.service` |
 | [AI capabilities](./ai-capabilities.md) | `assigned_to_ai`, Copilot tab *(partial)* |
 

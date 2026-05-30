@@ -48,6 +48,7 @@ export function applyConversationFilters(query, options) {
   const {
     filterType,
     organizationId,
+    inboxId = null,
     currentUserId,
     memberId = null,
     includeSpam = false,
@@ -59,6 +60,10 @@ export function applyConversationFilters(query, options) {
   }
 
   let q = query.eq('organization_id', organizationId);
+
+  if (inboxId) {
+    q = q.eq('inbox_id', inboxId);
+  }
 
   if (shouldExcludeSpam(filterType, includeSpam)) {
     q = q.eq('is_spam', false).neq('status', 'spam');
@@ -136,7 +141,7 @@ export function applyConversationFilters(query, options) {
 /**
  * Exact row counts per sidebar bucket (parallel head-only queries).
  */
-export async function getConversationFilterCounts({ currentUserId, organizationId }) {
+export async function getConversationFilterCounts({ currentUserId, organizationId, inboxId = null }) {
   if (!currentUserId) {
     throw new HttpError(400, 'currentUserId is required.');
   }
@@ -162,6 +167,7 @@ export async function getConversationFilterCounts({ currentUserId, organizationI
     q = applyConversationFilters(q, {
       filterType,
       organizationId,
+      inboxId,
       currentUserId,
       memberId: filterType === 'inbox' ? memberId : null,
       includeSpam,
@@ -219,6 +225,7 @@ export async function getFilteredConversations({
   filterType = 'all',
   currentUserId,
   organizationId,
+  inboxId = null,
   page,
   pageSize,
   from,
@@ -291,6 +298,9 @@ export async function getFilteredConversations({
     }
 
     let query = supabaseAdmin.from('conversations').select('*', { count: 'exact' }).in('id', ids);
+    if (inboxId) {
+      query = query.eq('inbox_id', inboxId);
+    }
     if (tagConversationIds) {
       const allowed = new Set(tagConversationIds);
       const filteredIds = ids.filter((id) => allowed.has(id));
@@ -326,6 +336,7 @@ export async function getFilteredConversations({
   query = applyConversationFilters(query, {
     filterType,
     organizationId,
+    inboxId,
     currentUserId,
     memberId: filterType === 'inbox' ? memberId : null,
     includeSpam: Boolean(includeSpam),

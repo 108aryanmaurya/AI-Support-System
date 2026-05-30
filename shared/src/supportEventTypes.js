@@ -11,6 +11,7 @@ export const SUPPORT_EVENT_TYPES = Object.freeze([
   'conversation.status_changed',
   'conversation.spam_changed',
   'conversation.priority_changed',
+  'conversation.inbox_transferred',
   'permissions.updated',
   'member.first_response',
   'sla.first_response_breach',

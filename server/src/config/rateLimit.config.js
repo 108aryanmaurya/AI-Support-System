@@ -76,6 +76,13 @@ export const rateLimitConfig = Object.freeze({
     uploadOrgUserMax: parsePositiveInt(process.env.RATE_LIMIT_KNOWLEDGE_UPLOAD_USER_MAX, 10),
   }),
 
+  inbox: Object.freeze({
+    adminWindowMs: parsePositiveInt(process.env.RATE_LIMIT_INBOX_ADMIN_WINDOW_MS, 60_000),
+    adminMax: parsePositiveInt(process.env.RATE_LIMIT_INBOX_ADMIN_MAX, 40),
+    transferWindowMs: parsePositiveInt(process.env.RATE_LIMIT_INBOX_TRANSFER_WINDOW_MS, 60_000),
+    transferMax: parsePositiveInt(process.env.RATE_LIMIT_INBOX_TRANSFER_MAX, 60),
+  }),
+
   outboundMonitor: Object.freeze({
     logDedupeMs: parsePositiveInt(process.env.OUTBOUND_FAILURE_LOG_DEDUPE_MS, 60_000),
   }),

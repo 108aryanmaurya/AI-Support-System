@@ -2,7 +2,6 @@ import {
   AlertTriangle,
   BarChart3,
   Bot,
-  GitBranch,
   Clock,
   CreditCard,
   Gift,
@@ -15,7 +14,10 @@ import {
   Phone,
   ShieldCheck,
   Tag,
+  Ticket,
+  Timer,
   Users,
+  UserSquare2,
 } from 'lucide-react'
 import { Link, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
@@ -180,7 +182,45 @@ export default function OrgSettingsHomePage() {
         </section>
 
         <section className="mb-10">
-          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Inbox</h2>
+          <h2 className="mb-4 text-lg font-semibold text-white">Inbox</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <GatedSettingsCard
+              permission="inboxes.manage"
+              to={`/org/${orgId}/settings/inboxes`}
+              icon={Users}
+              iconClass="bg-[#2563eb]"
+              title="Team inboxes"
+              description="Create inboxes so groups of teammates can work together."
+            />
+            <GatedSettingsCard
+              permission="automation.manage_assignment"
+              to={`/org/${orgId}/settings/assignment`}
+              icon={UserSquare2}
+              iconClass="bg-[#2563eb]"
+              title="Assignments"
+              description="Assign conversations to control workloads across team inboxes."
+            />
+            <SettingsCard
+              icon={Ticket}
+              iconClass="bg-[#2563eb]"
+              title="Tickets"
+              description="Create and manage Customer tickets and Tracker tickets."
+              dimmed
+            />
+            <SettingsCard
+              icon={Timer}
+              iconClass="bg-[#2563eb]"
+              title="SLAs"
+              description="View information for all Service Level Agreements (SLAs)."
+              dimmed
+            />
+          </div>
+        </section>
+
+        <section className="mb-10">
+          <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">
+            Inbox configuration
+          </h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <GatedSettingsCard
               permission="ai.manage_settings"
@@ -189,14 +229,6 @@ export default function OrgSettingsHomePage() {
               iconClass="bg-emerald-700"
               title="Conversation tags"
               description="Create and manage tags for filtering conversations and AI auto-tagging."
-            />
-            <GatedSettingsCard
-              permission="automation.manage_assignment"
-              to={`/org/${orgId}/settings/assignment`}
-              icon={GitBranch}
-              iconClass="bg-emerald-800"
-              title="Assignment"
-              description="Auto-route strategy, VIP rules, agent skills, and reassignment toggles."
             />
             <GatedSettingsCard
               permission="ai.manage_settings"

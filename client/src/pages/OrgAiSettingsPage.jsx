@@ -358,6 +358,15 @@ export default function OrgAiSettingsPage() {
                   }
                 />
                 <ToggleRow
+                  label="Email when @mentioned on internal note"
+                  description="Notify teammates when another agent mentions them on a conversation (default on)."
+                  checked={automation.mention_notify_enabled ?? true}
+                  disabled={!isAdmin}
+                  onChange={(v) =>
+                    setAutomation((prev) => ({ ...prev, mention_notify_enabled: v }))
+                  }
+                />
+                <ToggleRow
                   label="First-response SLA monitoring"
                   description="Background worker checks for breaches and records analytics events."
                   checked={automation.sla_enabled}

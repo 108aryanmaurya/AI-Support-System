@@ -28,10 +28,8 @@ export function useInboxSidebarActions(organizationId, handlers) {
   const setActiveTagId = useInboxStore((state) => state.setActiveTagId)
   const activeAiIntent = useInboxStore((state) => state.activeAiIntent)
   const setActiveAiIntent = useInboxStore((state) => state.setActiveAiIntent)
+  const activeInboxId = useInboxStore((state) => state.activeInboxId)
   const filterCounts = useInboxStore((state) => state.filterCounts)
-  const autoAssignOnSelect = useInboxStore((state) => state.autoAssignOnSelect)
-  const setAutoAssignOnSelect = useInboxStore((state) => state.setAutoAssignOnSelect)
-
   const runConversationQuery = useCallback(
     async (filterType, opts = {}) => {
       const silent = opts.silent === true
@@ -43,12 +41,14 @@ export function useInboxSidebarActions(organizationId, handlers) {
           useInboxStore.getState()
         const page = opts.page ?? conversationPagination.page ?? 1
         const pageSize = opts.pageSize ?? conversationPagination.pageSize ?? 50
+        const { activeInboxId: inboxId } = useInboxStore.getState()
         const response = await apiFetch(
           conversationsListUrl(organizationId, filterType, {
             page,
             pageSize,
             tagId: tagId || undefined,
             aiIntent: filterType === 'ai_intent' ? aiIntent || undefined : undefined,
+            inboxId: inboxId || undefined,
           }),
         )
         setConversationsPage({
@@ -71,7 +71,8 @@ export function useInboxSidebarActions(organizationId, handlers) {
   const loadFilterCounts = useCallback(async () => {
     if (!organizationId) return
     try {
-      const counts = await apiFetch(conversationCountsUrl(organizationId))
+      const { activeInboxId: inboxId } = useInboxStore.getState()
+      const counts = await apiFetch(conversationCountsUrl(organizationId, inboxId || null))
       setFilterCounts(counts)
     } catch {
       /* counts are best-effort */
@@ -149,7 +150,5 @@ export function useInboxSidebarActions(organizationId, handlers) {
     activeAiIntent,
     onAiIntentFilterChange,
     filterCounts,
-    autoAssignOnSelect,
-    setAutoAssignOnSelect,
   }
 }

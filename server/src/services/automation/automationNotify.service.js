@@ -4,6 +4,7 @@ import {
   notifyConversationAssignee,
   notifyConversationPriorAssigneeUnassigned,
 } from '../conversationAssignmentNotification.service.js';
+import { notifyMentionedAgents } from '../mentionNotification.service.js';
 import { notifyStaffOfSlaWarning } from '../slaWarningNotification.service.js';
 import {
   deliverPostInboundNotification,
@@ -106,6 +107,51 @@ export async function fallbackStaffInboundNotification(params) {
     primaryCodes: params.primaryCodes ?? [],
     assignedToMemberId: params.assignedToMemberId ?? null,
   });
+}
+
+/**
+ * Email agents @mentioned on an internal note (one job per message; handler emails each user).
+ */
+export function scheduleMentionNotifications({
+  organizationId,
+  conversationId,
+  messageId,
+  actorUserId,
+  mentionedUserIds,
+  noteSnippet,
+}) {
+  const ids = [...new Set((mentionedUserIds ?? []).map(String).filter(Boolean))].filter(
+    (id) => id !== String(actorUserId),
+  );
+  if (!ids.length || !messageId) return;
+
+  const key = `mention:${organizationId}:${messageId}`;
+
+  void (async () => {
+    const result = await enqueueAutomationJob({
+      organizationId,
+      jobType: 'notify.mention',
+      idempotencyKey: key,
+      payload: {
+        conversationId,
+        messageId,
+        actorUserId,
+        mentionedUserIds: ids,
+        noteSnippet: noteSnippet ?? '',
+      },
+    });
+
+    if (result.reason === 'automation_table_missing' || result.reason === 'enqueue_error') {
+      await notifyMentionedAgents({
+        organizationId,
+        conversationId,
+        messageId,
+        actorUserId,
+        mentionedUserIds: ids,
+        noteSnippet: noteSnippet ?? '',
+      });
+    }
+  })();
 }
 
 export function scheduleAssignmentNotification({

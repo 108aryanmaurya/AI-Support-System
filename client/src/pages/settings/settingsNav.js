@@ -4,7 +4,7 @@ export const settingsNav = [
   { id: 'workspace', label: 'Workspace', chevron: true },
   { id: 'subscription', label: 'Subscription', chevron: true },
   { id: 'channels', label: 'Channels', path: 'email', chevron: true, permission: 'channels.manage_email' },
-  { id: 'inbox', label: 'Inbox', chevron: true },
+  { id: 'inbox', label: 'Inbox', path: 'inboxes', chevron: true, permission: 'inboxes.manage' },
   { id: 'lifecycle', label: 'Conversation lifecycle', path: 'lifecycle', chevron: true, permission: 'ai.manage_settings' },
   { id: 'tags', label: 'Conversation tags', path: 'tags', chevron: true, permission: 'ai.manage_settings' },
   { id: 'assignment', label: 'Assignment', path: 'assignment', chevron: true, permission: 'automation.manage_assignment' },

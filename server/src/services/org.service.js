@@ -3,6 +3,8 @@ import { env } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { sendTeammateInviteEmail } from './orgInviteEmail.service.js';
+import { ensureDefaultInboxForOrg, resolveInboxIdForNewConversation } from './inboxDefault.service.js';
+import { addInboxMember } from './inboxes.service.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -97,6 +99,19 @@ export async function createOrganizationWithAdmin({
     .select('id, role, status')
     .single();
 
+  try {
+    const { ensureDefaultInboxForOrg } = await import('./inboxDefault.service.js');
+    await ensureDefaultInboxForOrg(org.id);
+  } catch (inboxErr) {
+    console.warn(
+      JSON.stringify({
+        event: 'org.default_inbox_skipped',
+        organization_id: org.id,
+        error: inboxErr?.message ?? 'failed',
+      }),
+    );
+  }
+
   if (memberError || !member?.id) {
     await supabaseAdmin.from('organizations').delete().eq('id', org.id);
     throw new HttpError(500, memberError?.message || 'Failed to create organization membership.');
@@ -148,6 +163,7 @@ export async function createInviteRecord({
   role,
   expiresAtIso,
   token,
+  inboxId = null,
 }) {
   const { data, error } = await supabaseAdmin
     .from('invites')
@@ -158,6 +174,7 @@ export async function createInviteRecord({
       token,
       status: 'PENDING',
       expires_at: expiresAtIso,
+      inbox_id: inboxId ?? null,
     })
     .select('id, email, role, token, status, expires_at, created_at')
     .single();
@@ -190,6 +207,7 @@ export async function getInviteByToken(token) {
       expires_at,
       created_at,
       organization_id,
+      inbox_id,
       organizations (
         id,
         name,
@@ -256,6 +274,25 @@ export async function acceptInviteForUser({ token, userId, userEmail }) {
   const existing = await getActiveMembership({ userId, organizationId: orgId });
   if (existing) {
     await supabaseAdmin.from('invites').update({ status: 'ACCEPTED' }).eq('id', invite.id);
+    if (invite.inbox_id) {
+      try {
+        await addInboxMember({
+          organizationId: orgId,
+          inboxId: invite.inbox_id,
+          organizationMemberId: existing.id,
+        });
+      } catch (inboxErr) {
+        console.warn(
+          JSON.stringify({
+            event: 'invite.accept_inbox_member_skipped',
+            organization_id: orgId,
+            inbox_id: invite.inbox_id,
+            member_id: existing.id,
+            error: inboxErr?.message ?? 'failed',
+          }),
+        );
+      }
+    }
     return {
       alreadyMember: true,
       organizationId: orgId,
@@ -289,6 +326,26 @@ export async function acceptInviteForUser({ token, userId, userEmail }) {
 
   if (updErr) {
     throw new HttpError(500, updErr.message || 'Failed to finalize invite.');
+  }
+
+  if (invite.inbox_id) {
+    try {
+      await addInboxMember({
+        organizationId: orgId,
+        inboxId: invite.inbox_id,
+        organizationMemberId: membership.id,
+      });
+    } catch (inboxErr) {
+      console.warn(
+        JSON.stringify({
+          event: 'invite.accept_inbox_member_skipped',
+          organization_id: orgId,
+          inbox_id: invite.inbox_id,
+          member_id: membership.id,
+          error: inboxErr?.message ?? 'failed',
+        }),
+      );
+    }
   }
 
   return {
@@ -450,10 +507,26 @@ export async function listChannelsForOrganization(organizationId) {
 /**
  * Create multiple invites (default role AGENT). Each email is validated; duplicates or conflicts become entries in `errors`.
  */
+/**
+ * @param {string} organizationId
+ * @param {string | null | undefined} inboxId — explicit team inbox; omit for org default
+ */
+async function resolveInviteTargetInboxId(organizationId, inboxId) {
+  if (inboxId) {
+    return resolveInboxIdForNewConversation(organizationId, inboxId);
+  }
+  const defaultId = await ensureDefaultInboxForOrg(organizationId);
+  if (!defaultId) {
+    throw new HttpError(500, 'Default inbox is not configured for this organization.');
+  }
+  return defaultId;
+}
+
 export async function createInvitesBatchForOrganization({
   organizationId,
   emails,
   role,
+  inboxId = null,
 }) {
   if (!Array.isArray(emails)) {
     throw new HttpError(400, 'emails must be an array.');
@@ -467,6 +540,7 @@ export async function createInvitesBatchForOrganization({
   }
 
   const r = isValidInviteRole(role) ?? 'AGENT';
+  const targetInboxId = await resolveInviteTargetInboxId(organizationId, inboxId);
   const expiresAtIso = new Date(Date.now() + INVITE_TTL_MS).toISOString();
 
   const { data: orgRow } = await supabaseAdmin
@@ -510,6 +584,7 @@ export async function createInvitesBatchForOrganization({
         role: r,
         expiresAtIso,
         token,
+        inboxId: targetInboxId,
       });
       const link = `${env.publicAppUrl}/invite?token=${encodeURIComponent(token)}`;
       const emailResult = await sendTeammateInviteEmail({

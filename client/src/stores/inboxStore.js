@@ -61,14 +61,6 @@ function upsertMessage(list, incoming) {
 /** Inbox sidebar filter; must match server `filter` param. */
 export const DEFAULT_INBOX_FILTER = 'all'
 
-function readAutoAssignOnSelect() {
-  try {
-    return typeof localStorage !== 'undefined' && localStorage.getItem('inbox-auto-assign-on-select') === 'true'
-  } catch {
-    return false
-  }
-}
-
 export const useInboxStore = create((set) => ({
   conversations: [],
   activeConversationId: '',
@@ -76,6 +68,10 @@ export const useInboxStore = create((set) => ({
   inboxSortMemberId: null,
   /** Active sidebar filter (drives list + refetch). */
   activeFilter: DEFAULT_INBOX_FILTER,
+  /** Customer-facing inbox queue id (scoped list + realtime). */
+  activeInboxId: '',
+  /** Inbox ids the current user may access (for realtime client filter). */
+  accessibleInboxIds: [],
   /** Optional conversation tag filter (Phase 2). */
   activeTagId: null,
   /** Classification intent when `activeFilter` is `ai_intent` (Phase 4). */
@@ -100,8 +96,6 @@ export const useInboxStore = create((set) => ({
    * @type {Record<string, { items: unknown[], pagination: object, fetchedAt: number }>}
    */
   conversationFilterCache: {},
-  /** When true, selecting a thread PATCH-assigns it to the current agent if unassigned / assigned elsewhere. */
-  autoAssignOnSelect: readAutoAssignOnSelect(),
   messagesByConversationId: {},
   typingState: {},
   activeViewersByConversationId: {},
@@ -129,6 +123,11 @@ export const useInboxStore = create((set) => ({
     }),
 
   setActiveFilter: (activeFilter) => set({ activeFilter }),
+
+  setActiveInboxId: (activeInboxId) => set({ activeInboxId: activeInboxId || '' }),
+
+  setAccessibleInboxIds: (accessibleInboxIds) =>
+    set({ accessibleInboxIds: Array.isArray(accessibleInboxIds) ? accessibleInboxIds : [] }),
 
   setActiveTagId: (activeTagId) => set({ activeTagId: activeTagId || null }),
 
@@ -159,17 +158,6 @@ export const useInboxStore = create((set) => ({
     set((state) => ({
       mentionsNotifyEpoch: state.mentionsNotifyEpoch + 1,
     })),
-
-  setAutoAssignOnSelect: (value) => {
-    try {
-      if (typeof localStorage !== 'undefined') {
-        localStorage.setItem('inbox-auto-assign-on-select', value ? 'true' : 'false')
-      }
-    } catch {
-      /* ignore quota / privacy mode */
-    }
-    set({ autoAssignOnSelect: Boolean(value) })
-  },
 
   /**
    * Replace first page from API. Sorts, trims to cap, stores pagination.

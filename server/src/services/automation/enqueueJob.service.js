@@ -16,6 +16,9 @@ function isJobTypeAllowedBySettings(jobType, automationSettings, aiSettings) {
   if (jobType === 'notify.assignment' || jobType === 'notify.unassignment') {
     return automationSettings.assignment_notify_enabled;
   }
+  if (jobType === 'notify.mention') {
+    return automationSettings.mention_notify_enabled !== false;
+  }
   if (jobType === 'sla.scan_org') return automationSettings.sla_enabled;
   if (isWorkflowAutomationJobType(jobType)) {
     return Boolean(aiSettings.ai_enabled && aiSettings.workflow_automation_enabled);

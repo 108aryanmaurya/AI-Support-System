@@ -13,6 +13,11 @@ export const ORG_PERMISSIONS_AGENT_DEFAULTS = Object.freeze({
     close: true,
     mark_spam: false,
     merge: false,
+    transfer_inbox: false,
+    view_all_inboxes: false,
+  }),
+  inboxes: Object.freeze({
+    manage: false,
   }),
   messages: Object.freeze({
     reply: true,
@@ -57,6 +62,11 @@ export const ORG_PERMISSIONS_ADMIN_DEFAULTS = Object.freeze({
     close: true,
     mark_spam: true,
     merge: true,
+    transfer_inbox: true,
+    view_all_inboxes: true,
+  }),
+  inboxes: Object.freeze({
+    manage: true,
   }),
   messages: Object.freeze({
     reply: true,

@@ -12,6 +12,7 @@ import {
 } from '../utils/incomingMessageValidation.js';
 import { emitIncomingMessageEvent } from '../utils/monitoring.js';
 import { sendInboxAgentOutboundMessage } from '../services/inboxAgentSend.service.js';
+import { sendInternalNoteMessage } from '../services/internalNoteSend.service.js';
 import { scheduleInboundPostCustomerMessage } from '../services/automation/inboundAutomation.service.js';
 import { emitSupportEvent } from '../services/analytics/supportEvents.service.js';
 import {
@@ -25,6 +26,33 @@ import { processInboundWebMessage } from '../services/lifecycle/inboundWeb.servi
 const UUID_V4_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_MESSAGE_LENGTH = getMaxMessageLength();
+
+export async function sendInternalNoteController(req, res, next) {
+  try {
+    const organizationId = req.orgId ?? req.organizationId;
+    if (!organizationId) {
+      throw new HttpError(500, 'Organization scope missing (middleware misconfigured).');
+    }
+
+    const {
+      conversation_id: conversationId,
+      content,
+      client_request_id: clientRequestIdSnake,
+      clientRequestId: clientRequestIdCamel,
+    } = req.body ?? {};
+
+    const result = await sendInternalNoteMessage({
+      userId: req.userId ?? req.user.id,
+      conversationId,
+      rawContent: content,
+      expectedOrganizationId: organizationId,
+      clientRequestId: clientRequestIdSnake ?? clientRequestIdCamel ?? null,
+    });
+    res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
 
 export async function sendInboxMessageController(req, res, next) {
   try {

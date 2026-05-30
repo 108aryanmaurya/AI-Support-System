@@ -123,6 +123,65 @@ async function applyWorkflowAction(action, ctx) {
     return 'applied';
   }
 
+  if (type === 'set_inbox') {
+    const { data: target } = await supabaseAdmin
+      .from('inboxes')
+      .select('id')
+      .eq('id', action.inboxId)
+      .eq('organization_id', ctx.organizationId)
+      .eq('status', 'active')
+      .maybeSingle();
+    if (!target?.id) {
+      emitWorkflowActionSkipped({
+        organizationId: ctx.organizationId,
+        conversationId: ctx.conversationId,
+        ruleId: ctx.ruleId,
+        actionType: type,
+        reason: 'invalid_inbox',
+        messageId: ctx.messageId,
+        channelType: ctx.channelType,
+      });
+      return 'skipped';
+    }
+    const { data: prior } = await supabaseAdmin
+      .from('conversations')
+      .select('inbox_id')
+      .eq('id', ctx.conversationId)
+      .eq('organization_id', ctx.organizationId)
+      .maybeSingle();
+    await supabaseAdmin
+      .from('conversations')
+      .update({ inbox_id: action.inboxId })
+      .eq('id', ctx.conversationId)
+      .eq('organization_id', ctx.organizationId);
+    if (prior?.inbox_id && prior.inbox_id !== action.inboxId) {
+      emitSupportEvent({
+        organizationId: ctx.organizationId,
+        eventType: 'conversation.inbox_transferred',
+        entityType: 'conversation',
+        entityId: ctx.conversationId,
+        actorMemberId: null,
+        channelType: ctx.channelType ?? null,
+        payload: {
+          from_inbox_id: prior.inbox_id,
+          to_inbox_id: action.inboxId,
+          source: 'workflow',
+          rule_id: ctx.ruleId,
+        },
+      });
+    }
+    emitWorkflowActionApplied({
+      organizationId: ctx.organizationId,
+      conversationId: ctx.conversationId,
+      ruleId: ctx.ruleId,
+      actionType: type,
+      messageId: ctx.messageId,
+      channelType: ctx.channelType,
+      detail: { inboxId: action.inboxId },
+    });
+    return 'applied';
+  }
+
   if (type === 'set_assignment') {
     await updateConversationFromAutomation({
       organizationId: ctx.organizationId,

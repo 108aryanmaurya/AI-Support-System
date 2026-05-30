@@ -10,6 +10,8 @@ Per-feature implementation guides for the AI Support System monorepo. Each doc e
 | [multi-organization.md](./features/multi-organization.md) | Tenancy, org context, URL-scoped API |
 | [team-invitations.md](./features/team-invitations.md) | Invites, teammates settings, membership |
 | [support-inbox.md](./features/support-inbox.md) | Conversations, filters, workspace state |
+| [multiple-inbox.md](./features/multiple-inbox.md) | Multiple customer-facing inbox queues (product plan) |
+| [multiple-inbox-sprints.md](./features/sprints/multiple-inbox-sprints.md) | Multiple inboxes implementation sprints |
 | [conversation-status-handling.md](./features/conversation-status-handling.md) | Lifecycle sprints: Model C reopen, resolved idle close, waiting reminders *(planned)* |
 | [messages.md](./features/messages.md) | Send pipeline, mentions, internal notes |
 | [realtime.md](./features/realtime.md) | Supabase Realtime, typing presence |

@@ -39,6 +39,7 @@ export const WORKFLOW_CONDITION_FIELDS = Object.freeze([
 export const WORKFLOW_ACTION_TYPES = Object.freeze([
   'set_assignment',
   'set_priority',
+  'set_inbox',
   'add_tag',
   'notify',
   'assign_to_ai',
@@ -192,6 +193,19 @@ function validateAction(raw, path) {
       throw new Error(`${path}: set_priority requires priority`);
     }
     return { type, priority: raw.priority };
+  }
+
+  if (type === 'set_inbox') {
+    const inboxId =
+      typeof raw.inboxId === 'string'
+        ? raw.inboxId.trim()
+        : typeof raw.inbox_id === 'string'
+          ? raw.inbox_id.trim()
+          : '';
+    if (!inboxId || !UUID_REGEX.test(inboxId)) {
+      throw new Error(`${path}: set_inbox requires inboxId UUID`);
+    }
+    return { type, inboxId };
   }
 
   if (type === 'set_assignment') {

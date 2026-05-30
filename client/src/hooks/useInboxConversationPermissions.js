@@ -18,13 +18,12 @@ export function useInboxConversationPermissions({ can, myMemberId, conversation 
     const assignee = conversation?.assigned_to_member_id ?? null
 
     const replyReason = customerReplyDisabledReason(can, myMemberId, assignee)
+    const internalNoteReason = can('messages.internal_note')
+      ? null
+      : permissionDenialMessage('messages.internal_note')
     const spamReason = can('conversations.mark_spam') ? null : permissionDenialMessage('conversations.mark_spam')
     const closeReason = can('conversations.close') ? null : permissionDenialMessage('conversations.close')
     const aiReason = can('ai.use_copilot') ? null : permissionDenialMessage('ai.use_copilot')
-    const autoAssignReason = !can('conversations.assign_self')
-      ? permissionDenialMessage('conversations.assign_self')
-      : null
-
     const canOpenAssignMenu =
       !conversation ||
       can('conversations.assign_others') ||
@@ -37,10 +36,13 @@ export function useInboxConversationPermissions({ can, myMemberId, conversation 
 
     return {
       reply: { restricted: Boolean(replyReason), reason: replyReason },
+      internalNote: {
+        restricted: Boolean(internalNoteReason),
+        reason: internalNoteReason,
+      },
       spam: { restricted: Boolean(spamReason), reason: spamReason },
       close: { restricted: Boolean(closeReason), reason: closeReason },
       aiCopilot: { restricted: Boolean(aiReason), reason: aiReason },
-      autoAssignOnSelect: { restricted: Boolean(autoAssignReason), reason: autoAssignReason },
       assignMenu: { restricted: Boolean(assignMenuReason), reason: assignMenuReason },
       assignMember: (targetMemberId) => ({
         restricted: Boolean(

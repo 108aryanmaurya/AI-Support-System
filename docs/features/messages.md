@@ -7,9 +7,11 @@ Messages are rows in `messages` with a **sender_type** (customer, agent, system,
 ## Capabilities
 
 - List messages per conversation (paginated)
-- Agent send via `POST .../messages/send` (primary inbox path)
-- Generic `POST .../messages` for internal notes and advanced cases
-- @mention parsing; merge user IDs into `conversations.metadata`
+- Agent send via `POST .../messages/send` (primary inbox path; customer-visible)
+- **Internal notes** via `POST .../messages/internal-note` (team-only; no outbound to customer)
+- @mention parsing on **internal notes only**; merge user IDs into `conversations.metadata.mentions`
+- **Mention email** — `notify.mention` worker job (org `mention_notify_enabled`, default on)
+- Inbox composer: Reply vs Internal note tabs; `@` autocomplete for org members
 - Delivery states in UI (sending / sent / failed)
 - **Collision warning** — if another agent sent within `STALE_THREAD_WINDOW_SEC` (default 30s), API returns `409` with `code: stale_thread`; client may retry with `acknowledge_stale_thread: true`
 - **Assignee-only customer replies** — agents cannot send customer-visible messages on threads assigned to someone else (`403`); unassigned or own assignment OK; admins (`assign_others`) may override. Internal notes are not restricted.
@@ -52,6 +54,7 @@ sequenceDiagram
 | Method | Path | Auth |
 |--------|------|------|
 | POST | `/api/org/:orgId/messages/send` | Yes (rate limit; optional `client_request_id`; optional `acknowledge_stale_thread`) |
+| POST | `/api/org/:orgId/messages/internal-note` | Yes (`messages.internal_note`; `@` mentions + email notify) |
 | POST | `/api/org/:orgId/conversations/:id/claim` | Yes (self-assign unassigned) |
 | POST | `/api/org/:orgId/messages` | Yes |
 | POST | `/api/org/:orgId/messages/incoming` | No (ingress rate limit) |

@@ -7,7 +7,7 @@ Org-scoped **deterministic routing rules** run on the automation worker after cl
 ## Capabilities
 
 - Triggers: `inbound_message`, `sla_warning`, `tag_added`, `schedule`
-- Actions: `set_assignment`, `set_priority`, `add_tag`, `notify`, `assign_to_ai`, `enqueue_phase6` (always skipped until Phase 6)
+- Actions: `set_assignment`, `set_priority`, `set_inbox`, `add_tag`, `notify`, `assign_to_ai`, `enqueue_phase6` (always skipped until Phase 6)
 - **`sla_warning` + `notify`:** optional extra SLA email via workflow (`source: workflow`, `staff`/`assignee` channel). **Default breach email** is sent by `sla.scan_org` when `automation.sla_notify_enabled` (assignee when assigned; unassigned → assignment fallback list or admin). Deduped per conversation/breach-type/day with workflow notify via `sla:breach_notify:*` idempotency key.
 - **SLA risk badge:** set on matching `sla_warning` rules; cleared when an **agent** message is successfully sent (`metadata.ingress.sla_at_risk` → `false`, `sla_cleared_at` set). Priority resets to **medium** if it still matches the SLA workflow `set_priority` bump (`ingress.sla_workflow_priority`) or is legacy **urgent/high** with no tracked bump; unchanged if an agent or other rule changed priority afterward.
 - Admin UI: **Settings → Workflow rules** — enable/order rules, JSON conditions/actions, dry-run, test email, queue metrics

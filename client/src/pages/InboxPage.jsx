@@ -31,6 +31,9 @@ import {
   getMessageDeliveryStatus,
   validateOutboundMessage,
 } from '../services/conversationSendMessage.js'
+import { createSendInternalNote } from '../services/conversationInternalNote.js'
+import { ComposerMentionMenu } from '../components/inbox/ComposerMentionMenu.jsx'
+import { useComposerMentions } from '../hooks/useComposerMentions.js'
 import { useAuth } from '../hooks/useAuth.js'
 import { useInboxPeriodicSync } from '../hooks/useInboxPeriodicSync.js'
 import { useRealtimeInbox } from '../hooks/useRealtimeInbox.js'
@@ -40,6 +43,7 @@ import { RestrictedControl } from '../components/RestrictedControl.jsx'
 import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
 import { useInboxConversationPermissions } from '../hooks/useInboxConversationPermissions.js'
 import { InboxSidebar } from '../components/InboxSidebar.jsx'
+import { InboxSwitcher } from '../components/inbox/InboxSwitcher.jsx'
 import { ConversationTagsPanel } from '../components/inbox/ConversationTagsPanel.jsx'
 import AssignmentAuditHint from '../components/inbox/AssignmentAuditHint.jsx'
 import { fetchConversationAssignmentAudit } from '../services/assignmentApi.js'
@@ -65,10 +69,12 @@ import {
   conversationMessagesUrl,
   patchConversationSpamUrl,
 } from '../services/inboxApi.js'
+import { fetchOrgInboxes, transferConversationInbox } from '../services/inboxesApi.js'
 import {
   getConversationAutomationBadges,
   getConversationLifecycleDetailHint,
   getConversationLifecycleListBadges,
+  primaryMentionHandle,
 } from '@ai-support/shared'
 import { fetchOrgLifecycleSettings } from '../services/lifecycleSettingsApi.js'
 import { useInboxStore } from '../stores/inboxStore.js'
@@ -79,7 +85,6 @@ import {
   parseInboxListParams,
 } from '../utils/inboxUrlParams.js'
 import {
-  CONVERSATION_ACTIVE_STATUSES,
   CONVERSATION_ASSIGNMENT_TYPES,
   CONVERSATION_PRIORITIES,
   CONVERSATION_WORKSPACE_STATUSES,
@@ -255,7 +260,7 @@ export default function InboxPage() {
   const activeConversationId = conversationIdFromUrl
   const listParamsKey = useMemo(
     () =>
-      `${inboxListParams.filter}|${inboxListParams.page}|${inboxListParams.pageSize}|${inboxListParams.tagId ?? ''}|${inboxListParams.aiIntent ?? ''}`,
+      `${inboxListParams.inbox ?? ''}|${inboxListParams.filter}|${inboxListParams.page}|${inboxListParams.pageSize}|${inboxListParams.tagId ?? ''}|${inboxListParams.aiIntent ?? ''}`,
     [inboxListParams],
   )
   const organizationId =
@@ -292,6 +297,15 @@ export default function InboxPage() {
   /** @type {[{ runId: string, sourceText: string, parentMessageId: string | null } | null]} */
   const [pendingSuggestLineage, setPendingSuggestLineage] = useState(null)
   const [aiPreview, setAiPreview] = useState(null)
+  /** @type {['reply' | 'internal_note', import('react').Dispatch<import('react').SetStateAction<'reply' | 'internal_note'>>]} */
+  const [composerMode, setComposerMode] = useState('reply')
+  const [orgInboxes, setOrgInboxes] = useState([])
+  const [loadingInboxes, setLoadingInboxes] = useState(false)
+  const [transferMenuOpen, setTransferMenuOpen] = useState(false)
+  const [transferring, setTransferring] = useState(false)
+
+  const setActiveInboxId = useInboxStore((state) => state.setActiveInboxId)
+  const setAccessibleInboxIds = useInboxStore((state) => state.setAccessibleInboxIds)
 
   const messagesScrollRef = useRef(null)
   const composerTextareaRef = useRef(null)
@@ -304,8 +318,6 @@ export default function InboxPage() {
     loadFilterCounts,
     mentionCue,
     filterCounts,
-    autoAssignOnSelect,
-    setAutoAssignOnSelect,
   } = useInboxSidebarActions(organizationId, {
     setLoadingConversations,
     setError,
@@ -390,6 +402,7 @@ export default function InboxPage() {
   useEffect(() => {
     setPendingSuggestLineage(null)
     setAiPreview(null)
+    setComposerMode('reply')
   }, [activeConversationId])
 
   const activeConversationAiEnabled = useMemo(() => {
@@ -584,10 +597,58 @@ export default function InboxPage() {
         organizationId,
         senderUserId: user?.id ?? null,
         apiFetch,
-        mentionMembers: mentionMembersForParse,
+        mentionMembers: [],
       }),
-    [organizationId, user?.id, mentionMembersForParse],
+    [organizationId, user?.id],
   )
+
+  const sendInternalNote = useMemo(
+    () =>
+      createSendInternalNote({
+        organizationId,
+        senderUserId: user?.id ?? null,
+        apiFetch,
+      }),
+    [organizationId, user?.id],
+  )
+
+  const mentionMembersExcludingSelf = useMemo(
+    () => mentionMembersForParse.filter((m) => m.userId !== user?.id),
+    [mentionMembersForParse, user?.id],
+  )
+
+  const {
+    mentionMenuOpen,
+    mentionQuery,
+    mentionHighlight,
+    handleChange: handleDraftChange,
+    handleSelect: handleMentionSelect,
+    handleKeyDown: handleMentionKeyDown,
+    closeMentionMenu,
+  } = useComposerMentions({
+    value: draftMessage,
+    onChange: setDraftMessage,
+    textareaRef: composerTextareaRef,
+    enabled: composerMode === 'internal_note',
+  })
+
+  const mentionFilteredCount = useMemo(() => {
+    const q = (mentionQuery ?? '').trim().toLowerCase()
+    const list = mentionMembersExcludingSelf
+    if (!q) return Math.min(list.length, 12)
+    return list
+      .filter((m) => {
+        const handle = primaryMentionHandle(m)
+        const name = (m.displayName ?? '').toLowerCase()
+        const email = (m.email ?? '').toLowerCase()
+        return handle.includes(q) || name.includes(q) || email.includes(q)
+      })
+      .slice(0, 12).length
+  }, [mentionMembersExcludingSelf, mentionQuery])
+
+  useEffect(() => {
+    closeMentionMenu()
+  }, [activeConversationId, closeMentionMenu])
 
   const loadMessages = useCallback(
     async (conversationId, opts = {}) => {
@@ -791,6 +852,37 @@ export default function InboxPage() {
 
   useEffect(() => {
     if (!organizationId) return
+    let cancelled = false
+    setLoadingInboxes(true)
+    ;(async () => {
+      try {
+        const res = await fetchOrgInboxes(organizationId)
+        if (cancelled) return
+        const list = res?.inboxes ?? []
+        setOrgInboxes(list)
+        setAccessibleInboxIds(list.map((i) => i.id))
+        const fromUrl = inboxListParams.inbox
+        const resolved =
+          fromUrl && list.some((i) => i.id === fromUrl)
+            ? fromUrl
+            : list.find((i) => i.isDefault)?.id ?? list[0]?.id ?? ''
+        setActiveInboxId(resolved)
+        if (resolved && resolved !== fromUrl) {
+          patchInboxUrl({ inbox: resolved, conversation: null })
+        }
+      } catch {
+        if (!cancelled) setOrgInboxes([])
+      } finally {
+        if (!cancelled) setLoadingInboxes(false)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [organizationId, setActiveInboxId, setAccessibleInboxIds, inboxListParams.inbox, patchInboxUrl])
+
+  useEffect(() => {
+    if (!organizationId) return
     invalidateConversationFilterCache()
   }, [organizationId, invalidateConversationFilterCache])
 
@@ -803,11 +895,12 @@ export default function InboxPage() {
   useEffect(() => {
     if (!organizationId || !inboxListParamsReady(searchParams)) return undefined
 
-    const { filter, page, pageSize, tagId, aiIntent } = inboxListParams
+    const { filter, page, pageSize, tagId, aiIntent, inbox } = inboxListParams
     useInboxStore.setState({
       activeFilter: filter,
       activeTagId: tagId,
       activeAiIntent: filter === 'ai_intent' ? aiIntent : null,
+      activeInboxId: inbox || useInboxStore.getState().activeInboxId,
     })
 
     let cancelled = false
@@ -816,7 +909,8 @@ export default function InboxPage() {
       try {
         await runConversationQuery(filter, { page, pageSize })
         if (cancelled) return
-        const counts = await apiFetch(conversationCountsUrl(organizationId))
+        const inboxId = useInboxStore.getState().activeInboxId
+        const counts = await apiFetch(conversationCountsUrl(organizationId, inboxId || null))
         if (!cancelled) setFilterCounts(counts)
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Failed to load conversations.')
@@ -918,20 +1012,8 @@ export default function InboxPage() {
       if (organizationId && id) {
         setSearchParams((prev) => mergeInboxSearchParams(prev, { conversation: id }), { replace: true })
       }
-      const conv = useInboxStore.getState().conversations.find((c) => c.id === id)
-      const myMid = myMembership?.id
-      if (
-        useInboxStore.getState().autoAssignOnSelect &&
-        organizationId &&
-        myMid &&
-        conv &&
-        CONVERSATION_ACTIVE_STATUSES.includes(conv.status ?? 'open') &&
-        !conv.assigned_to_member_id
-      ) {
-        void assignConversation(id, myMid)
-      }
     },
-    [organizationId, setSearchParams, myMembership?.id, assignConversation],
+    [organizationId, setSearchParams],
   )
 
   useEffect(() => {
@@ -1001,10 +1083,13 @@ export default function InboxPage() {
   )
 
   const trimmedDraft = draftMessage.trim()
+  const isInternalNoteMode = composerMode === 'internal_note'
   const canSendMessage =
     Boolean(activeConversationId && organizationId && trimmedDraft) &&
     !sendingMessage &&
-    !inboxPerms.reply.restricted
+    (isInternalNoteMode
+      ? !inboxPerms.internalNote.restricted
+      : !inboxPerms.reply.restricted)
 
   const handleSendMessage = useCallback(async () => {
     if (!activeConversationId || !organizationId) return
@@ -1015,9 +1100,27 @@ export default function InboxPage() {
       return
     }
 
+    const body = validated.content
+
+    if (isInternalNoteMode) {
+      setSendingMessage(true)
+      setError('')
+      setDraftMessage('')
+      closeMentionMenu()
+      try {
+        const result = await sendInternalNote(activeConversationId, body)
+        if (!result.ok && !result.skipped) {
+          setError(result.error || 'Failed to post internal note.')
+          setDraftMessage(body)
+        }
+      } finally {
+        setSendingMessage(false)
+      }
+      return
+    }
+
     stopTypingImmediately()
 
-    const body = validated.content
     const lineageSnapshot = pendingSuggestLineage
 
     setSendingMessage(true)
@@ -1064,8 +1167,11 @@ export default function InboxPage() {
     draftMessage,
     organizationId,
     sendMessage,
+    sendInternalNote,
     stopTypingImmediately,
     pendingSuggestLineage,
+    isInternalNoteMode,
+    closeMentionMenu,
   ])
 
   const handleRetryMessage = useCallback(
@@ -1089,13 +1195,48 @@ export default function InboxPage() {
 
   const onComposerKeyDown = useCallback(
     (event) => {
+      if (isInternalNoteMode && mentionMenuOpen && mentionFilteredCount > 0) {
+        if (event.key === 'Enter' && !event.ctrlKey && !event.metaKey) {
+          const q = (mentionQuery ?? '').trim().toLowerCase()
+          const list = mentionMembersExcludingSelf
+          const filtered = !q
+            ? list.slice(0, 12)
+            : list
+                .filter((m) => {
+                  const handle = primaryMentionHandle(m)
+                  const name = (m.displayName ?? '').toLowerCase()
+                  const email = (m.email ?? '').toLowerCase()
+                  return handle.includes(q) || name.includes(q) || email.includes(q)
+                })
+                .slice(0, 12)
+          const pick = filtered[mentionHighlight]
+          if (pick) {
+            event.preventDefault()
+            handleMentionSelect(pick)
+            return
+          }
+        }
+        if (handleMentionKeyDown(event, mentionFilteredCount)) return
+      }
+
       if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
         event.preventDefault()
         if (!canSendMessage) return
         handleSendMessage()
       }
     },
-    [canSendMessage, handleSendMessage],
+    [
+      canSendMessage,
+      handleSendMessage,
+      isInternalNoteMode,
+      mentionMenuOpen,
+      mentionFilteredCount,
+      mentionQuery,
+      mentionMembersExcludingSelf,
+      mentionHighlight,
+      handleMentionSelect,
+      handleMentionKeyDown,
+    ],
   )
 
   return (
@@ -1106,10 +1247,6 @@ export default function InboxPage() {
           filterCounts={filterCounts}
           onSelectSidebarFilter={handleSelectSidebarFilter}
           mentionCue={mentionCue}
-          autoAssignOnSelect={autoAssignOnSelect}
-          setAutoAssignOnSelect={setAutoAssignOnSelect}
-          autoAssignRestricted={inboxPerms.autoAssignOnSelect.restricted}
-          autoAssignRestrictedReason={inboxPerms.autoAssignOnSelect.reason}
           orgTags={orgTags}
           activeTagId={inboxListParams.tagId}
           onTagFilterChange={handleTagFilterChange}
@@ -1119,11 +1256,17 @@ export default function InboxPage() {
 
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-[#27314a] bg-[#101729]">
           <div className="shrink-0 border-b border-[#27314a] px-4 py-3">
-            <div className="flex items-center justify-between">
-              <h3 className="flex items-center gap-2 text-2xl font-semibold text-white">
-                <CircleDot size={20} />
-                Aryan Maurya
-              </h3>
+            <div className="flex items-center justify-between gap-2">
+              <InboxSwitcher
+                inboxes={orgInboxes}
+                activeInboxId={inboxListParams.inbox || useInboxStore.getState().activeInboxId}
+                loading={loadingInboxes}
+                onSelectInbox={(inboxId) => {
+                  setActiveInboxId(inboxId)
+                  patchInboxUrl({ inbox: inboxId, conversation: null, page: 1 })
+                  invalidateConversationFilterCache()
+                }}
+              />
               <button className="rounded-full bg-[#1a2338] p-2 text-slate-200">
                 <Search size={20} />
               </button>
@@ -1179,11 +1322,67 @@ export default function InboxPage() {
             <>
           <div className="flex shrink-0 items-center justify-between border-b border-[#27314a] px-3 py-4">
             <h3 className="text-2xl font-semibold">{selectedConversation ? selectedConversation.source ?? 'Messenger' : 'Messenger'}</h3>
-            <div className="flex items-center gap-2 text-slate-300">
+            <div className="relative flex items-center gap-2 text-slate-300">
               <Star size={14} />
-              <button className="rounded-full bg-[#2b3346] p-1.5">
-                <Ellipsis size={14} />
-              </button>
+              {can('conversations.transfer_inbox') ? (
+                <>
+                  <button
+                    type="button"
+                    className="rounded-full bg-[#2b3346] p-1.5"
+                    aria-label="More actions"
+                    onClick={() => setTransferMenuOpen((v) => !v)}
+                  >
+                    <Ellipsis size={14} />
+                  </button>
+                  {transferMenuOpen ? (
+                    <div className="absolute right-0 top-8 z-20 min-w-[180px] rounded-lg border border-[#3a4b6f] bg-[#101729] py-1 shadow-lg">
+                      <p className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Transfer to inbox
+                      </p>
+                      {orgInboxes
+                        .filter((ib) => ib.id !== selectedConversation?.inbox_id)
+                        .map((ib) => (
+                          <button
+                            key={ib.id}
+                            type="button"
+                            disabled={transferring}
+                            className="block w-full px-3 py-2 text-left text-sm text-slate-200 hover:bg-[#1a2338] disabled:opacity-50"
+                            onClick={async () => {
+                              if (!organizationId || !activeConversationId) return
+                              setTransferring(true)
+                              setTransferMenuOpen(false)
+                              try {
+                                const res = await transferConversationInbox(
+                                  organizationId,
+                                  activeConversationId,
+                                  ib.id,
+                                )
+                                if (res?.conversation) upsertConversation(res.conversation)
+                                const stillAccessible = useInboxStore
+                                  .getState()
+                                  .accessibleInboxIds.includes(ib.id)
+                                if (!stillAccessible) {
+                                  patchInboxUrl({ inbox: ib.id, conversation: null })
+                                }
+                                await loadFilterCounts()
+                              } catch (err) {
+                                setError(err?.message || 'Transfer failed.')
+                              } finally {
+                                setTransferring(false)
+                              }
+                            }}
+                          >
+                            {ib.name}
+                          </button>
+                        ))}
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <button type="button" className="rounded-full bg-[#2b3346] p-1.5" aria-hidden>
+                  <Ellipsis size={14} />
+                </button>
+              )}
               <button className="rounded-full bg-[#2b3346] p-1.5">
                 <MessageSquare size={14} />
               </button>
@@ -1226,6 +1425,7 @@ export default function InboxPage() {
               const st = message.sender_type ?? 'customer'
               const isSystem = st === 'system'
               const isAgent = st === 'agent'
+              const isInternalNote = st === 'internal_note'
               const isCustomer = st === 'customer'
               const showAgentDelivery = st === 'agent'
               const statusLabel =
@@ -1236,14 +1436,14 @@ export default function InboxPage() {
                   className={`mt-4 flex items-end gap-2 ${
                     isSystem
                       ? 'justify-center'
-                      : isAgent
+                      : isAgent || isInternalNote
                         ? 'justify-end'
                         : isCustomer
                           ? 'justify-start'
                           : 'justify-start'
                   }`}
                 >
-                  {!isAgent && !isSystem ? (
+                  {!isAgent && !isInternalNote && !isSystem ? (
                     <div
                       className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${messageAvatarClass(st)}`}
                     >
@@ -1260,7 +1460,8 @@ export default function InboxPage() {
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <p className="text-xs text-slate-300">
-                        {message.sender_type} • {getRelativeTimeLabel(message.created_at)}
+                        {isInternalNote ? 'Internal note' : message.sender_type} •{' '}
+                        {getRelativeTimeLabel(message.created_at)}
                       </p>
                       {showAgentDelivery ? (
                         <span
@@ -1288,7 +1489,7 @@ export default function InboxPage() {
                       ) : null}
                     </div>
                   </div>
-                  {isAgent ? (
+                  {isAgent || isInternalNote ? (
                     <div
                       className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold text-white ${messageAvatarClass(st)}`}
                     >
@@ -1302,74 +1503,148 @@ export default function InboxPage() {
 
           <div className="mx-3 mb-3 mt-auto shrink-0 rounded-xl border border-[#2b3652] bg-[#1a2338] p-3">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-sm font-semibold">
-                <MessageSquare size={14} /> Reply
+              <div className="flex rounded-md border border-[#334060] p-0.5 text-xs font-medium">
+                <button
+                  type="button"
+                  onClick={() => setComposerMode('reply')}
+                  className={`rounded px-2.5 py-1 ${
+                    composerMode === 'reply'
+                      ? 'bg-[#334680] text-white'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Reply
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setComposerMode('internal_note')}
+                  className={`rounded px-2.5 py-1 ${
+                    composerMode === 'internal_note'
+                      ? 'bg-amber-900/50 text-amber-100'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  Internal note
+                </button>
               </div>
-              <RestrictedControl
-                restricted={Boolean(composerAiDisabledReason) || sendingMessage}
-                reason={composerAiDisabledReason}
-              >
-                <ComposerAiMenu
-                  disabled={Boolean(composerAiDisabledReason) || sendingMessage}
-                  disabledReason={composerAiDisabledReason}
-                  onTranslate={(lang) => void runComposerTranslate(lang)}
-                  onRewrite={(tone) => void runComposerRewrite(tone)}
-                />
-              </RestrictedControl>
+              {!isInternalNoteMode ? (
+                <RestrictedControl
+                  restricted={Boolean(composerAiDisabledReason) || sendingMessage}
+                  reason={composerAiDisabledReason}
+                >
+                  <ComposerAiMenu
+                    disabled={Boolean(composerAiDisabledReason) || sendingMessage}
+                    disabledReason={composerAiDisabledReason}
+                    onTranslate={(lang) => void runComposerTranslate(lang)}
+                    onRewrite={(tone) => void runComposerRewrite(tone)}
+                  />
+                </RestrictedControl>
+              ) : (
+                <span className="text-[10px] text-amber-200/80">Team only — not sent to customer</span>
+              )}
             </div>
-            {pendingSuggestLineage?.runId ? (
+            {pendingSuggestLineage?.runId && !isInternalNoteMode ? (
               <p className="mb-2 text-[10px] text-violet-300/90">
                 AI-assisted draft — tracked when you send.
               </p>
             ) : null}
             <RestrictedControl
-              restricted={inboxPerms.reply.restricted}
-              reason={inboxPerms.reply.reason}
-              className="mb-3 block w-full"
+              restricted={
+                isInternalNoteMode
+                  ? inboxPerms.internalNote.restricted
+                  : inboxPerms.reply.restricted
+              }
+              reason={
+                isInternalNoteMode ? inboxPerms.internalNote.reason : inboxPerms.reply.reason
+              }
+              className="relative mb-3 block w-full"
             >
-            <textarea
-              ref={composerTextareaRef}
-              value={draftMessage}
-              onChange={(event) => {
-                const next = event.target.value
-                setDraftMessage(next)
-                if (next.trim()) {
-                  onComposerActivity()
-                } else {
+              <ComposerMentionMenu
+                members={mentionMembersExcludingSelf}
+                query={mentionQuery}
+                open={isInternalNoteMode && mentionMenuOpen}
+                highlightIndex={mentionHighlight}
+                onSelect={handleMentionSelect}
+              />
+              <textarea
+                ref={composerTextareaRef}
+                value={draftMessage}
+                onChange={(event) => {
+                  const next = event.target.value
+                  if (isInternalNoteMode) {
+                    handleDraftChange(next)
+                  } else {
+                    setDraftMessage(next)
+                    if (next.trim()) {
+                      onComposerActivity()
+                    } else {
+                      stopTypingImmediately()
+                      setPendingSuggestLineage(null)
+                    }
+                  }
+                }}
+                onKeyDown={onComposerKeyDown}
+                onBlur={() => {
                   stopTypingImmediately()
-                  setPendingSuggestLineage(null)
+                  closeMentionMenu()
+                }}
+                rows={3}
+                placeholder={
+                  !activeConversationId
+                    ? 'Select a conversation first'
+                    : isInternalNoteMode
+                      ? inboxPerms.internalNote.restricted
+                        ? 'Internal notes disabled for your role'
+                        : 'Internal note — type @ to mention a teammate'
+                      : inboxPerms.reply.restricted
+                        ? 'Replies disabled for your role'
+                        : 'Type a reply to the customer...'
                 }
-              }}
-              onKeyDown={onComposerKeyDown}
-              onBlur={() => stopTypingImmediately()}
-              rows={3}
-              placeholder={
-                inboxPerms.reply.restricted
-                  ? 'Replies disabled for your role'
-                  : activeConversationId
-                    ? 'Type a reply...'
-                    : 'Select a conversation first'
-              }
-              className="mb-3 w-full resize-none rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-slate-100 outline-none focus:border-[#4f6290]"
-              disabled={
-                !activeConversationId || sendingMessage || inboxPerms.reply.restricted
-              }
-            />
+                className={`w-full resize-none rounded-md border px-3 py-2 text-sm text-slate-100 outline-none focus:border-[#4f6290] ${
+                  isInternalNoteMode
+                    ? 'border-amber-500/35 bg-[#1f1a14]'
+                    : 'border-[#334060] bg-[#0f1728]'
+                }`}
+                disabled={
+                  !activeConversationId ||
+                  sendingMessage ||
+                  (isInternalNoteMode
+                    ? inboxPerms.internalNote.restricted
+                    : inboxPerms.reply.restricted)
+                }
+              />
             </RestrictedControl>
             <div className="flex items-center justify-between text-xs text-slate-400">
-              <span>Use Ctrl/Cmd + Enter to send</span>
+              <span>
+                {isInternalNoteMode
+                  ? 'Enter to pick @mention · Ctrl/Cmd + Enter to post'
+                  : 'Use Ctrl/Cmd + Enter to send'}
+              </span>
               <RestrictedControl
-                restricted={!canSendMessage && Boolean(inboxPerms.reply.reason)}
-                reason={inboxPerms.reply.reason}
+                restricted={
+                  !canSendMessage &&
+                  Boolean(
+                    isInternalNoteMode ? inboxPerms.internalNote.reason : inboxPerms.reply.reason,
+                  )
+                }
+                reason={
+                  isInternalNoteMode ? inboxPerms.internalNote.reason : inboxPerms.reply.reason
+                }
                 className="shrink-0"
               >
                 <button
                   type="button"
                   onClick={handleSendMessage}
                   disabled={!canSendMessage}
-                  className="rounded-md bg-[#334680] px-3 py-1 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                  className={`rounded-md px-3 py-1 text-slate-100 disabled:cursor-not-allowed disabled:opacity-50 ${
+                    isInternalNoteMode ? 'bg-amber-800/80' : 'bg-[#334680]'
+                  }`}
                 >
-                  {sendingMessage ? 'Sending...' : 'Send'}
+                  {sendingMessage
+                    ? 'Sending...'
+                    : isInternalNoteMode
+                      ? 'Post note'
+                      : 'Send'}
                 </button>
               </RestrictedControl>
             </div>

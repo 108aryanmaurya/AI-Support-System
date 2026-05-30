@@ -36,8 +36,9 @@ export function parseInboxListParams(searchParams) {
   }
 
   const conversation = searchParams.get('conversation')?.trim() ?? ''
+  const inbox = searchParams.get('inbox')?.trim() || searchParams.get('inboxId')?.trim() || ''
 
-  return { filter, page, pageSize, tagId, aiIntent, conversation }
+  return { filter, page, pageSize, tagId, aiIntent, conversation, inbox }
 }
 
 /** True once `filter` is present (defaults have been written or user navigated with query). */
@@ -49,7 +50,7 @@ export function inboxListParamsReady(searchParams) {
 /**
  * Merge list/thread params into URLSearchParams (preserves unrelated keys).
  * @param {URLSearchParams} existing
- * @param {Partial<{ filter: string, page: number, pageSize: number, tagId: string | null, aiIntent: string | null, conversation: string | null }>} updates
+ * @param {Partial<{ filter: string, page: number, pageSize: number, tagId: string | null, aiIntent: string | null, conversation: string | null, inbox: string | null }>} updates
  */
 export function mergeInboxSearchParams(existing, updates = {}) {
   const merged = { ...parseInboxListParams(existing), ...updates }
@@ -67,6 +68,9 @@ export function mergeInboxSearchParams(existing, updates = {}) {
   } else {
     next.delete('aiIntent')
   }
+
+  if (merged.inbox) next.set('inbox', merged.inbox)
+  else next.delete('inbox')
 
   if (merged.conversation) next.set('conversation', merged.conversation)
   else next.delete('conversation')

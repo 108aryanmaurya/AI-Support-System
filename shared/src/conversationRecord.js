@@ -44,10 +44,18 @@ export function normalizeConversationRecord(raw) {
     assignment_type = assigned_to_member_id ? 'assigned_to_agent' : 'unassigned';
   }
 
+  const inbox_id =
+    typeof src.inbox_id === 'string' && src.inbox_id.trim()
+      ? src.inbox_id.trim()
+      : typeof src.inboxId === 'string' && src.inboxId.trim()
+        ? src.inboxId.trim()
+        : null;
+
   return {
     ...src,
     assigned_to_member_id,
     assignment_type,
+    inbox_id,
   };
 }
 

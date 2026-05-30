@@ -14,7 +14,8 @@ export async function fetchOrgChannels(orgId) {
 
 /**
  * @param {string} orgId
- * @param {{ emails: string[], role?: string }} body
+ * @param {{ emails: string[], role?: string, inboxId?: string | null }} body
+ *   inboxId — team inbox UUID; omit or null for org default inbox on accept
  */
 export async function postOrgInvitesBatch(orgId, body) {
   return apiFetch(`/api/org/${orgId}/invites/batch`, {

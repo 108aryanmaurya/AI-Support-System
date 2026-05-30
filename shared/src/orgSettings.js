@@ -24,6 +24,8 @@ export const ORG_AI_MODEL_TIERS = Object.freeze(['standard', 'advanced']);
 export const ORG_AUTOMATION_SETTINGS_DEFAULTS = Object.freeze({
   inbound_notify_enabled: true,
   assignment_notify_enabled: true,
+  /** Email when an agent is @mentioned on an internal note (default on). */
+  mention_notify_enabled: true,
   sla_enabled: true,
   /** Email on SLA breach (scan path); independent of workflow rules. */
   sla_notify_enabled: true,
@@ -75,6 +77,8 @@ export function mergeOrgAutomationSettings(raw) {
       src.inbound_notify_enabled ?? ORG_AUTOMATION_SETTINGS_DEFAULTS.inbound_notify_enabled,
     assignment_notify_enabled:
       src.assignment_notify_enabled ?? ORG_AUTOMATION_SETTINGS_DEFAULTS.assignment_notify_enabled,
+    mention_notify_enabled:
+      src.mention_notify_enabled ?? ORG_AUTOMATION_SETTINGS_DEFAULTS.mention_notify_enabled,
     sla_enabled: src.sla_enabled ?? ORG_AUTOMATION_SETTINGS_DEFAULTS.sla_enabled,
     sla_notify_enabled:
       src.sla_notify_enabled ?? ORG_AUTOMATION_SETTINGS_DEFAULTS.sla_notify_enabled,

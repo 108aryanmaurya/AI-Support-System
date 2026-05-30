@@ -14,6 +14,7 @@ export const AUTOMATION_JOB_TYPES = Object.freeze([
   'notify.sla_warning',
   'notify.assignment',
   'notify.unassignment',
+  'notify.mention',
   'sla.scan_org',
   ...LIFECYCLE_AUTOMATION_JOB_TYPES,
   'knowledge.ingest_source',

@@ -2,6 +2,10 @@ import { HttpError } from '../utils/httpError.js';
 import { isConversationPriority } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import {
+  assertCanAccessConversation,
+  resolveListInboxId,
+} from '../services/inboxAccess.service.js';
+import {
   CONVERSATION_INBOX_FILTER_TYPES,
   getConversationFilterCounts,
   getFilteredConversations,
@@ -91,11 +95,26 @@ export async function getConversationsController(req, res, next) {
         ? req.query.aiIntent.trim()
         : null;
 
+    const rawInboxId =
+      typeof req.query.inboxId === 'string' && req.query.inboxId.trim()
+        ? req.query.inboxId.trim()
+        : typeof req.query.inbox === 'string' && req.query.inbox.trim()
+          ? req.query.inbox.trim()
+          : null;
+
+    const inboxId = await resolveListInboxId({
+      inboxId: rawInboxId,
+      organizationId,
+      membership: req.orgMembership,
+      orgPermissions: req.orgPermissions,
+    });
+
     const pagination = getPagination(req.query);
     const result = await getFilteredConversations({
       filterType,
       currentUserId: req.userId ?? req.user.id,
       organizationId,
+      inboxId,
       includeSpam,
       tagId,
       aiIntent,
@@ -111,9 +130,24 @@ export async function getConversationCountsController(req, res, next) {
   try {
     const organizationId = orgIdOrThrow(req);
 
+    const rawInboxId =
+      typeof req.query.inboxId === 'string' && req.query.inboxId.trim()
+        ? req.query.inboxId.trim()
+        : typeof req.query.inbox === 'string' && req.query.inbox.trim()
+          ? req.query.inbox.trim()
+          : null;
+
+    const inboxId = await resolveListInboxId({
+      inboxId: rawInboxId,
+      organizationId,
+      membership: req.orgMembership,
+      orgPermissions: req.orgPermissions,
+    });
+
     const counts = await getConversationFilterCounts({
       currentUserId: req.userId ?? req.user.id,
       organizationId,
+      inboxId,
     });
     res.json(counts);
   } catch (error) {
@@ -126,6 +160,13 @@ export async function patchConversationSpamController(req, res, next) {
     const conversationId = req.params.id;
     const organizationId = orgIdOrThrow(req);
     if (!conversationId) throw new HttpError(400, 'conversation id is required.');
+
+    await assertCanAccessConversation({
+      organizationId,
+      conversationId,
+      membership: req.orgMembership,
+      orgPermissions: req.orgPermissions,
+    });
 
     const body = req.body ?? {};
     if (!Object.prototype.hasOwnProperty.call(body, 'is_spam')) {
@@ -155,6 +196,13 @@ export async function patchConversationController(req, res, next) {
     const conversationId = req.params.id;
     const organizationId = orgIdOrThrow(req);
     if (!conversationId) throw new HttpError(400, 'conversation id is required.');
+
+    await assertCanAccessConversation({
+      organizationId,
+      conversationId,
+      membership: req.orgMembership,
+      orgPermissions: req.orgPermissions,
+    });
 
     const body = req.body ?? {};
     const hasAssign = Object.prototype.hasOwnProperty.call(body, 'assignedToMemberId');
@@ -249,6 +297,13 @@ export async function claimConversationController(req, res, next) {
       throw new HttpError(500, 'Organization membership missing.');
     }
 
+    await assertCanAccessConversation({
+      organizationId,
+      conversationId,
+      membership: actorMember,
+      orgPermissions: req.orgPermissions,
+    });
+
     const { data: prior, error: priorErr } = await supabaseAdmin
       .from('conversations')
       .select('*')
@@ -315,6 +370,13 @@ export async function getConversationMessagesController(req, res, next) {
     const conversationId = req.params.id;
     const organizationId = orgIdOrThrow(req);
     if (!conversationId) throw new HttpError(400, 'conversation id is required.');
+
+    await assertCanAccessConversation({
+      organizationId,
+      conversationId,
+      membership: req.orgMembership,
+      orgPermissions: req.orgPermissions,
+    });
 
     const pagination = getPagination(req.query);
     const result = await listMessages({
