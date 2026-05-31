@@ -36,8 +36,8 @@ export async function listInboxesController(req, res, next) {
 export async function createInboxController(req, res, next) {
   try {
     const organizationId = orgIdOrThrow(req);
-    const { name, memberIds = [] } = req.body ?? {};
-    const inbox = await createInbox({ organizationId, name, memberIds });
+    const { name, memberIds = [], settings } = req.body ?? {};
+    const inbox = await createInbox({ organizationId, name, memberIds, settings });
     res.status(201).json({ inbox });
   } catch (error) {
     next(error);
@@ -71,11 +71,11 @@ export async function replaceInboxMembersController(req, res, next) {
   try {
     const organizationId = orgIdOrThrow(req);
     const inboxId = req.params.inboxId;
-    const { memberIds = [], memberRoles = {} } = req.body ?? {};
+    const { memberIds = [], memberRoles = {}, memberPermissions = {} } = req.body ?? {};
     if (!Array.isArray(memberIds)) {
       throw new HttpError(400, 'memberIds must be an array.');
     }
-    await replaceInboxMembers({ organizationId, inboxId, memberIds, memberRoles });
+    await replaceInboxMembers({ organizationId, inboxId, memberIds, memberRoles, memberPermissions });
     const members = await listInboxMembers(organizationId, inboxId);
     res.json({ members });
   } catch (error) {

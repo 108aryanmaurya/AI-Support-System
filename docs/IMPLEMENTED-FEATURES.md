@@ -65,7 +65,8 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 ## 5. Team invitations & membership
 
 - **Create invite** — `POST /api/org/:orgId/invite` (ADMIN); sends invite email via Resend notification config
-- **Batch invites** — `POST /api/org/:orgId/invites/batch` (ADMIN); emails each created invite
+- **Batch invites** — `POST /api/org/:orgId/invites/batch` (ADMIN); `inboxIds` required only when org has team inboxes + `permissions` JSON; emails each created invite
+- **Invite permissions step** — `/settings/teammates/invite/new/permissions` after emails/inbox; granular `inbox_members.permissions` stored on invite and applied on accept
 - **List pending invites** — `GET /api/org/:orgId/invites`
 - **Public invite preview** — `GET /api/org/invite/:token` (org name, role, expiry state)
 - **Accept invite** — `POST /api/org/accept-invite` (authenticated)
@@ -73,7 +74,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Pending invite token storage** — survives register → login → accept
 - **Teammates settings**
   - List members with search
-  - Invite teammates UI (`/settings/teammates/invite/new`)
+  - Invite teammates UI (`/settings/teammates/invite/new` → permissions → send)
   - Deep link route for new invites (`/teammates/invite/new`)
 - **List organization members** — inbox assignment picker + `GET .../conversations/members`
 
@@ -81,7 +82,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ## 6. Support inbox (conversations)
 
-- **Multiple customer-facing inboxes (v1)** — `inboxes` + `inbox_members`; `conversations.inbox_id`; inbox switcher (`?inbox=`); list/counts/send ACL by membership; admin **Settings → Inboxes**; manual `transfer-inbox` + `conversation.inbox_transferred`; routing on create + workflow `set_inbox`; migration script for legacy `settings.assignment.inboxes` — see [multiple-inbox.md](docs/features/multiple-inbox.md)
+- **Multiple customer-facing inboxes (v1)** — `inboxes` + `inbox_members`; optional `conversations.inbox_id` (routing); inbox switcher (`?inbox=`); list/counts/send ACL by membership; admin **Settings → Inboxes** (no auto inbox on org signup); per-inbox **assignment method** (manual / round robin / balanced) with matching member permissions; org-level **Enable auto-route** removed; manual `transfer-inbox` + `conversation.inbox_transferred`; routing on create + workflow `set_inbox`; migration script for legacy `settings.assignment.inboxes` — see [multiple-inbox.md](docs/features/multiple-inbox.md)
 - **Conversation CRUD (API)**
   - Create conversation (customer, channel, priority, assignment, metadata)
   - List with inbox filters and pagination
@@ -89,16 +90,10 @@ Inventory of features **implemented in the codebase today** (client, server, sha
   - Mark/unmark spam
   - List messages for a conversation
 - **Inbox filters (sidebar)**
-  - Your inbox
-  - Mentions
-  - Created by you
-  - All
-  - Unassigned
-  - Spam
-  - SLA risk, Spam flagged (ingress metadata)
-  - AI intent (`?filter=ai_intent&aiIntent=…`)
-  - Resolved
-  - Closed
+  - Your inbox (assigned to me, all inboxes)
+  - Mentions, Created by, Unassigned, Spam
+  - Team inboxes / Teammates / Views (channel) dropdowns (`?filter=team_inbox|teammate|channel` + id param)
+  - `conversations.team_inbox_id` for team-queue assignment (unassigned when assignee and team inbox are both empty)
 - **Conversation lifecycle (Sprint 0–6)** — resolve/close/waiting inbox actions; Model C reopen; cron auto-close idle `resolved`; customer reminder email + auto-close `waiting_customer`; admin lifecycle settings (`/settings/lifecycle`); inbox badges and auto-close hints; lifecycle unit/integration tests; ops runbook in [operational-hardening.md](docs/features/operational-hardening.md); see [conversation-status-handling.md](docs/features/conversation-status-handling.md)
 - **Automation list badges** — spam flagged, SLA risk, AI intent on conversation rows (Phase 4 metadata)
 - **Filter counts** — `GET .../conversations/counts`
@@ -110,11 +105,11 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Inbox state (client)** — Zustand `inboxStore` (conversations, filters, typing, mention cues)
 - **Filter caching & debounced refetch** — faster sidebar switching
 - **Periodic HTTP sync** — backup when realtime is quiet
-- **Claim-on-first-reply** — sending a customer reply on an **unassigned** thread self-assigns the agent (server; respects `client_request_id` idempotency)
+- **Claim-on-first-reply** — replying on an **unassigned** or **team-inbox** thread can self-assign the agent (org **Self-assign by replying** on Settings → Assignment; respects `client_request_id` idempotency)
 - **RBAC & collaboration** — org capabilities (`settings.permissions` + role presets); `requirePermission`; assignment steal prevention; `POST .../conversations/:id/claim`; spam/close/analytics/invite gates; audit `GET .../audit/events`; send collision `stale_thread` warning — see [rba-sprints.md](docs/features/rba-sprints.md)
 - **One open conversation per customer** — DB constraint for email/web threads
 - **Active thread index / RPC helpers** — migrations for performant inbox queries
-- **Intelligent assignment (Sprint 1–8)** — Settings → Assignment; `GET .../assignment/metrics` + Reports overview KPIs; structured assignment logs; preview rate limits; ops runbook [auto-assignment-operations.md](docs/features/auto-assignment-operations.md); worker jobs `assignment.auto_route` / `assignment.reassign`
+- **Intelligent assignment (Sprint 1–8)** — Settings → Assignment (**default assignee** when round robin / balanced auto-route finds no agent; **self-assign by replying**); per-inbox auto-route on Team inboxes; `GET .../assignment/metrics` + Reports overview KPIs; structured assignment logs; preview rate limits; ops runbook [auto-assignment-operations.md](docs/features/auto-assignment-operations.md); worker jobs `assignment.auto_route` / `assignment.reassign`
 
 ---
 

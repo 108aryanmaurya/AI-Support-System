@@ -2,10 +2,7 @@
  * Whitelist patch keys for `PUT .../assignment/settings` (Sprint 7+).
  */
 
-import { isAssignmentStrategy } from './assignment.js';
-
 const BOOL_KEYS = [
-  'auto_route_enabled',
   'sla_routing_enabled',
   'reassign_enabled',
   'reassign_on_sla_warning',
@@ -13,15 +10,15 @@ const BOOL_KEYS = [
   'vip_routing_enabled',
 ];
 
-const NUM_KEYS = ['sla_remaining_minutes_threshold', 'vip_min_proficiency', 'default_max_concurrency'];
+const NUM_KEYS = ['sla_remaining_minutes_threshold', 'default_max_concurrency'];
 
 const STRING_KEYS = [
-  'strategy',
   'vip_target_inbox_id',
   'default_shift_start',
   'default_shift_end',
   'default_timezone',
   'defaultInboxId',
+  'self_assign_on_reply',
 ];
 
 /**
@@ -60,12 +57,6 @@ export function buildAssignmentSettingsPatch(body) {
     }
   }
 
-  if (Object.prototype.hasOwnProperty.call(src, 'strategy')) {
-    const s = typeof src.strategy === 'string' ? src.strategy.trim() : '';
-    if (s && isAssignmentStrategy(s)) out.strategy = s;
-    else delete out.strategy;
-  }
-
   if (Object.prototype.hasOwnProperty.call(src, 'vip_tag_names') && Array.isArray(src.vip_tag_names)) {
     out.vip_tag_names = src.vip_tag_names
       .filter((t) => typeof t === 'string' && t.trim())
@@ -81,6 +72,39 @@ export function buildAssignmentSettingsPatch(body) {
       .filter((id) => typeof id === 'string' && id.trim())
       .map((id) => id.trim())
       .slice(0, 24);
+  }
+
+  if (Object.prototype.hasOwnProperty.call(src, 'default_assignee')) {
+    const da = src.default_assignee;
+    if (da && typeof da === 'object') {
+      const type = typeof da.type === 'string' ? da.type.trim() : 'unassigned';
+      if (type === 'unassigned') {
+        out.default_assignee = { type: 'unassigned' };
+      } else if (type === 'inbox') {
+        const inboxId =
+          typeof da.inboxId === 'string'
+            ? da.inboxId.trim()
+            : typeof da.inbox_id === 'string'
+              ? da.inbox_id.trim()
+              : '';
+        if (inboxId) out.default_assignee = { type: 'inbox', inboxId };
+      } else if (type === 'member') {
+        const memberId =
+          typeof da.memberId === 'string'
+            ? da.memberId.trim()
+            : typeof da.member_id === 'string'
+              ? da.member_id.trim()
+              : '';
+        if (memberId) out.default_assignee = { type: 'member', memberId };
+      }
+    }
+  }
+
+  if (Object.prototype.hasOwnProperty.call(src, 'self_assign_on_reply')) {
+    const mode = typeof src.self_assign_on_reply === 'string' ? src.self_assign_on_reply.trim() : '';
+    if (mode === 'assign_to_me' || mode === 'keep_queue') {
+      out.self_assign_on_reply = mode;
+    }
   }
 
   return out;

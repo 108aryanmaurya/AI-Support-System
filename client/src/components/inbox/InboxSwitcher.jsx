@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react'
  * Customer-facing inbox queue selector (persists via parent URL `?inbox=`).
  *
  * @param {object} props
- * @param {Array<{ id: string, name: string, isDefault?: boolean }>} props.inboxes
+ * @param {Array<{ id: string, name: string }>} props.inboxes
  * @param {string} props.activeInboxId
  * @param {(inboxId: string) => void} props.onSelectInbox
  * @param {boolean} [props.loading]
@@ -66,9 +66,6 @@ export function InboxSwitcher({ inboxes = [], activeInboxId, onSelectInbox, load
                 }}
               >
                 {inbox.name}
-                {inbox.isDefault ? (
-                  <span className="ml-2 text-xs text-slate-500">(default)</span>
-                ) : null}
               </button>
             </li>
           ))}

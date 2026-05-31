@@ -5,7 +5,6 @@ import {
   normalizeAgentTimezone,
   normalizeMaxConcurrency,
   normalizeShiftTime,
-  validateAgentSkillsPayload,
 } from './assignment.js';
 
 describe('assignment validation', () => {
@@ -19,26 +18,6 @@ describe('assignment validation', () => {
     assert.equal(normalizeMaxConcurrency(undefined), 5);
     assert.equal(normalizeMaxConcurrency(8), 8);
     assert.throws(() => normalizeMaxConcurrency(0));
-  });
-
-  it('validates and normalizes skills', () => {
-    const skills = validateAgentSkillsPayload([
-      { skill: 'Billing', proficiency: 80 },
-      { skill: 'technical', proficiency: 40 },
-    ]);
-    assert.equal(skills.length, 2);
-    assert.equal(skills[0].skill, 'billing');
-    assert.throws(() =>
-      validateAgentSkillsPayload([
-        { skill: 'a', proficiency: 1 },
-        { skill: 'A', proficiency: 2 },
-      ]),
-    );
-  });
-
-  it('rejects too many skills', () => {
-    const many = Array.from({ length: 33 }, (_, i) => ({ skill: `s${i}` }));
-    assert.throws(() => validateAgentSkillsPayload(many));
   });
 
   it('normalizes timezone', () => {

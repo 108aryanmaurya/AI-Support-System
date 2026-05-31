@@ -66,7 +66,13 @@ export async function enqueueAutomationJob({
   }
 
   if (jobType === 'assignment.auto_route') {
-    const gate = await canEnqueueAutoRoute(organizationId);
+    const conversationId =
+      typeof payload?.conversationId === 'string'
+        ? payload.conversationId
+        : typeof payload?.conversation_id === 'string'
+          ? payload.conversation_id
+          : null;
+    const gate = await canEnqueueAutoRoute(organizationId, conversationId);
     if (!gate.allowed) {
       return { jobId: null, skipped: true, reason: gate.reason ?? 'auto_route_disabled' };
     }

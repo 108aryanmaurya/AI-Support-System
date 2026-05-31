@@ -35,9 +35,9 @@ export default function AssignmentAuditHint({ log, isAdmin, orgId }) {
       <span className="font-medium text-emerald-100/90">{label}</span>
       {strategy && isAdmin ? (
         <Link
-          to={`/org/${orgId}/settings/assignment`}
+          to={`/org/${orgId}/settings/inboxes`}
           className="text-[#3ECF8E] hover:underline"
-          title="View assignment settings"
+          title="View team inbox assignment settings"
         >
           {strategy.replace(/_/g, ' ')}
         </Link>

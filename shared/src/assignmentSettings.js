@@ -1,20 +1,11 @@
 /**
- * Org intelligent assignment toggles in `organizations.settings.assignment`.
- * Sprint 0: defaults only; Sprint 5+ reads `auto_route_enabled` before `assignment.auto_route` jobs.
+ * Org assignment-related settings in `organizations.settings.assignment`.
+ * Scoring is per team inbox (`inboxes.settings.assignmentMethod`), not org-wide.
  */
 
-import { ASSIGNMENT_LIMITS, ASSIGNMENT_STRATEGIES } from './assignment.js';
+import { ASSIGNMENT_LIMITS } from './assignment.js';
 
-export { ASSIGNMENT_STRATEGIES };
-
-export const ORG_ASSIGNMENT_SETTINGS_DEFAULTS = Object.freeze({
-  /** Master switch for server-side auto-route after classify + workflow (Sprint 5+). */
-  auto_route_enabled: false,
-  /** Default scoring strategy when auto-route runs (Sprint 4+). */
-  strategy: 'weighted_hybrid',
-});
-
-/** Org-wide defaults applied to new agent profiles (Sprint 7+ admin UI). */
+/** Org-wide defaults applied to new agent profiles and routing notifications. */
 export const ORG_ASSIGNMENT_ORG_DEFAULTS = Object.freeze({
   default_max_concurrency: ASSIGNMENT_LIMITS.defaultConcurrency,
   default_shift_start: null,
@@ -25,15 +16,16 @@ export const ORG_ASSIGNMENT_ORG_DEFAULTS = Object.freeze({
 });
 
 /**
+ * @deprecated Use {@link ORG_ASSIGNMENT_ORG_DEFAULTS}. Kept for importers only.
+ */
+export const ORG_ASSIGNMENT_SETTINGS_DEFAULTS = ORG_ASSIGNMENT_ORG_DEFAULTS;
+
+/**
  * @param {unknown} raw — `organizations.settings.assignment`
- * @returns {typeof ORG_ASSIGNMENT_SETTINGS_DEFAULTS}
+ * @returns {typeof ORG_ASSIGNMENT_ORG_DEFAULTS}
  */
 export function mergeOrgAssignmentSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
-  const strategy =
-    typeof src.strategy === 'string' && ASSIGNMENT_STRATEGIES.includes(src.strategy)
-      ? src.strategy
-      : ORG_ASSIGNMENT_SETTINGS_DEFAULTS.strategy;
 
   const maxConc = Number(src.default_max_concurrency);
   const fallbackIds = [];
@@ -59,9 +51,6 @@ export function mergeOrgAssignmentSettings(raw) {
       : ORG_ASSIGNMENT_ORG_DEFAULTS.default_timezone;
 
   return {
-    auto_route_enabled:
-      src.auto_route_enabled ?? ORG_ASSIGNMENT_SETTINGS_DEFAULTS.auto_route_enabled,
-    strategy,
     default_max_concurrency:
       Number.isFinite(maxConc) &&
       maxConc >= ASSIGNMENT_LIMITS.minConcurrency &&
@@ -76,9 +65,9 @@ export function mergeOrgAssignmentSettings(raw) {
 }
 
 /**
- * @param {unknown} settings
+ * @deprecated Auto-route is per inbox (`inboxes.settings.assignmentMethod`). Always false at org level.
  * @returns {boolean}
  */
-export function isOrgAutoRouteEnabled(settings) {
-  return Boolean(mergeOrgAssignmentSettings(settings).auto_route_enabled);
+export function isOrgAutoRouteEnabled() {
+  return false;
 }

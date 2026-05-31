@@ -1,14 +1,14 @@
 import {
+  defaultInboxMemberPermissionsForAssignmentMethod,
   INBOX_LIMITS,
   isInboxMemberRole,
   isInboxStatus,
+  mergeInboxMemberPermissions,
   mergeInboxSettings,
   slugifyInboxName,
 } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
-import { ensureDefaultInboxForOrg } from './inboxDefault.service.js';
-
 function normalizeInboxRow(row) {
   if (!row) return row;
   return {
@@ -17,7 +17,6 @@ function normalizeInboxRow(row) {
     name: row.name,
     slug: row.slug,
     status: row.status,
-    isDefault: Boolean(row.is_default),
     settings: mergeInboxSettings(row.settings),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -30,12 +29,32 @@ function normalizeInboxRow(row) {
  * @param {string[]} [options.accessibleInboxIds] — when set, filter to these ids
  * @param {boolean} [options.viewAll]
  */
+/**
+ * Active inbox UUIDs for an organization.
+ * @param {string} organizationId
+ * @returns {Promise<string[]>}
+ */
+export async function listActiveInboxIdsForOrganization(organizationId) {
+  const { data, error } = await supabaseAdmin
+    .from('inboxes')
+    .select('id')
+    .eq('organization_id', organizationId)
+    .eq('status', 'active');
+
+  if (error) {
+    const missing = error.message?.includes('inboxes') || error.code === '42P01';
+    if (missing) return [];
+    throw new HttpError(500, error.message || 'Failed to list inboxes.');
+  }
+  return (data ?? []).map((row) => row.id).filter(Boolean);
+}
+
 export async function listInboxes(organizationId, options = {}) {
   let q = supabaseAdmin
     .from('inboxes')
     .select('id, organization_id, name, slug, status, is_default, settings, created_at, updated_at')
     .eq('organization_id', organizationId)
-    .order('is_default', { ascending: false })
+    .order('name', { ascending: true })
     .order('name', { ascending: true });
 
   const { accessibleInboxIds, viewAll } = options;
@@ -57,11 +76,16 @@ export async function listInboxes(organizationId, options = {}) {
 /**
  * @param {object} params
  */
-export async function createInbox({ organizationId, name, memberIds = [] }) {
+export async function createInbox({ organizationId, name, memberIds = [], settings: settingsInput }) {
   const trimmed = typeof name === 'string' ? name.trim() : '';
   if (!trimmed) throw new HttpError(400, 'Inbox name is required.');
   if (trimmed.length > INBOX_LIMITS.maxNameLength) {
     throw new HttpError(400, `Inbox name must be at most ${INBOX_LIMITS.maxNameLength} characters.`);
+  }
+
+  const ids = Array.isArray(memberIds) ? memberIds.filter(Boolean) : [];
+  if (ids.length === 0) {
+    throw new HttpError(400, 'At least one teammate is required to create an inbox.');
   }
 
   const { count, error: countErr } = await supabaseAdmin
@@ -88,6 +112,11 @@ export async function createInbox({ organizationId, name, memberIds = [] }) {
     slug = `${slug}-${n}`.slice(0, INBOX_LIMITS.maxSlugLength);
   }
 
+  const mergedSettings = mergeInboxSettings(settingsInput ?? {});
+  const assignmentMethod = mergedSettings.assignmentMethod;
+  const defaultPerms = defaultInboxMemberPermissionsForAssignmentMethod(assignmentMethod);
+  const memberPermissions = Object.fromEntries(ids.map((id) => [id, defaultPerms]));
+
   const { data, error } = await supabaseAdmin
     .from('inboxes')
     .insert({
@@ -96,19 +125,18 @@ export async function createInbox({ organizationId, name, memberIds = [] }) {
       slug,
       status: 'active',
       is_default: false,
-      settings: {},
+      settings: mergedSettings,
     })
     .select('*')
     .single();
 
   if (error) throw new HttpError(500, error.message || 'Failed to create inbox.');
-  if (memberIds.length > 0) {
-    await replaceInboxMembers({
-      organizationId,
-      inboxId: data.id,
-      memberIds,
-    });
-  }
+  await replaceInboxMembers({
+    organizationId,
+    inboxId: data.id,
+    memberIds: ids,
+    memberPermissions,
+  });
   return normalizeInboxRow(data);
 }
 
@@ -139,9 +167,6 @@ export async function patchInbox({ organizationId, inboxId, name, status, settin
     if (!isInboxStatus(status)) {
       throw new HttpError(400, 'status must be active or archived.');
     }
-    if (prior.is_default && status === 'archived') {
-      throw new HttpError(400, 'Cannot archive the default inbox. Set another inbox as default first.');
-    }
     if (status === 'archived') {
       const { count } = await supabaseAdmin
         .from('inboxes')
@@ -155,7 +180,10 @@ export async function patchInbox({ organizationId, inboxId, name, status, settin
     patch.status = status;
   }
   if (settings !== undefined) {
-    patch.settings = mergeInboxSettings(settings);
+    const priorSettings = mergeInboxSettings(prior.settings);
+    const patchSettings =
+      settings && typeof settings === 'object' ? /** @type {Record<string, unknown>} */ (settings) : {};
+    patch.settings = mergeInboxSettings({ ...priorSettings, ...patchSettings });
   }
 
   if (Object.keys(patch).length === 0) return normalizeInboxRow(prior);
@@ -188,6 +216,7 @@ export async function listInboxMembers(organizationId, inboxId) {
   return (data ?? []).map((r) => ({
     organizationMemberId: r.organization_member_id,
     role: r.role,
+    permissions: mergeInboxMemberPermissions(r.permissions),
     createdAt: r.created_at,
   }));
 }
@@ -198,7 +227,13 @@ export async function listInboxMembers(organizationId, inboxId) {
  * @param {string[]} params.memberIds — organization_members.id
  * @param {Record<string, string>} [params.memberRoles] — memberId → role
  */
-export async function replaceInboxMembers({ organizationId, inboxId, memberIds, memberRoles = {} }) {
+export async function replaceInboxMembers({
+  organizationId,
+  inboxId,
+  memberIds,
+  memberRoles = {},
+  memberPermissions = {},
+}) {
   await assertInboxInOrg(organizationId, inboxId);
 
   const unique = [...new Set(memberIds.filter(Boolean))].slice(0, INBOX_LIMITS.maxMembersPerInbox);
@@ -225,7 +260,13 @@ export async function replaceInboxMembers({ organizationId, inboxId, memberIds, 
   const rows = unique.map((organizationMemberId) => {
     const roleRaw = memberRoles[organizationMemberId] ?? 'member';
     const role = isInboxMemberRole(roleRaw) ? roleRaw : 'member';
-    return { inbox_id: inboxId, organization_member_id: organizationMemberId, role };
+    const perms = memberPermissions[organizationMemberId];
+    return {
+      inbox_id: inboxId,
+      organization_member_id: organizationMemberId,
+      role,
+      permissions: mergeInboxMemberPermissions(perms),
+    };
   });
 
   const { error: insErr } = await supabaseAdmin.from('inbox_members').insert(rows);
@@ -257,6 +298,7 @@ export async function addInboxMember({
   inboxId,
   organizationMemberId,
   role = 'member',
+  permissions = undefined,
 }) {
   await assertInboxInOrg(organizationId, inboxId);
 
@@ -272,11 +314,13 @@ export async function addInboxMember({
   if (!member) throw new HttpError(400, 'Member is not active in this organization.');
 
   const memberRole = isInboxMemberRole(role) ? role : 'member';
+  const mergedPermissions = mergeInboxMemberPermissions(permissions);
   const { error } = await supabaseAdmin.from('inbox_members').upsert(
     {
       inbox_id: inboxId,
       organization_member_id: organizationMemberId,
       role: memberRole,
+      permissions: mergedPermissions,
     },
     { onConflict: 'inbox_id,organization_member_id' },
   );
@@ -294,4 +338,4 @@ export async function loadInboxMemberIds(inboxId) {
   return ids.length > 0 ? ids : null;
 }
 
-export { ensureDefaultInboxForOrg, normalizeInboxRow };
+export { normalizeInboxRow };

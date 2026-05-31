@@ -7,7 +7,8 @@ Agents work customer issues in a **conversation-centric inbox**: list threads by
 ## Capabilities
 
 - CRUD-style conversation APIs with inbox filters and pagination
-- Sidebar filters: your inbox, mentions, created by you, all, unassigned, spam, closed
+- Sidebar filters: your inbox, mentions, created by, unassigned (`team_inbox_id` + assignee both null), spam; dropdowns for team inboxes, teammates, and channels (views)
+- Details panel: assign **teammate** or **team inbox** (dropdown menus); team inbox sets `conversations.team_inbox_id` and `assigned_to_team` queue
 - Per-filter counts; debounced refetch and short-lived cache
 - Workspace fields: status, priority, assignment type (+ optional assignee member)
 - Spam flag; **claim-on-first-reply** (server assigns unassigned thread to replying agent on send)

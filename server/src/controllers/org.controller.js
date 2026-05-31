@@ -206,15 +206,16 @@ export async function createInvitesBatchController(req, res, next) {
         : [];
     const roleRaw = req.body?.role;
 
-    const inboxIdRaw = req.body?.inboxId ?? req.body?.inbox_id ?? null;
-    const inboxId =
-      typeof inboxIdRaw === 'string' && inboxIdRaw.trim() ? inboxIdRaw.trim() : null;
+    const inboxIds = parseInviteInboxIdsFromBody(req.body);
+
+    const permissions = req.body?.permissions;
 
     const result = await createInvitesBatchForOrganization({
       organizationId,
       emails,
       role: roleRaw,
-      inboxId,
+      inboxIds,
+      permissions,
     });
 
     res.status(200).json({
@@ -243,4 +244,21 @@ export async function acceptInviteController(req, res, next) {
   } catch (error) {
     next(error);
   }
+}
+
+/**
+ * @param {object | null | undefined} body
+ * @returns {string[]}
+ */
+function parseInviteInboxIdsFromBody(body) {
+  const raw = body?.inboxIds ?? body?.inbox_ids;
+  if (Array.isArray(raw)) {
+    return raw
+      .map((id) => (typeof id === 'string' ? id.trim() : ''))
+      .filter(Boolean)
+      .slice(0, 50);
+  }
+  const single = body?.inboxId ?? body?.inbox_id;
+  if (typeof single === 'string' && single.trim()) return [single.trim()];
+  return [];
 }

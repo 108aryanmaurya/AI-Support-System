@@ -45,12 +45,18 @@ export async function patchOrgInbox(organizationId, inboxId, body) {
   })
 }
 
-export async function replaceInboxMembers(organizationId, inboxId, memberIds, memberRoles = {}) {
+export async function replaceInboxMembers(
+  organizationId,
+  inboxId,
+  memberIds,
+  memberRoles = {},
+  memberPermissions = {},
+) {
   const { apiFetch } = await import('./api.js')
   return apiFetch(inboxMembersUrl(organizationId, inboxId), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ memberIds, memberRoles }),
+    body: JSON.stringify({ memberIds, memberRoles, memberPermissions }),
   })
 }
 

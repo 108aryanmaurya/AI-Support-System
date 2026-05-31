@@ -40,6 +40,39 @@ export async function putOrgAssignmentSettings(organizationId, body) {
     throw new HttpError(400, 'No valid assignment settings fields provided.');
   }
 
+  if (Object.prototype.hasOwnProperty.call(patch, 'default_assignee')) {
+    const da = patch.default_assignee;
+    if (da?.type === 'inbox' && da.inboxId) {
+      const { data: inbox, error: inboxErr } = await supabaseAdmin
+        .from('inboxes')
+        .select('id')
+        .eq('id', da.inboxId)
+        .eq('organization_id', organizationId)
+        .eq('status', 'active')
+        .maybeSingle();
+      if (inboxErr) {
+        throw new HttpError(500, inboxErr.message || 'Failed to validate default assignee inbox.');
+      }
+      if (!inbox?.id) {
+        throw new HttpError(400, 'default_assignee inbox is invalid or inactive.');
+      }
+    } else if (da?.type === 'member' && da.memberId) {
+      const { data: member, error: memberErr } = await supabaseAdmin
+        .from('organization_members')
+        .select('id')
+        .eq('id', da.memberId)
+        .eq('organization_id', organizationId)
+        .eq('status', 'ACTIVE')
+        .maybeSingle();
+      if (memberErr) {
+        throw new HttpError(500, memberErr.message || 'Failed to validate default assignee member.');
+      }
+      if (!member?.id) {
+        throw new HttpError(400, 'default_assignee member is invalid or inactive.');
+      }
+    }
+  }
+
   if (Object.prototype.hasOwnProperty.call(patch, 'fallback_notify_member_ids')) {
     const ids = Array.isArray(patch.fallback_notify_member_ids)
       ? patch.fallback_notify_member_ids

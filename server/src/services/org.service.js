@@ -3,10 +3,14 @@ import { env } from '../config/env.js';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { sendTeammateInviteEmail } from './orgInviteEmail.service.js';
-import { ensureDefaultInboxForOrg, resolveInboxIdForNewConversation } from './inboxDefault.service.js';
-import { addInboxMember } from './inboxes.service.js';
+import { resolveInboxIdForNewConversation } from './resolveInboxForConversation.service.js';
+import { INBOX_LIMITS, mergeInboxMemberPermissions } from '@ai-support/shared';
+import { addInboxMember, listActiveInboxIdsForOrganization } from './inboxes.service.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_INVITE_INBOX_IDS = INBOX_LIMITS.maxInboxes;
 
 export function isValidInviteRole(role) {
   const r = String(role ?? '').trim().toUpperCase();
@@ -99,19 +103,6 @@ export async function createOrganizationWithAdmin({
     .select('id, role, status')
     .single();
 
-  try {
-    const { ensureDefaultInboxForOrg } = await import('./inboxDefault.service.js');
-    await ensureDefaultInboxForOrg(org.id);
-  } catch (inboxErr) {
-    console.warn(
-      JSON.stringify({
-        event: 'org.default_inbox_skipped',
-        organization_id: org.id,
-        error: inboxErr?.message ?? 'failed',
-      }),
-    );
-  }
-
   if (memberError || !member?.id) {
     await supabaseAdmin.from('organizations').delete().eq('id', org.id);
     throw new HttpError(500, memberError?.message || 'Failed to create organization membership.');
@@ -157,14 +148,111 @@ export async function listOrganizationsForUser(userId) {
   });
 }
 
+/**
+ * Stored invite targets: `inbox_ids` JSON array; legacy `inbox_id` column.
+ * @param {object | null | undefined} invite
+ * @returns {string[]}
+ */
+export function parseStoredInviteInboxIds(invite) {
+  const raw = invite?.inbox_ids;
+  if (Array.isArray(raw)) {
+    const ids = raw
+      .map((id) => (typeof id === 'string' ? id.trim() : ''))
+      .filter((id) => UUID_REGEX.test(id));
+    if (ids.length > 0) return [...new Set(ids)];
+  }
+  const legacy = invite?.inbox_id;
+  if (typeof legacy === 'string' && UUID_REGEX.test(legacy.trim())) {
+    return [legacy.trim()];
+  }
+  return [];
+}
+
+/**
+ * @param {string} organizationId
+ * @param {object} invite
+ * @returns {Promise<string[]>}
+ */
+export async function resolveInviteInboxIdsForAccept(_organizationId, invite) {
+  return parseStoredInviteInboxIds(invite);
+}
+
+/**
+ * @param {string} organizationId
+ * @param {{ inboxIds?: unknown, inboxId?: string | null }} input
+ * @returns {Promise<string[]>}
+ */
+export async function normalizeInviteInboxIdsForCreate(organizationId, input = {}) {
+  let candidates = [];
+  if (Array.isArray(input.inboxIds)) {
+    candidates = input.inboxIds
+      .map((id) => (typeof id === 'string' ? id.trim() : ''))
+      .filter(Boolean);
+  } else if (typeof input.inboxId === 'string' && input.inboxId.trim()) {
+    candidates = [input.inboxId.trim()];
+  }
+  if (candidates.length === 0) return [];
+
+  const unique = [...new Set(candidates)].slice(0, MAX_INVITE_INBOX_IDS);
+  const validated = [];
+  for (const id of unique) {
+    validated.push(await resolveInboxIdForNewConversation(organizationId, id));
+  }
+  return validated;
+}
+
+/**
+ * @param {object} params
+ */
+async function addMemberToInviteTargetInboxes({
+  organizationId,
+  invite,
+  organizationMemberId,
+}) {
+  const inboxIds = await resolveInviteInboxIdsForAccept(organizationId, invite);
+  if (inboxIds.length === 0) return;
+
+  const memberRole = mapPermissionRoleToInboxMemberRole(invite.permissions);
+  for (const inboxId of inboxIds) {
+    try {
+      await addInboxMember({
+        organizationId,
+        inboxId,
+        organizationMemberId,
+        permissions: invite.permissions,
+        role: memberRole,
+      });
+    } catch (inboxErr) {
+      console.warn(
+        JSON.stringify({
+          event: 'invite.accept_inbox_member_skipped',
+          organization_id: organizationId,
+          inbox_id: inboxId,
+          member_id: organizationMemberId,
+          error: inboxErr?.message ?? 'failed',
+        }),
+      );
+    }
+  }
+}
+
 export async function createInviteRecord({
   organizationId,
   email,
   role,
   expiresAtIso,
   token,
+  inboxIds = [],
   inboxId = null,
+  permissions = undefined,
 }) {
+  const storedInboxIds =
+    Array.isArray(inboxIds) && inboxIds.length > 0
+      ? inboxIds
+      : typeof inboxId === 'string' && inboxId
+        ? [inboxId]
+        : [];
+
   const { data, error } = await supabaseAdmin
     .from('invites')
     .insert({
@@ -174,7 +262,9 @@ export async function createInviteRecord({
       token,
       status: 'PENDING',
       expires_at: expiresAtIso,
-      inbox_id: inboxId ?? null,
+      inbox_id: storedInboxIds.length === 1 ? storedInboxIds[0] : null,
+      inbox_ids: storedInboxIds,
+      permissions: mergeInboxMemberPermissions(permissions),
     })
     .select('id, email, role, token, status, expires_at, created_at')
     .single();
@@ -186,10 +276,27 @@ export async function createInviteRecord({
         'An outstanding invite already exists for this email in this organization.',
       );
     }
+    throwInviteSchemaMigrationError(error);
     throw new HttpError(500, error.message || 'Failed to create invite.');
   }
 
   return data;
+}
+
+/**
+ * PostgREST schema cache errors when invite inbox/permissions migrations were not applied.
+ * @param {{ message?: string }} error
+ */
+function throwInviteSchemaMigrationError(error) {
+  const msg = typeof error?.message === 'string' ? error.message : '';
+  if (!msg.includes('schema cache')) return;
+  if (!msg.includes('inbox_id') && !msg.includes('inbox_ids') && !msg.includes('permissions')) {
+    return;
+  }
+  throw new HttpError(
+    503,
+    'Database migration required for team invites. In Supabase → SQL Editor, run supabase/scripts/repair-invite-inbox-schema.sql (and 20260530100000_multiple_inboxes.sql first if the inboxes table is missing).',
+  );
 }
 
 export async function getInviteByToken(token) {
@@ -208,6 +315,8 @@ export async function getInviteByToken(token) {
       created_at,
       organization_id,
       inbox_id,
+      inbox_ids,
+      permissions,
       organizations (
         id,
         name,
@@ -274,25 +383,11 @@ export async function acceptInviteForUser({ token, userId, userEmail }) {
   const existing = await getActiveMembership({ userId, organizationId: orgId });
   if (existing) {
     await supabaseAdmin.from('invites').update({ status: 'ACCEPTED' }).eq('id', invite.id);
-    if (invite.inbox_id) {
-      try {
-        await addInboxMember({
-          organizationId: orgId,
-          inboxId: invite.inbox_id,
-          organizationMemberId: existing.id,
-        });
-      } catch (inboxErr) {
-        console.warn(
-          JSON.stringify({
-            event: 'invite.accept_inbox_member_skipped',
-            organization_id: orgId,
-            inbox_id: invite.inbox_id,
-            member_id: existing.id,
-            error: inboxErr?.message ?? 'failed',
-          }),
-        );
-      }
-    }
+    await addMemberToInviteTargetInboxes({
+      organizationId: orgId,
+      invite,
+      organizationMemberId: existing.id,
+    });
     return {
       alreadyMember: true,
       organizationId: orgId,
@@ -328,25 +423,11 @@ export async function acceptInviteForUser({ token, userId, userEmail }) {
     throw new HttpError(500, updErr.message || 'Failed to finalize invite.');
   }
 
-  if (invite.inbox_id) {
-    try {
-      await addInboxMember({
-        organizationId: orgId,
-        inboxId: invite.inbox_id,
-        organizationMemberId: membership.id,
-      });
-    } catch (inboxErr) {
-      console.warn(
-        JSON.stringify({
-          event: 'invite.accept_inbox_member_skipped',
-          organization_id: orgId,
-          inbox_id: invite.inbox_id,
-          member_id: membership.id,
-          error: inboxErr?.message ?? 'failed',
-        }),
-      );
-    }
-  }
+  await addMemberToInviteTargetInboxes({
+    organizationId: orgId,
+    invite,
+    organizationMemberId: membership.id,
+  });
 
   return {
     alreadyMember: false,
@@ -507,19 +588,10 @@ export async function listChannelsForOrganization(organizationId) {
 /**
  * Create multiple invites (default role AGENT). Each email is validated; duplicates or conflicts become entries in `errors`.
  */
-/**
- * @param {string} organizationId
- * @param {string | null | undefined} inboxId — explicit team inbox; omit for org default
- */
-async function resolveInviteTargetInboxId(organizationId, inboxId) {
-  if (inboxId) {
-    return resolveInboxIdForNewConversation(organizationId, inboxId);
-  }
-  const defaultId = await ensureDefaultInboxForOrg(organizationId);
-  if (!defaultId) {
-    throw new HttpError(500, 'Default inbox is not configured for this organization.');
-  }
-  return defaultId;
+function mapPermissionRoleToInboxMemberRole(permissions) {
+  const p = mergeInboxMemberPermissions(permissions);
+  if (p.role === 'lead') return 'lead';
+  return 'member';
 }
 
 export async function createInvitesBatchForOrganization({
@@ -527,6 +599,8 @@ export async function createInvitesBatchForOrganization({
   emails,
   role,
   inboxId = null,
+  inboxIds = undefined,
+  permissions = undefined,
 }) {
   if (!Array.isArray(emails)) {
     throw new HttpError(400, 'emails must be an array.');
@@ -540,7 +614,17 @@ export async function createInvitesBatchForOrganization({
   }
 
   const r = isValidInviteRole(role) ?? 'AGENT';
-  const targetInboxId = await resolveInviteTargetInboxId(organizationId, inboxId);
+  const targetInboxIds = await normalizeInviteInboxIdsForCreate(organizationId, {
+    inboxIds,
+    inboxId,
+  });
+  if (targetInboxIds.length === 0) {
+    const activeInboxIds = await listActiveInboxIdsForOrganization(organizationId);
+    if (activeInboxIds.length > 0) {
+      throw new HttpError(400, 'Select at least one team inbox for invitees.');
+    }
+  }
+  const mergedPermissions = mergeInboxMemberPermissions(permissions);
   const expiresAtIso = new Date(Date.now() + INVITE_TTL_MS).toISOString();
 
   const { data: orgRow } = await supabaseAdmin
@@ -584,7 +668,8 @@ export async function createInvitesBatchForOrganization({
         role: r,
         expiresAtIso,
         token,
-        inboxId: targetInboxId,
+        inboxIds: targetInboxIds,
+        permissions: mergedPermissions,
       });
       const link = `${env.publicAppUrl}/invite?token=${encodeURIComponent(token)}`;
       const emailResult = await sendTeammateInviteEmail({

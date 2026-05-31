@@ -3,6 +3,7 @@
  */
 
 import { mergeAssignmentAdvancedSettings } from './assignmentAdvanced.js';
+import { mergeAssignmentRoutingPreferences } from './assignmentRoutingPreferences.js';
 import { mergeOrgAssignmentSettings } from './assignmentSettings.js';
 
 export const ASSIGNMENT_INBOX_LIMITS = Object.freeze({
@@ -87,6 +88,7 @@ export function mergeOrgAssignmentRouting(raw) {
   return {
     ...toggles,
     ...mergeAssignmentAdvancedSettings(src),
+    ...mergeAssignmentRoutingPreferences(src),
     defaultInboxId,
     inboxes,
     channelInboxMap,

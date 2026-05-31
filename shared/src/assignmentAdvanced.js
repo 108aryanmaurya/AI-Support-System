@@ -13,8 +13,6 @@ export const ASSIGNMENT_ADVANCED_DEFAULTS = Object.freeze({
   reassign_on_agent_offline: false,
   vip_routing_enabled: false,
   vip_tag_names: Object.freeze(['vip', 'enterprise']),
-  /** Minimum skill proficiency (1–100) for VIP conversations. */
-  vip_min_proficiency: 70,
   /** Optional inbox id override for VIP threads. */
   vip_target_inbox_id: null,
 });
@@ -26,7 +24,6 @@ export function mergeAssignmentAdvancedSettings(raw) {
   const src = raw && typeof raw === 'object' ? raw : {};
 
   const threshold = Number(src.sla_remaining_minutes_threshold);
-  const vipMin = Number(src.vip_min_proficiency);
 
   const vipTags = [];
   if (Array.isArray(src.vip_tag_names)) {
@@ -51,10 +48,6 @@ export function mergeAssignmentAdvancedSettings(raw) {
     vip_routing_enabled: src.vip_routing_enabled ?? ASSIGNMENT_ADVANCED_DEFAULTS.vip_routing_enabled,
     vip_tag_names:
       vipTags.length > 0 ? vipTags : [...ASSIGNMENT_ADVANCED_DEFAULTS.vip_tag_names],
-    vip_min_proficiency:
-      Number.isFinite(vipMin) && vipMin >= 1 && vipMin <= 100
-        ? Math.round(vipMin)
-        : ASSIGNMENT_ADVANCED_DEFAULTS.vip_min_proficiency,
     vip_target_inbox_id:
       typeof src.vip_target_inbox_id === 'string' && src.vip_target_inbox_id.trim()
         ? src.vip_target_inbox_id.trim().slice(0, 64)

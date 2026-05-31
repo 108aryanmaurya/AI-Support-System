@@ -8,7 +8,7 @@ import {
   X,
 } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useLocation, useParams } from 'react-router-dom'
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAuthContext } from '../context/AuthContext.jsx'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
 import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
@@ -61,6 +61,7 @@ function permissionLabel(role) {
 export default function OrgTeammatesPage() {
   const { orgId } = useParams()
   const location = useLocation()
+  const navigate = useNavigate()
   const { user } = useAuthContext()
   const { organizations } = useOrganizationContext()
   const current = organizations.find((o) => o.orgId === orgId)
@@ -69,9 +70,7 @@ export default function OrgTeammatesPage() {
   const inviteDenyReason = deny('team.invite')
 
   const [bannerOpen, setBannerOpen] = useState(true)
-  const [inviteNotice, setInviteNotice] = useState(
-    () => location.state?.inviteNotice ?? '',
-  )
+  const [inviteNotice, setInviteNotice] = useState('')
   const [activeTab, setActiveTab] = useState('teammates')
   const [search, setSearch] = useState('')
   const [members, setMembers] = useState([])
@@ -115,6 +114,16 @@ export default function OrgTeammatesPage() {
   useEffect(() => {
     if (activeTab === 'invited') void loadInvites()
   }, [activeTab, loadInvites])
+
+  useEffect(() => {
+    const notice = location.state?.inviteNotice
+    if (typeof notice === 'string' && notice.trim()) {
+      setInviteNotice(notice.trim())
+      setActiveTab('invited')
+      void loadInvites()
+      navigate(location.pathname, { replace: true, state: {} })
+    }
+  }, [location.pathname, location.state, navigate, loadInvites])
 
   const filteredMembers = useMemo(() => {
     const q = search.trim().toLowerCase()

@@ -12,6 +12,14 @@ describe('normalizeConversationRecord', () => {
     assert.equal(row.assigned_to_member_id, 'm1');
     assert.equal(row.assignment_type, 'assigned_to_agent');
   });
+
+  it('maps teamInboxId to team_inbox_id', () => {
+    const row = normalizeConversationRecord({
+      id: 'c1',
+      teamInboxId: 'inbox-uuid',
+    });
+    assert.equal(row.team_inbox_id, 'inbox-uuid');
+  });
 });
 
 describe('mergeConversationRecords', () => {
@@ -47,6 +55,25 @@ describe('mergeConversationRecords', () => {
     const merged = mergeConversationRecords(prev, incoming);
     assert.equal(merged.assigned_to_member_id, null);
     assert.equal(merged.assignment_type, 'unassigned');
+  });
+
+  it('clears assignee when team inbox assignment is applied', () => {
+    const prev = {
+      id: 'c1',
+      assigned_to_member_id: 'member-a',
+      assignment_type: 'assigned_to_agent',
+      team_inbox_id: null,
+    };
+    const incoming = {
+      id: 'c1',
+      assigned_to_member_id: null,
+      assignment_type: 'assigned_to_team',
+      team_inbox_id: 'inbox-1',
+    };
+    const merged = mergeConversationRecords(prev, incoming);
+    assert.equal(merged.assigned_to_member_id, null);
+    assert.equal(merged.assignment_type, 'assigned_to_team');
+    assert.equal(merged.team_inbox_id, 'inbox-1');
   });
 
   it('applies new assignee from PATCH response', () => {

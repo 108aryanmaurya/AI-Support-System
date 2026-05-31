@@ -17,11 +17,6 @@ export async function tryScheduleAutoRoute({ organizationId, conversationId, mes
     return { scheduled: false, reason: 'missing_ids' };
   }
 
-  const gate = await canEnqueueAutoRoute(organizationId);
-  if (!gate.allowed) {
-    return { scheduled: false, reason: gate.reason ?? 'auto_route_disabled' };
-  }
-
   const { data: conv, error } = await supabaseAdmin
     .from('conversations')
     .select('id, assignment_type, assigned_to_member_id, status')
@@ -31,6 +26,11 @@ export async function tryScheduleAutoRoute({ organizationId, conversationId, mes
 
   if (error || !conv) {
     return { scheduled: false, reason: 'conversation_not_found' };
+  }
+
+  const gate = await canEnqueueAutoRoute(organizationId, conversationId);
+  if (!gate.allowed) {
+    return { scheduled: false, reason: gate.reason ?? 'auto_route_disabled' };
   }
 
   if (!CONVERSATION_ACTIVE_STATUSES.includes(conv.status)) {
@@ -95,11 +95,6 @@ export async function tryScheduleAutoRouteDailyBackstop({
     return { scheduled: false, reason: 'missing_ids' };
   }
 
-  const gate = await canEnqueueAutoRoute(organizationId);
-  if (!gate.allowed) {
-    return { scheduled: false, reason: gate.reason ?? 'auto_route_disabled' };
-  }
-
   const { data: conv, error } = await supabaseAdmin
     .from('conversations')
     .select('id, assignment_type, assigned_to_member_id, status')
@@ -109,6 +104,11 @@ export async function tryScheduleAutoRouteDailyBackstop({
 
   if (error || !conv) {
     return { scheduled: false, reason: 'conversation_not_found' };
+  }
+
+  const gate = await canEnqueueAutoRoute(organizationId, conversationId);
+  if (!gate.allowed) {
+    return { scheduled: false, reason: gate.reason ?? 'auto_route_disabled' };
   }
 
   if (!CONVERSATION_ACTIVE_STATUSES.includes(conv.status)) {

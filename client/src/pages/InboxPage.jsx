@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useParams, useSearchParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   Bell,
   ChevronDown,
@@ -43,7 +43,6 @@ import { RestrictedControl } from '../components/RestrictedControl.jsx'
 import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
 import { useInboxConversationPermissions } from '../hooks/useInboxConversationPermissions.js'
 import { InboxSidebar } from '../components/InboxSidebar.jsx'
-import { InboxSwitcher } from '../components/inbox/InboxSwitcher.jsx'
 import { ConversationTagsPanel } from '../components/inbox/ConversationTagsPanel.jsx'
 import AssignmentAuditHint from '../components/inbox/AssignmentAuditHint.jsx'
 import { fetchConversationAssignmentAudit } from '../services/assignmentApi.js'
@@ -59,6 +58,7 @@ import { fetchOrgAiSettings } from '../services/orgSettingsApi.js'
 import { fetchOrgTags } from '../services/tagsApi.js'
 import {
   assignConversationToMember,
+  assignConversationToTeamInbox,
   patchConversation,
 } from '../services/conversationsApi.js'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
@@ -70,6 +70,7 @@ import {
   patchConversationSpamUrl,
 } from '../services/inboxApi.js'
 import { fetchOrgInboxes, transferConversationInbox } from '../services/inboxesApi.js'
+import { fetchOrgChannels } from '../services/orgWorkspaceApi.js'
 import {
   getConversationAutomationBadges,
   getConversationLifecycleDetailHint,
@@ -78,7 +79,7 @@ import {
 } from '@ai-support/shared'
 import { fetchOrgLifecycleSettings } from '../services/lifecycleSettingsApi.js'
 import { useInboxStore } from '../stores/inboxStore.js'
-import { INBOX_AI_INTENT_OPTIONS } from '../config/inboxFilters.js'
+import { INBOX_SIDEBAR_FILTERS } from '../config/inboxFilters.js'
 import {
   inboxListParamsReady,
   mergeInboxSearchParams,
@@ -253,6 +254,7 @@ function InboxChatEmptyState() {
 
 export default function InboxPage() {
   const { orgId: orgFromRoute } = useParams()
+  const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const inboxListParams = useMemo(() => parseInboxListParams(searchParams), [searchParams])
   const conversationIdFromUrl = inboxListParams.conversation
@@ -260,7 +262,7 @@ export default function InboxPage() {
   const activeConversationId = conversationIdFromUrl
   const listParamsKey = useMemo(
     () =>
-      `${inboxListParams.inbox ?? ''}|${inboxListParams.filter}|${inboxListParams.page}|${inboxListParams.pageSize}|${inboxListParams.tagId ?? ''}|${inboxListParams.aiIntent ?? ''}`,
+      `${inboxListParams.filter}|${inboxListParams.inbox ?? ''}|${inboxListParams.memberId ?? ''}|${inboxListParams.channelId ?? ''}|${inboxListParams.page}|${inboxListParams.pageSize}`,
     [inboxListParams],
   )
   const organizationId =
@@ -289,6 +291,7 @@ export default function InboxPage() {
   const [assigningConversation, setAssigningConversation] = useState(false)
   const [assignError, setAssignError] = useState('')
   const [assignMenuOpen, setAssignMenuOpen] = useState(false)
+  const [teamInboxAssignMenuOpen, setTeamInboxAssignMenuOpen] = useState(false)
   const [conversationDetailSaving, setConversationDetailSaving] = useState(false)
   const [spamUpdating, setSpamUpdating] = useState(false)
   const [sidebarTab, setSidebarTab] = useState('details')
@@ -300,6 +303,7 @@ export default function InboxPage() {
   /** @type {['reply' | 'internal_note', import('react').Dispatch<import('react').SetStateAction<'reply' | 'internal_note'>>]} */
   const [composerMode, setComposerMode] = useState('reply')
   const [orgInboxes, setOrgInboxes] = useState([])
+  const [orgChannels, setOrgChannels] = useState([])
   const [loadingInboxes, setLoadingInboxes] = useState(false)
   const [transferMenuOpen, setTransferMenuOpen] = useState(false)
   const [transferring, setTransferring] = useState(false)
@@ -311,6 +315,7 @@ export default function InboxPage() {
   const composerTextareaRef = useRef(null)
   const composerSelectionRef = useRef({ start: 0, end: 0 })
   const assignMenuRef = useRef(null)
+  const teamInboxAssignMenuRef = useRef(null)
   const stickToBottomRef = useRef(true)
 
   const {
@@ -322,6 +327,7 @@ export default function InboxPage() {
     setLoadingConversations,
     setError,
     silentFilterRefetch: false,
+    listParams: inboxListParams,
   })
 
   useEffect(() => {
@@ -774,6 +780,18 @@ export default function InboxPage() {
     return membersByMemberId.get(mid)?.displayName ?? `${mid.slice(0, 8)}…`
   }, [selectedConversation?.assigned_to_member_id, myMembership?.id, membersByMemberId])
 
+  const teamInboxLabel = useMemo(() => {
+    const tid = selectedConversation?.team_inbox_id
+    if (!tid) return 'None'
+    return orgInboxes.find((ib) => ib.id === tid)?.name ?? `${tid.slice(0, 8)}…`
+  }, [selectedConversation?.team_inbox_id, orgInboxes])
+
+  const sortedOrgInboxesForAssign = useMemo(() => {
+    return [...orgInboxes].sort((a, b) =>
+      (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }),
+    )
+  }, [orgInboxes])
+
   const sortedOrgMembersForAssign = useMemo(() => {
     return [...orgMembers].sort((a, b) =>
       (a.displayName || a.email || '').localeCompare(b.displayName || b.email || '', undefined, {
@@ -804,10 +822,12 @@ export default function InboxPage() {
     activeConversationId,
     selectedConversation?.assigned_to_member_id,
     selectedConversation?.assignment_type,
+    selectedConversation?.team_inbox_id,
   ])
 
   useEffect(() => {
     setAssignMenuOpen(false)
+    setTeamInboxAssignMenuOpen(false)
   }, [activeConversationId])
 
   useEffect(() => {
@@ -820,6 +840,20 @@ export default function InboxPage() {
     document.addEventListener('pointerdown', onPointerDown, true)
     return () => document.removeEventListener('pointerdown', onPointerDown, true)
   }, [assignMenuOpen])
+
+  useEffect(() => {
+    if (!teamInboxAssignMenuOpen) return undefined
+    const onPointerDown = (event) => {
+      if (
+        teamInboxAssignMenuRef.current &&
+        !teamInboxAssignMenuRef.current.contains(event.target)
+      ) {
+        setTeamInboxAssignMenuOpen(false)
+      }
+    }
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [teamInboxAssignMenuOpen])
 
   const updateStickToBottom = useCallback(() => {
     const el = messagesScrollRef.current
@@ -856,22 +890,23 @@ export default function InboxPage() {
     setLoadingInboxes(true)
     ;(async () => {
       try {
-        const res = await fetchOrgInboxes(organizationId)
+        const [inboxRes, channelRes] = await Promise.all([
+          fetchOrgInboxes(organizationId),
+          fetchOrgChannels(organizationId).catch(() => ({ channels: [] })),
+        ])
         if (cancelled) return
-        const list = res?.inboxes ?? []
+        const list = (inboxRes?.inboxes ?? []).filter((ib) => ib.status === 'active')
         setOrgInboxes(list)
+        setOrgChannels(channelRes?.channels ?? [])
         setAccessibleInboxIds(list.map((i) => i.id))
-        const fromUrl = inboxListParams.inbox
-        const resolved =
-          fromUrl && list.some((i) => i.id === fromUrl)
-            ? fromUrl
-            : list.find((i) => i.isDefault)?.id ?? list[0]?.id ?? ''
-        setActiveInboxId(resolved)
-        if (resolved && resolved !== fromUrl) {
-          patchInboxUrl({ inbox: resolved, conversation: null })
+        if (inboxListParams.filter === 'team_inbox' && inboxListParams.inbox) {
+          setActiveInboxId(inboxListParams.inbox)
         }
       } catch {
-        if (!cancelled) setOrgInboxes([])
+        if (!cancelled) {
+          setOrgInboxes([])
+          setOrgChannels([])
+        }
       } finally {
         if (!cancelled) setLoadingInboxes(false)
       }
@@ -879,7 +914,7 @@ export default function InboxPage() {
     return () => {
       cancelled = true
     }
-  }, [organizationId, setActiveInboxId, setAccessibleInboxIds, inboxListParams.inbox, patchInboxUrl])
+  }, [organizationId, setActiveInboxId, setAccessibleInboxIds, inboxListParams.filter, inboxListParams.inbox])
 
   useEffect(() => {
     if (!organizationId) return
@@ -895,12 +930,12 @@ export default function InboxPage() {
   useEffect(() => {
     if (!organizationId || !inboxListParamsReady(searchParams)) return undefined
 
-    const { filter, page, pageSize, tagId, aiIntent, inbox } = inboxListParams
+    const { filter, page, pageSize, inbox } = inboxListParams
     useInboxStore.setState({
       activeFilter: filter,
-      activeTagId: tagId,
-      activeAiIntent: filter === 'ai_intent' ? aiIntent : null,
-      activeInboxId: inbox || useInboxStore.getState().activeInboxId,
+      activeTagId: null,
+      activeAiIntent: null,
+      activeInboxId: filter === 'team_inbox' ? inbox : '',
     })
 
     let cancelled = false
@@ -909,8 +944,7 @@ export default function InboxPage() {
       try {
         await runConversationQuery(filter, { page, pageSize })
         if (cancelled) return
-        const inboxId = useInboxStore.getState().activeInboxId
-        const counts = await apiFetch(conversationCountsUrl(organizationId, inboxId || null))
+        const counts = await apiFetch(conversationCountsUrl(organizationId))
         if (!cancelled) setFilterCounts(counts)
       } catch (err) {
         if (!cancelled) setError(err?.message || 'Failed to load conversations.')
@@ -965,47 +999,116 @@ export default function InboxPage() {
     [organizationId, upsertConversation, loadFilterCounts],
   )
 
-  const handleSelectSidebarFilter = useCallback(
+  const assignTeamInbox = useCallback(
+    async (conversationId, inboxId) => {
+      if (!organizationId) {
+        setAssignError('Missing organization in URL. Open inbox from /org/:orgId/inbox.')
+        return
+      }
+      if (!conversationId) {
+        setAssignError('No conversation selected.')
+        return
+      }
+      setAssigningConversation(true)
+      setAssignError('')
+      setError('')
+      try {
+        const res = await assignConversationToTeamInbox(organizationId, conversationId, inboxId)
+        const updated = res?.conversation
+        if (!updated?.id) {
+          throw new Error('Server did not return an updated conversation.')
+        }
+        upsertConversation(updated)
+        await loadFilterCounts()
+      } catch (err) {
+        const message = err?.message || 'Could not update team inbox.'
+        setAssignError(message)
+        setError(message)
+      } finally {
+        setAssigningConversation(false)
+      }
+    },
+    [organizationId, upsertConversation, loadFilterCounts],
+  )
+
+  const handleSelectPrimaryFilter = useCallback(
     (filterType) => {
       patchInboxUrl({
         filter: filterType,
         page: 1,
         pageSize: inboxListParams.pageSize,
         conversation: null,
-        aiIntent:
-          filterType === 'ai_intent'
-            ? inboxListParams.aiIntent ?? INBOX_AI_INTENT_OPTIONS[0]?.value ?? 'general_inquiry'
-            : null,
-      })
-    },
-    [patchInboxUrl, inboxListParams.pageSize, inboxListParams.aiIntent],
-  )
-
-  const handleTagFilterChange = useCallback(
-    (tagId) => {
-      patchInboxUrl({
-        filter: inboxListParams.filter,
-        page: 1,
-        pageSize: inboxListParams.pageSize,
-        tagId: tagId || null,
-        conversation: null,
-      })
-    },
-    [patchInboxUrl, inboxListParams.filter, inboxListParams.pageSize],
-  )
-
-  const handleAiIntentFilterChange = useCallback(
-    (intent) => {
-      patchInboxUrl({
-        filter: 'ai_intent',
-        page: 1,
-        pageSize: inboxListParams.pageSize,
-        aiIntent: intent || null,
-        conversation: null,
+        inbox: null,
+        memberId: null,
+        channelId: null,
       })
     },
     [patchInboxUrl, inboxListParams.pageSize],
   )
+
+  const handleSelectTeamInbox = useCallback(
+    (inboxId) => {
+      setActiveInboxId(inboxId)
+      patchInboxUrl({
+        filter: 'team_inbox',
+        inbox: inboxId,
+        page: 1,
+        pageSize: inboxListParams.pageSize,
+        conversation: null,
+        memberId: null,
+        channelId: null,
+      })
+    },
+    [patchInboxUrl, inboxListParams.pageSize, setActiveInboxId],
+  )
+
+  const handleSelectTeammate = useCallback(
+    (memberId) => {
+      patchInboxUrl({
+        filter: 'teammate',
+        memberId,
+        page: 1,
+        pageSize: inboxListParams.pageSize,
+        conversation: null,
+        inbox: null,
+        channelId: null,
+      })
+    },
+    [patchInboxUrl, inboxListParams.pageSize],
+  )
+
+  const handleSelectChannel = useCallback(
+    (channelId) => {
+      patchInboxUrl({
+        filter: 'channel',
+        channelId,
+        page: 1,
+        pageSize: inboxListParams.pageSize,
+        conversation: null,
+        inbox: null,
+        memberId: null,
+      })
+    },
+    [patchInboxUrl, inboxListParams.pageSize],
+  )
+
+  const listViewTitle = useMemo(() => {
+    const { filter, inbox, memberId, channelId } = inboxListParams
+    if (filter === 'team_inbox' && inbox) {
+      const ib = orgInboxes.find((i) => i.id === inbox)
+      return ib?.name ? `${ib.name} inbox` : 'Team inbox'
+    }
+    if (filter === 'teammate' && memberId) {
+      const m = orgMembers.find((x) => x.id === memberId)
+      return m?.displayName || m?.email || 'Teammate'
+    }
+    if (filter === 'channel' && channelId) {
+      const ch = orgChannels.find((c) => c.id === channelId)
+      return ch?.name || ch?.type || 'Channel'
+    }
+    const primary = INBOX_SIDEBAR_FILTERS.find((f) => f.id === filter)
+    return primary?.label ?? 'Conversations'
+  }, [inboxListParams, orgInboxes, orgMembers, orgChannels])
 
   const handleSelectConversation = useCallback(
     (id) => {
@@ -1043,7 +1146,9 @@ export default function InboxPage() {
         const keys = Object.keys(patch ?? {})
         const assignmentOnly =
           keys.length > 0 &&
-          keys.every((k) => k === 'assignedToMemberId' || k === 'assignmentType')
+          keys.every(
+            (k) => k === 'assignedToMemberId' || k === 'assignmentType' || k === 'teamInboxId',
+          )
         if (!assignmentOnly) {
           const { filter: filterNow, page, pageSize } = parseInboxListParams(searchParams)
           await runConversationQuery(filterNow, { silent: true, page, pageSize })
@@ -1245,29 +1350,29 @@ export default function InboxPage() {
         <InboxSidebar
           activeFilter={inboxListParams.filter}
           filterCounts={filterCounts}
-          onSelectSidebarFilter={handleSelectSidebarFilter}
+          onSelectPrimaryFilter={handleSelectPrimaryFilter}
+          onSelectTeamInbox={handleSelectTeamInbox}
+          onSelectTeammate={handleSelectTeammate}
+          onSelectChannel={handleSelectChannel}
           mentionCue={mentionCue}
-          orgTags={orgTags}
-          activeTagId={inboxListParams.tagId}
-          onTagFilterChange={handleTagFilterChange}
-          activeAiIntent={inboxListParams.aiIntent}
-          onAiIntentFilterChange={handleAiIntentFilterChange}
+          teamInboxes={orgInboxes}
+          teammates={orgMembers}
+          channels={orgChannels}
+          activeInboxId={inboxListParams.inbox}
+          activeMemberId={inboxListParams.memberId}
+          activeChannelId={inboxListParams.channelId}
         />
 
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden border-r border-[#27314a] bg-[#101729]">
           <div className="shrink-0 border-b border-[#27314a] px-4 py-3">
             <div className="flex items-center justify-between gap-2">
-              <InboxSwitcher
-                inboxes={orgInboxes}
-                activeInboxId={inboxListParams.inbox || useInboxStore.getState().activeInboxId}
-                loading={loadingInboxes}
-                onSelectInbox={(inboxId) => {
-                  setActiveInboxId(inboxId)
-                  patchInboxUrl({ inbox: inboxId, conversation: null, page: 1 })
-                  invalidateConversationFilterCache()
-                }}
-              />
-              <button className="rounded-full bg-[#1a2338] p-2 text-slate-200">
+              <h2 className="truncate text-lg font-semibold text-white">{listViewTitle}</h2>
+              <button
+                type="button"
+                onClick={() => navigate(`/org/${organizationId}/search`)}
+                className="shrink-0 rounded-full bg-[#1a2338] p-2 text-slate-200 hover:text-white"
+                aria-label="Search conversations"
+              >
                 <Search size={20} />
               </button>
             </div>
@@ -1869,6 +1974,152 @@ export default function InboxPage() {
                 ) : null}
               </div>
             </div>
+            <div className="flex flex-col gap-2 border-t border-[#27314a] pt-3">
+              <div className="flex items-start justify-between gap-2">
+                <span className="shrink-0">Team inbox</span>
+                <span className="max-w-[160px] truncate text-right text-white" title={teamInboxLabel}>
+                  {teamInboxLabel}
+                </span>
+              </div>
+              <div ref={teamInboxAssignMenuRef} className="relative">
+                <RestrictedControl
+                  restricted={
+                    !selectedConversation ||
+                    assigningConversation ||
+                    inboxPerms.assignMenu.restricted
+                  }
+                  reason={
+                    !selectedConversation
+                      ? 'Select a conversation first.'
+                      : inboxPerms.assignMenu.reason
+                  }
+                  className="w-full"
+                >
+                  <button
+                    type="button"
+                    disabled={
+                      !selectedConversation ||
+                      assigningConversation ||
+                      inboxPerms.assignMenu.restricted ||
+                      (loadingInboxes && sortedOrgInboxesForAssign.length === 0)
+                    }
+                    aria-expanded={teamInboxAssignMenuOpen}
+                    aria-haspopup="listbox"
+                    aria-controls="inbox-assign-team-inbox-list"
+                    onClick={() => setTeamInboxAssignMenuOpen((open) => !open)}
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-md border border-[#334060] bg-[#18233b] px-3 py-2 text-xs font-medium text-white hover:bg-[#1f2d4d] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Assign team inbox
+                    <ChevronDown
+                      size={14}
+                      aria-hidden
+                      className={`shrink-0 transition-transform ${teamInboxAssignMenuOpen ? 'rotate-180' : ''}`}
+                    />
+                  </button>
+                </RestrictedControl>
+                {teamInboxAssignMenuOpen ? (
+                  <div
+                    id="inbox-assign-team-inbox-list"
+                    role="listbox"
+                    className="absolute left-0 right-0 top-full z-20 mt-1 max-h-52 overflow-y-auto rounded-md border border-[#2a3654] bg-[#10182a] py-1 shadow-lg [scrollbar-gutter:stable]"
+                  >
+                    {!organizationId ? (
+                      <p className="px-3 py-2 text-xs text-slate-500">No organization context.</p>
+                    ) : (
+                      <>
+                        <RestrictedControl
+                          restricted={
+                            !selectedConversation ||
+                            assigningConversation ||
+                            inboxPerms.assignMenu.restricted
+                          }
+                          reason={inboxPerms.assignMenu.reason}
+                          className="w-full"
+                        >
+                          <button
+                            type="button"
+                            role="option"
+                            disabled={
+                              !selectedConversation ||
+                              assigningConversation ||
+                              inboxPerms.assignMenu.restricted
+                            }
+                            onClick={() => {
+                              if (!selectedConversation || inboxPerms.assignMenu.restricted) return
+                              setTeamInboxAssignMenuOpen(false)
+                              void assignTeamInbox(selectedConversation.id, null)
+                            }}
+                            className="flex w-full flex-col items-start gap-0.5 border-b border-[#2a3654] px-3 py-2 text-left text-xs hover:bg-[#1a2540] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            <span className="font-medium text-amber-100/90">Clear team inbox</span>
+                            <span className="text-[11px] text-slate-500">Remove from team queue</span>
+                          </button>
+                        </RestrictedControl>
+                        {sortedOrgInboxesForAssign.length === 0 ? (
+                          <p className="px-3 py-2 text-xs text-slate-500">
+                            {loadingInboxes ? 'Loading team inboxes…' : 'No team inboxes. Create one in Settings.'}
+                          </p>
+                        ) : (
+                          sortedOrgInboxesForAssign.map((inbox) => {
+                            const isCurrent = inbox.id === selectedConversation?.team_inbox_id
+                            return (
+                              <RestrictedControl
+                                key={inbox.id}
+                                restricted={
+                                  assigningConversation ||
+                                  isCurrent ||
+                                  !selectedConversation ||
+                                  inboxPerms.assignMenu.restricted
+                                }
+                                reason={
+                                  isCurrent
+                                    ? 'Already assigned to this team inbox.'
+                                    : inboxPerms.assignMenu.reason
+                                }
+                                className="w-full"
+                              >
+                                <button
+                                  type="button"
+                                  role="option"
+                                  aria-selected={isCurrent}
+                                  disabled={
+                                    assigningConversation ||
+                                    isCurrent ||
+                                    !selectedConversation ||
+                                    inboxPerms.assignMenu.restricted
+                                  }
+                                  onClick={() => {
+                                    if (
+                                      !selectedConversation ||
+                                      isCurrent ||
+                                      inboxPerms.assignMenu.restricted
+                                    ) {
+                                      return
+                                    }
+                                    setTeamInboxAssignMenuOpen(false)
+                                    void assignTeamInbox(selectedConversation.id, inbox.id)
+                                  }}
+                                  className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-xs hover:bg-[#1a2540] disabled:cursor-not-allowed disabled:opacity-40"
+                                >
+                                  <span className="font-medium text-white">
+                                    {inbox.name}
+                                    {isCurrent ? (
+                                      <span className="ml-1 font-normal text-emerald-400/90">
+                                        · current
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                </button>
+                              </RestrictedControl>
+                            )
+                          })
+                        )}
+                      </>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+            </div>
             <ConversationTagsPanel
               organizationId={organizationId}
               conversationId={activeConversationId}
@@ -1975,7 +2226,13 @@ export default function InboxPage() {
                       return
                     }
                     if (next === 'assigned_to_team') {
-                      void patchConversationDetails({ assignmentType: 'assigned_to_team' })
+                      const tid = selectedConversation?.team_inbox_id
+                      if (tid) {
+                        void patchConversationDetails({
+                          assignmentType: 'assigned_to_team',
+                          teamInboxId: tid,
+                        })
+                      }
                       return
                     }
                     if (next === 'assigned_to_agent') {
@@ -2065,6 +2322,10 @@ export default function InboxPage() {
               <span>Assignment</span>
               <span className="text-white">
                 {(selectedConversation?.assignment_type ?? 'unassigned').replace(/_/g, ' ')}
+              </span>
+              <span>Team inbox</span>
+              <span className="truncate text-white" title={teamInboxLabel}>
+                {teamInboxLabel}
               </span>
               <span>ID</span><span className="text-white">{selectedConversation ? `${selectedConversation.id.slice(0, 8)}...` : '-'}</span>
             </div>

@@ -1,29 +1,30 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { isDedicatedInboxAssignmentStrategy } from '@ai-support/shared';
+
+function pickAutoRouteWinner(preview, strategy = 'weighted_hybrid') {
+  const dedicatedInboxStrategy = isDedicatedInboxAssignmentStrategy(strategy);
+  if (
+    !dedicatedInboxStrategy &&
+    preview.previousAgentId &&
+    preview.eligibleMemberIds.includes(preview.previousAgentId)
+  ) {
+    return preview.previousAgentId;
+  }
+  if (preview.recommendedMemberId) {
+    return preview.recommendedMemberId;
+  }
+  return null;
+}
 
 describe('auto-route winner selection', () => {
-  it('prefers sticky previous agent when still eligible', () => {
+  it('prefers sticky previous agent when still eligible (org hybrid)', () => {
     const preview = {
       previousAgentId: 'agent-prev',
       eligibleMemberIds: ['agent-prev', 'agent-other'],
       recommendedMemberId: 'agent-other',
-      rankedCandidates: [
-        { memberId: 'agent-other', finalScore: 90 },
-        { memberId: 'agent-prev', finalScore: 70 },
-      ],
     };
-
-    let winnerId = null;
-    if (
-      preview.previousAgentId &&
-      preview.eligibleMemberIds.includes(preview.previousAgentId)
-    ) {
-      winnerId = preview.previousAgentId;
-    } else if (preview.recommendedMemberId) {
-      winnerId = preview.recommendedMemberId;
-    }
-
-    assert.equal(winnerId, 'agent-prev');
+    assert.equal(pickAutoRouteWinner(preview, 'weighted_hybrid'), 'agent-prev');
   });
 
   it('uses recommended when sticky agent not eligible', () => {
@@ -32,17 +33,24 @@ describe('auto-route winner selection', () => {
       eligibleMemberIds: ['agent-other'],
       recommendedMemberId: 'agent-other',
     };
+    assert.equal(pickAutoRouteWinner(preview, 'weighted_hybrid'), 'agent-other');
+  });
 
-    let winnerId = null;
-    if (
-      preview.previousAgentId &&
-      preview.eligibleMemberIds.includes(preview.previousAgentId)
-    ) {
-      winnerId = preview.previousAgentId;
-    } else if (preview.recommendedMemberId) {
-      winnerId = preview.recommendedMemberId;
-    }
+  it('round_robin ignores sticky and uses recommended', () => {
+    const preview = {
+      previousAgentId: 'agent-prev',
+      eligibleMemberIds: ['agent-prev', 'agent-other'],
+      recommendedMemberId: 'agent-other',
+    };
+    assert.equal(pickAutoRouteWinner(preview, 'round_robin'), 'agent-other');
+  });
 
-    assert.equal(winnerId, 'agent-other');
+  it('least_loaded (balanced) ignores sticky and uses recommended', () => {
+    const preview = {
+      previousAgentId: 'agent-prev',
+      eligibleMemberIds: ['agent-prev', 'agent-other'],
+      recommendedMemberId: 'agent-other',
+    };
+    assert.equal(pickAutoRouteWinner(preview, 'least_loaded'), 'agent-other');
   });
 });

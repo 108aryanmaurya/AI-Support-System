@@ -59,7 +59,7 @@ function upsertMessage(list, incoming) {
 }
 
 /** Inbox sidebar filter; must match server `filter` param. */
-export const DEFAULT_INBOX_FILTER = 'all'
+export const DEFAULT_INBOX_FILTER = 'inbox'
 
 export const useInboxStore = create((set) => ({
   conversations: [],
@@ -80,16 +80,10 @@ export const useInboxStore = create((set) => ({
   filterCounts: {
     inbox: 0,
     mentions: 0,
+    created_by: 0,
     created_by_you: 0,
-    all: 0,
     unassigned: 0,
     spam: 0,
-    sla_risk: 0,
-    ingress_spam: 0,
-    closed: 0,
-    resolved: 0,
-    waiting_customer: 0,
-    waiting_agent: 0,
   },
   /**
    * Cached first page per filter (short TTL; used when switching views).

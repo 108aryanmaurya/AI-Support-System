@@ -157,7 +157,6 @@ export {
   normalizeAgentTimezone,
   normalizeMaxConcurrency,
   normalizeShiftTime,
-  validateAgentSkillsPayload,
 } from './assignment.js';
 
 export { isWithinAgentShift } from './agentShiftHours.js';
@@ -181,13 +180,6 @@ export {
 } from './assignmentInboxes.js';
 
 export {
-  ELIGIBILITY_DROP_CODES,
-  SKILL_MATCH_TIERS,
-  computeSkillMatchTier,
-  isSkillMatchEligible,
-} from './assignmentSkillMatch.js';
-
-export {
   ASSIGNMENT_SCORE_WEIGHTS,
   SKILL_TIER_FACTORS,
   computeCustomerHistoryFactor,
@@ -209,6 +201,17 @@ export {
 } from './assignmentSettings.js';
 
 export { buildAssignmentSettingsPatch } from './assignmentSettingsPatch.js';
+
+export {
+  ASSIGNMENT_ROUTING_PREFERENCES_DEFAULTS,
+  DEFAULT_ASSIGNEE_TYPES,
+  SELF_ASSIGN_ON_REPLY_MODES,
+  defaultAssigneeSelectValue,
+  mergeAssignmentRoutingPreferences,
+  mergeDefaultAssignee,
+  mergeSelfAssignOnReply,
+  parseDefaultAssigneeSelectValue,
+} from './assignmentRoutingPreferences.js';
 
 export {
   CONVERSATION_CLOSED_REASONS,
@@ -242,15 +245,41 @@ export {
 
 export {
   DEFAULT_INBOX_NAME,
+  INBOX_ASSIGNMENT_METHODS,
+  INBOX_ASSIGNMENT_METHOD_DEFAULT,
   INBOX_LIMITS,
   INBOX_MEMBER_ROLES,
   INBOX_STATUSES,
+  inboxAssignmentMethodToScoringStrategy,
+  inboxScoringStrategyFromSettings,
+  INBOX_DEDICATED_ASSIGNMENT_STRATEGIES,
+  isDedicatedInboxAssignmentStrategy,
+  isInboxAssignmentMethod,
+  isInboxAutoAssignmentEnabled,
   isInboxMemberRole,
   isInboxStatus,
   mergeInboxSettings,
   mergeOrgInboxSettings,
   slugifyInboxName,
 } from './inboxes.js';
+
+export {
+  CONVERSATION_ACCESS_MODES,
+  COPILOT_USAGE_MODES,
+  INBOX_MEMBER_PERMISSION_ROLES,
+  INBOX_PERMISSION_FIELD_LABELS,
+  INBOX_PERMISSION_INBOX_GROUPS,
+  INBOX_PERMISSION_REPORTS_TREE,
+  INBOX_PERMISSION_UI_SECTIONS,
+  allowAllInboxMemberPermissions,
+  applyInboxAssignmentMethodToMemberPermissions,
+  defaultInboxMemberPermissions,
+  defaultInboxMemberPermissionsForAssignmentMethod,
+  inboxPermissionSectionSummary,
+  isInboxMemberPermissionsRestricted,
+  mergeInboxMemberPermissions,
+  restrictAllInboxMemberPermissions,
+} from './inboxMemberPermissions.js';
 
 export {
   KNOWLEDGE_ALLOWED_UPLOAD_EXTENSIONS,

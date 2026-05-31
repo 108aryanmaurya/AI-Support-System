@@ -30,6 +30,7 @@ export async function updateConversationFields({
   conversationId,
   actorUserId,
   assignedToMemberId = undefined,
+  teamInboxId = undefined,
   status: statusPatch = undefined,
   priority: priorityPatch = undefined,
   assignmentType: assignmentTypePatch = undefined,
@@ -62,6 +63,7 @@ export async function updateConversationFields({
   const priorAssignedToMemberId = prior.assigned_to_member_id ?? null;
 
   let assigned_to_member_id = prior.assigned_to_member_id ?? null;
+  let team_inbox_id = prior.team_inbox_id ?? null;
   let assignment_type = prior.assignment_type ?? 'unassigned';
   let status = prior.status ?? 'open';
   let waiting_status = normalizeConversationWaitingStatus(prior.waiting_status);
@@ -127,7 +129,8 @@ export async function updateConversationFields({
     if (assignedToMemberId === null || assignedToMemberId === '') {
       assigned_to_member_id = null;
       if (assignmentTypePatch === undefined) {
-        assignment_type = 'unassigned';
+        const queueInboxId = team_inbox_id ?? prior.team_inbox_id ?? null;
+        assignment_type = queueInboxId ? 'assigned_to_team' : 'unassigned';
       }
     } else {
       if (typeof assignedToMemberId !== 'string') {
@@ -136,6 +139,36 @@ export async function updateConversationFields({
       assigned_to_member_id = assignedToMemberId;
       if (assignmentTypePatch === undefined) {
         assignment_type = 'assigned_to_agent';
+      }
+    }
+  }
+
+  if (teamInboxId !== undefined) {
+    if (teamInboxId === null || teamInboxId === '') {
+      team_inbox_id = null;
+      if (assignmentTypePatch === undefined && assignment_type === 'assigned_to_team') {
+        assignment_type = assigned_to_member_id ? 'assigned_to_agent' : 'unassigned';
+      }
+    } else {
+      if (typeof teamInboxId !== 'string') {
+        throw new HttpError(400, 'teamInboxId must be a uuid string or null.');
+      }
+      const { data: inboxRow, error: inboxErr } = await supabaseAdmin
+        .from('inboxes')
+        .select('id, status')
+        .eq('id', teamInboxId)
+        .eq('organization_id', organizationId)
+        .maybeSingle();
+      if (inboxErr) {
+        throw new HttpError(500, inboxErr.message || 'Failed to validate team inbox.');
+      }
+      if (!inboxRow || inboxRow.status !== 'active') {
+        throw new HttpError(400, 'teamInboxId must be an active inbox in this organization.');
+      }
+      team_inbox_id = teamInboxId;
+      assigned_to_member_id = null;
+      if (assignmentTypePatch === undefined) {
+        assignment_type = 'assigned_to_team';
       }
     }
   }
@@ -151,6 +184,10 @@ export async function updateConversationFields({
     assignment_type = a;
     if (assignment_type === 'unassigned' || assignment_type === 'assigned_to_ai') {
       assigned_to_member_id = null;
+      team_inbox_id = null;
+    }
+    if (assignment_type === 'assigned_to_team' && !team_inbox_id) {
+      throw new HttpError(400, 'assigned_to_team requires teamInboxId on this conversation or in the same request.');
     }
     if (assignment_type === 'assigned_to_agent' && !assigned_to_member_id) {
       throw new HttpError(
@@ -169,6 +206,7 @@ export async function updateConversationFields({
 
   if (status === 'spam') {
     assigned_to_member_id = null;
+    team_inbox_id = null;
     assignment_type = 'unassigned';
   }
 
@@ -250,6 +288,7 @@ export async function updateConversationFields({
     .from('conversations')
     .update({
       assigned_to_member_id,
+      team_inbox_id,
       assignment_type,
       status,
       waiting_status,

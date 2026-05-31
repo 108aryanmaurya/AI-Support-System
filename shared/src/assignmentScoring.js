@@ -128,9 +128,6 @@ export function computeStrategyScore(strategy, row, factors) {
     const chats = row.activeChats ?? 0;
     return round2(100 - chats * 10);
   }
-  if (strategy === 'skill_based') {
-    return round2(skillTierToFactor(row.skillMatchTier) * 100);
-  }
   if (strategy === 'round_robin') {
     return 0;
   }

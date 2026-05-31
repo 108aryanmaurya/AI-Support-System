@@ -1,4 +1,9 @@
-import { mergeOrgAssignmentRouting } from '@ai-support/shared';
+import {
+  inboxScoringStrategyFromSettings,
+  isInboxAutoAssignmentEnabled,
+  mergeInboxSettings,
+  mergeOrgAssignmentRouting,
+} from '@ai-support/shared';
 import { getOrgAiAndAutomationSettings } from '../orgSettings.service.js';
 import { supabaseAdmin } from '../../config/supabase.js';
 import { HttpError } from '../../utils/httpError.js';
@@ -25,32 +30,85 @@ export async function getOrgAssignmentSettings(organizationId) {
 }
 
 /**
- * Whether intelligent auto-route may run for this org (Sprint 5+ job gate).
- * Does not imply classify/workflow are enabled — callers combine with AI/workflow flags.
- *
- * @param {string} organizationId
+ * @deprecated Use per-inbox `assignmentMethod` via {@link loadQueueInboxSettingsForConversation}.
  */
-export async function isOrgAutoRouteEnabledForOrg(organizationId) {
-  const assignment = await getOrgAssignmentSettings(organizationId);
-  return Boolean(assignment.auto_route_enabled);
+export async function isOrgAutoRouteEnabledForOrg() {
+  return false;
 }
 
 /**
- * Combined gates for future `assignment.auto_route` enqueue (Sprint 5).
+ * Team queue inbox for assignment (team_inbox_id, else routing inbox_id).
  *
  * @param {string} organizationId
+ * @param {string} conversationId
  */
-export async function canEnqueueAutoRoute(organizationId) {
-  const [{ ai }, assignment] = await Promise.all([
-    getOrgAiAndAutomationSettings(organizationId),
-    getOrgAssignmentSettings(organizationId),
-  ]);
-  if (!assignment.auto_route_enabled) {
-    return { allowed: false, reason: 'auto_route_disabled' };
+export async function loadQueueInboxSettingsForConversation(organizationId, conversationId) {
+  const { data, error } = await supabaseAdmin
+    .from('conversations')
+    .select('team_inbox_id, inbox_id')
+    .eq('id', conversationId)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load conversation.');
   }
+  if (!data) {
+    throw new HttpError(404, 'Conversation not found in this organization.');
+  }
+
+  const queueInboxId = data.team_inbox_id ?? data.inbox_id ?? null;
+  if (!queueInboxId) {
+    return { queueInboxId: null, settings: mergeInboxSettings({}) };
+  }
+
+  const { data: inbox, error: inboxErr } = await supabaseAdmin
+    .from('inboxes')
+    .select('settings, status')
+    .eq('id', queueInboxId)
+    .eq('organization_id', organizationId)
+    .maybeSingle();
+
+  if (inboxErr) {
+    throw new HttpError(500, inboxErr.message || 'Failed to load inbox.');
+  }
+  if (!inbox || inbox.status !== 'active') {
+    return { queueInboxId, settings: mergeInboxSettings({}) };
+  }
+
+  return { queueInboxId, settings: mergeInboxSettings(inbox.settings) };
+}
+
+/**
+ * Gates `assignment.auto_route` enqueue: org AI on + conversation queue inbox not manual.
+ *
+ * @param {string} organizationId
+ * @param {string} [conversationId]
+ */
+export async function canEnqueueAutoRoute(organizationId, conversationId = null) {
+  const { ai } = await getOrgAiAndAutomationSettings(organizationId);
   if (!ai.ai_enabled) {
     return { allowed: false, reason: 'ai_disabled' };
   }
+
+  if (!conversationId) {
+    return { allowed: false, reason: 'conversation_required' };
+  }
+
+  const { queueInboxId, settings } = await loadQueueInboxSettingsForConversation(
+    organizationId,
+    conversationId,
+  );
+  if (!queueInboxId) {
+    return { allowed: false, reason: 'no_queue_inbox' };
+  }
+  if (!isInboxAutoAssignmentEnabled(settings)) {
+    return { allowed: false, reason: 'inbox_manual_assignment' };
+  }
+  if (!inboxScoringStrategyFromSettings(settings)) {
+    return { allowed: false, reason: 'inbox_manual_assignment' };
+  }
+
   return { allowed: true };
 }
 

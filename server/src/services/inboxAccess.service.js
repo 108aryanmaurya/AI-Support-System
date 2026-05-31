@@ -94,7 +94,7 @@ export async function assertCanAccessConversation({
   });
 
   if (!data.inbox_id) {
-    throw new HttpError(403, 'You do not have access to this conversation.');
+    return data;
   }
   if (!canAccessInboxId(data.inbox_id, inboxIds, viewAll)) {
     throw new HttpError(403, 'You do not have access to this inbox.');

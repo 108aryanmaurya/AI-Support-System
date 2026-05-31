@@ -2,6 +2,8 @@ import {
   applySlaUrgentRanking,
   conversationMatchesVipTags,
   defaultAgentProfileRow,
+  inboxScoringStrategyFromSettings,
+  isDedicatedInboxAssignmentStrategy,
 } from '@ai-support/shared';
 import { HttpError } from '../../utils/httpError.js';
 import { supabaseAdmin } from '../../config/supabase.js';
@@ -15,6 +17,7 @@ import {
   resolveTargetInbox,
 } from './assignmentInbox.service.js';
 import { loadInboxMemberIds } from '../inboxes.service.js';
+import { loadQueueInboxSettingsForConversation } from './assignmentSettings.service.js';
 import { evaluateMemberEligibility } from './assignmentEligibility.filters.js';
 import {
   loadPreviousAgentForCustomer,
@@ -41,20 +44,15 @@ async function loadCandidateMembers(organizationId) {
  * @param {string} organizationId
  * @param {string[]} memberIds
  */
-async function loadProfilesAndSkills(organizationId, memberIds) {
+async function loadAgentProfiles(organizationId, memberIds) {
   if (memberIds.length === 0) {
-    return { profiles: new Map(), skills: new Map() };
+    return { profiles: new Map(), presenceDb: new Map(), defaults: defaultAgentProfileRow() };
   }
 
-  const [profilesRes, skillsRes, presenceRes] = await Promise.all([
+  const [profilesRes, presenceRes] = await Promise.all([
     supabaseAdmin
       .from('agent_profiles')
       .select('member_id, status, max_concurrency, shift_start, shift_end, timezone')
-      .eq('organization_id', organizationId)
-      .in('member_id', memberIds),
-    supabaseAdmin
-      .from('agent_skills')
-      .select('member_id, skill, proficiency')
       .eq('organization_id', organizationId)
       .in('member_id', memberIds),
     supabaseAdmin
@@ -70,33 +68,9 @@ async function loadProfilesAndSkills(organizationId, memberIds) {
     profiles.set(row.member_id, row);
   }
 
-  const skills = new Map();
-  for (const row of skillsRes.data ?? []) {
-    const list = skills.get(row.member_id) ?? [];
-    list.push({
-      skill: String(row.skill).toLowerCase(),
-      proficiency: Number(row.proficiency) || 50,
-    });
-    skills.set(row.member_id, list);
-  }
-
   const presenceDb = new Map((presenceRes.data ?? []).map((r) => [r.member_id, r]));
 
-  return { profiles, skills, presenceDb, defaults };
-}
-
-/**
- * @param {Map<string, { skill: string, proficiency: number }[]>} skillsMap
- * @param {string} memberId
- */
-function maxMemberProficiency(skillsMap, memberId) {
-  const list = skillsMap.get(memberId) ?? [];
-  let max = 0;
-  for (const row of list) {
-    const p = Number(row.proficiency);
-    if (Number.isFinite(p) && p > max) max = p;
-  }
-  return max;
+  return { profiles, presenceDb, defaults };
 }
 
 function timeToApi(value) {
@@ -128,7 +102,7 @@ export async function previewAssignmentEligibility({
   const { data: conv, error: convErr } = await supabaseAdmin
     .from('conversations')
     .select(
-      'id, metadata, channel_type, priority, assignment_type, assigned_to_member_id, customer_id, inbox_id',
+      'id, metadata, channel_type, priority, assignment_type, assigned_to_member_id, customer_id, inbox_id, team_inbox_id',
     )
     .eq('id', conversationId)
     .eq('organization_id', organizationId)
@@ -183,9 +157,19 @@ export async function previewAssignmentEligibility({
     overrideInboxId: effectiveOverrideInboxId,
   });
 
+  const queueInboxId = conv.team_inbox_id ?? conv.inbox_id ?? null;
+  let inboxStrategy = null;
+  if (queueInboxId) {
+    const { settings: queueSettings } = await loadQueueInboxSettingsForConversation(
+      organizationId,
+      conversationId,
+    );
+    inboxStrategy = inboxScoringStrategyFromSettings(queueSettings);
+  }
+
   let inboxMemberIds = null;
-  if (conv.inbox_id) {
-    inboxMemberIds = await loadInboxMemberIds(conv.inbox_id);
+  if (queueInboxId) {
+    inboxMemberIds = await loadInboxMemberIds(queueInboxId);
   }
   if (!inboxMemberIds?.length) {
     const inbox = getInboxById(routing, targetInbox.inboxId);
@@ -194,10 +178,7 @@ export async function previewAssignmentEligibility({
 
   const members = await loadCandidateMembers(organizationId);
   const memberIds = members.map((m) => m.id);
-  const { profiles, skills, presenceDb, defaults } = await loadProfilesAndSkills(
-    organizationId,
-    memberIds,
-  );
+  const { profiles, presenceDb, defaults } = await loadAgentProfiles(organizationId, memberIds);
   const redisSnap = await getAssignmentRedisSnapshot(organizationId, memberIds);
 
   const now = new Date();
@@ -232,7 +213,6 @@ export async function previewAssignmentEligibility({
       shiftStart: timeToApi(profile?.shift_start),
       shiftEnd: timeToApi(profile?.shift_end),
       timezone: profile?.timezone ?? defaults.timezone,
-      skills: (skills.get(m.id) ?? []).map((s) => s.skill),
       presence: effectivePresence,
       activeChats: redis.activeChats,
     };
@@ -242,7 +222,6 @@ export async function previewAssignmentEligibility({
       memberId: m.id,
       role: m.role,
       eligible: result.eligible,
-      skillMatchTier: result.skillMatchTier,
       drops: result.drops,
       presence: effectivePresence,
       activeChats: redis.activeChats,
@@ -253,7 +232,7 @@ export async function previewAssignmentEligibility({
       eligibleMemberIds.push(m.id);
       eligibleRows.push({
         memberId: m.id,
-        skillMatchTier: result.skillMatchTier,
+        skillMatchTier: 'generic',
         activeChats: redis.activeChats ?? 0,
         maxConcurrency: memberRow.maxConcurrency,
         lastSeen: dbPresence?.last_seen ?? null,
@@ -265,22 +244,18 @@ export async function previewAssignmentEligibility({
   let filteredEligibleRows = eligibleRows.filter((r) => !excludeSet.has(r.memberId));
   let filteredEligibleMemberIds = eligibleMemberIds.filter((id) => !excludeSet.has(id));
 
-  if (isVip && routing.vip_min_proficiency) {
-    const minProf = routing.vip_min_proficiency;
-    filteredEligibleRows = filteredEligibleRows.filter(
-      (r) => maxMemberProficiency(skills, r.memberId) >= minProf,
-    );
-    filteredEligibleMemberIds = filteredEligibleRows.map((r) => r.memberId);
-  }
+  const strategy = inboxStrategy ?? null;
+  const dedicatedInboxStrategy = isDedicatedInboxAssignmentStrategy(inboxStrategy);
+  const scoringInboxId = queueInboxId ?? targetInbox.inboxId;
 
-  const strategy = routing.strategy ?? 'weighted_hybrid';
-  const previousAgentId = skipSticky
-    ? null
-    : await loadPreviousAgentForCustomer(
-        organizationId,
-        conv.customer_id ?? null,
-        conversationId,
-      );
+  const previousAgentId =
+    skipSticky || dedicatedInboxStrategy
+      ? null
+      : await loadPreviousAgentForCustomer(
+          organizationId,
+          conv.customer_id ?? null,
+          conversationId,
+        );
 
   let ranking = {
     strategy,
@@ -288,10 +263,10 @@ export async function previewAssignmentEligibility({
     recommendedMemberId: null,
   };
 
-  if (filteredEligibleRows.length > 0) {
+  if (filteredEligibleRows.length > 0 && strategy) {
     ranking = await rankEligibleAgents({
       organizationId,
-      inboxId: targetInbox.inboxId,
+      inboxId: scoringInboxId,
       strategy,
       priority: conv.priority ?? null,
       previousAgentId,
@@ -301,7 +276,11 @@ export async function previewAssignmentEligibility({
 
   const slaContext = await resolveSlaRoutingContext(organizationId, conversationId, routing);
   let slaBoostApplied = false;
-  if (slaContext.urgent && ranking.rankedCandidates.length > 0) {
+  if (
+    slaContext.urgent &&
+    ranking.rankedCandidates.length > 0 &&
+    !dedicatedInboxStrategy
+  ) {
     const activeChatsByMember = new Map(
       filteredEligibleRows.map((r) => [r.memberId, r.activeChats ?? 0]),
     );
@@ -379,7 +358,6 @@ export async function previewAssignmentEligibility({
     vip: isVip
       ? {
           matched: true,
-          minProficiency: routing.vip_min_proficiency,
           targetInboxId: routing.vip_target_inbox_id ?? null,
         }
       : { matched: false },

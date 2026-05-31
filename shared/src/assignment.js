@@ -6,7 +6,6 @@ export const ASSIGNMENT_STRATEGIES = Object.freeze([
   'weighted_hybrid',
   'least_loaded',
   'round_robin',
-  'skill_based',
 ]);
 
 export const AGENT_ROUTING_STATUSES = Object.freeze(['active', 'inactive']);
@@ -50,10 +49,6 @@ export const ASSIGNMENT_LOG_REASONS = Object.freeze([
 ]);
 
 export const ASSIGNMENT_LIMITS = Object.freeze({
-  maxSkillsPerAgent: 32,
-  maxSkillNameLength: 64,
-  minProficiency: 1,
-  maxProficiency: 100,
   minConcurrency: 1,
   maxConcurrency: 50,
   defaultConcurrency: 5,
@@ -157,58 +152,6 @@ export function normalizeMaxConcurrency(raw) {
     );
   }
   return rounded;
-}
-
-/**
- * @param {unknown} raw
- * @returns {{ skill: string, proficiency: number }[]}
- */
-export function validateAgentSkillsPayload(raw) {
-  if (!Array.isArray(raw)) {
-    throw new Error('skills must be an array');
-  }
-  if (raw.length > ASSIGNMENT_LIMITS.maxSkillsPerAgent) {
-    throw new Error(`skills cannot exceed ${ASSIGNMENT_LIMITS.maxSkillsPerAgent} entries`);
-  }
-
-  const seen = new Set();
-  /** @type {{ skill: string, proficiency: number }[]} */
-  const out = [];
-
-  for (let i = 0; i < raw.length; i += 1) {
-    const row = raw[i];
-    if (!row || typeof row !== 'object') {
-      throw new Error(`skills[${i}] must be an object`);
-    }
-    const skillRaw = typeof row.skill === 'string' ? row.skill.trim().toLowerCase() : '';
-    if (!skillRaw || skillRaw.length > ASSIGNMENT_LIMITS.maxSkillNameLength) {
-      throw new Error(
-        `skills[${i}].skill must be 1–${ASSIGNMENT_LIMITS.maxSkillNameLength} characters`,
-      );
-    }
-    if (seen.has(skillRaw)) {
-      throw new Error(`duplicate skill: ${skillRaw}`);
-    }
-    seen.add(skillRaw);
-
-    let proficiency = Number(row.proficiency);
-    if (!Number.isFinite(proficiency)) {
-      proficiency = 50;
-    }
-    proficiency = Math.round(proficiency);
-    if (
-      proficiency < ASSIGNMENT_LIMITS.minProficiency ||
-      proficiency > ASSIGNMENT_LIMITS.maxProficiency
-    ) {
-      throw new Error(
-        `skills[${i}].proficiency must be ${ASSIGNMENT_LIMITS.minProficiency}–${ASSIGNMENT_LIMITS.maxProficiency}`,
-      );
-    }
-
-    out.push({ skill: skillRaw, proficiency });
-  }
-
-  return out;
 }
 
 /**

@@ -14,8 +14,10 @@ export async function fetchOrgChannels(orgId) {
 
 /**
  * @param {string} orgId
- * @param {{ emails: string[], role?: string, inboxId?: string | null }} body
- *   inboxId — team inbox UUID; omit or null for org default inbox on accept
+ * @param {{ emails: string[], role?: string, inboxIds?: string[], inboxId?: string | null, permissions?: object }} body
+ *   inboxIds — when the org has team inboxes, pass one or more UUIDs; omit or [] if none exist yet
+ *   inboxId — legacy single inbox (treated as one-element inboxIds)
+ *   permissions — merged inbox member permissions (see shared/inboxMemberPermissions.js)
  */
 export async function postOrgInvitesBatch(orgId, body) {
   return apiFetch(`/api/org/${orgId}/invites/batch`, {

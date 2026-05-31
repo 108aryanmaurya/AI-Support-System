@@ -1,29 +1,30 @@
-/** Sidebar segments wired to GET /api/org/:orgId/conversations?filter=… */
+/** Primary sidebar segments — wired to GET /api/org/:orgId/conversations?filter=… */
 export const INBOX_SIDEBAR_FILTERS = Object.freeze([
-  { id: 'inbox', label: 'Your inbox' },
-  { id: 'mentions', label: 'Mentions' },
-  { id: 'created_by_you', label: 'Created by you' },
-  { id: 'all', label: 'All' },
-  { id: 'unassigned', label: 'Unassigned' },
-  { id: 'spam', label: 'Spam' },
-  { id: 'sla_risk', label: 'SLA risk' },
-  { id: 'ingress_spam', label: 'Spam flagged' },
-  { id: 'ai_intent', label: 'AI intent', requiresIntent: true },
-  { id: 'waiting_agent', label: 'Waiting on agent' },
-  { id: 'waiting_customer', label: 'Waiting on customer' },
-  { id: 'resolved', label: 'Resolved' },
-  { id: 'closed', label: 'Closed' },
+  { id: 'inbox', label: 'Your inbox', icon: 'inbox' },
+  { id: 'mentions', label: 'Mentions', icon: 'mentions' },
+  { id: 'created_by', label: 'Created by', icon: 'created_by' },
+  { id: 'unassigned', label: 'Unassigned', icon: 'unassigned' },
+  { id: 'spam', label: 'Spam', icon: 'spam' },
 ])
 
-/** Shown when `ai_intent` filter is active — must match server `isClassificationIntent`. */
-export const INBOX_AI_INTENT_OPTIONS = Object.freeze([
-  { value: 'billing_issue', label: 'Billing' },
-  { value: 'refund_request', label: 'Refund' },
-  { value: 'technical_support', label: 'Technical' },
-  { value: 'shipping_delivery', label: 'Shipping' },
-  { value: 'complaint', label: 'Complaint' },
-  { value: 'general_inquiry', label: 'General' },
-  { value: 'other', label: 'Other' },
+/** Expandable sidebar sections (dropdown children set filter + query param). */
+export const INBOX_SIDEBAR_SECTIONS = Object.freeze([
+  { id: 'team_inboxes', label: 'Team inboxes', filter: 'team_inbox', param: 'inbox' },
+  { id: 'teammates', label: 'Teammates', filter: 'teammate', param: 'memberId' },
+  { id: 'views', label: 'Views', filter: 'channel', param: 'channelId' },
+])
+
+/** Legacy filter ids still accepted by the API for bookmarks. */
+export const LEGACY_INBOX_FILTER_IDS = Object.freeze([
+  'created_by_you',
+  'all',
+  'sla_risk',
+  'ingress_spam',
+  'ai_intent',
+  'waiting_agent',
+  'waiting_customer',
+  'resolved',
+  'closed',
 ])
 
 /** How long a cached first-page result stays fresh when switching filters (ms). */

@@ -3,14 +3,18 @@ import { HttpError } from '../utils/httpError.js';
 import { ensureOrgMembership } from './support.service.js';
 import { CONVERSATION_ACTIVE_STATUSES, isClassificationIntent } from '@ai-support/shared';
 
-/** Sidebar / inbox filter keys — single source of truth for API + client. */
+/** Sidebar / inbox filter keys — primary + dropdown scopes. */
 export const CONVERSATION_INBOX_FILTER_TYPES = Object.freeze([
   'inbox',
   'mentions',
+  'created_by',
   'created_by_you',
-  'all',
   'unassigned',
   'spam',
+  'team_inbox',
+  'teammate',
+  'channel',
+  'all',
   'sla_risk',
   'ingress_spam',
   'ai_intent',
@@ -21,39 +25,42 @@ export const CONVERSATION_INBOX_FILTER_TYPES = Object.freeze([
 ]);
 
 /**
+ * @param {string} filterType
+ */
+export function normalizeConversationFilterType(filterType) {
+  const f = String(filterType ?? '').trim().toLowerCase().replace(/-/g, '_');
+  if (f === 'created_by_you') return 'created_by';
+  return f;
+}
+
+/**
  * Whether non-spam-only filters should add `is_spam = false`.
- * Spam is excluded everywhere except the spam bucket and `all` + includeSpam.
  */
 export function shouldExcludeSpam(filterType, includeSpam) {
-  if (filterType === 'spam') return false;
-  if (filterType === 'all' && includeSpam) return false;
+  const ft = normalizeConversationFilterType(filterType);
+  if (ft === 'spam') return false;
+  if (ft === 'all' && includeSpam) return false;
   return true;
 }
 
 /**
- * Applies inbox sidebar rules to a Supabase conversations query chain.
- * Always start from `.from('conversations').select(...)`.
- *
  * @param {import('@supabase/supabase-js').PostgrestFilterBuilder} query
  * @param {object} options
- * @param {string} options.filterType
- * @param {string} options.organizationId
- * @param {string} options.currentUserId — auth.users / public.users id
- * @param {string | null} options.memberId — organization_members.id for current user (required for `inbox`)
- * @param {boolean} [options.includeSpam]
- * @param {string | null} [options.aiIntent] — required when filterType is `ai_intent`
- * @returns {import('@supabase/supabase-js').PostgrestFilterBuilder}
  */
 export function applyConversationFilters(query, options) {
   const {
-    filterType,
+    filterType: rawFilterType,
     organizationId,
-    inboxId = null,
+    scopeInboxId = null,
     currentUserId,
     memberId = null,
+    assigneeMemberId = null,
+    channelId = null,
     includeSpam = false,
     aiIntent = null,
   } = options;
+
+  const filterType = normalizeConversationFilterType(rawFilterType);
 
   if (!CONVERSATION_INBOX_FILTER_TYPES.includes(filterType)) {
     throw new HttpError(400, `Unknown filterType. Use one of: ${CONVERSATION_INBOX_FILTER_TYPES.join(', ')}.`);
@@ -61,8 +68,8 @@ export function applyConversationFilters(query, options) {
 
   let q = query.eq('organization_id', organizationId);
 
-  if (inboxId) {
-    q = q.eq('inbox_id', inboxId);
+  if (filterType === 'team_inbox' && scopeInboxId) {
+    q = q.eq('team_inbox_id', scopeInboxId);
   }
 
   if (shouldExcludeSpam(filterType, includeSpam)) {
@@ -82,17 +89,36 @@ export function applyConversationFilters(query, options) {
         500,
         'mentions filter is applied via RPC (conversation_ids_mentioning_user); do not use applyConversationFilters.',
       );
-    case 'created_by_you':
+    case 'created_by':
       q = q.eq('created_by', currentUserId);
       break;
     case 'all':
       break;
     case 'unassigned':
-      q = q.is('assigned_to_member_id', null).in('status', [...CONVERSATION_ACTIVE_STATUSES]);
+      q = q
+        .is('assigned_to_member_id', null)
+        .is('team_inbox_id', null)
+        .in('status', [...CONVERSATION_ACTIVE_STATUSES]);
       break;
     case 'spam':
       q = q.or('status.eq.spam,is_spam.eq.true');
       break;
+    case 'team_inbox':
+      break;
+    case 'teammate': {
+      if (!assigneeMemberId) {
+        throw new HttpError(400, 'memberId is required for the teammate filter.');
+      }
+      q = q.eq('assigned_to_member_id', assigneeMemberId).in('status', [...CONVERSATION_ACTIVE_STATUSES]);
+      break;
+    }
+    case 'channel': {
+      if (!channelId) {
+        throw new HttpError(400, 'channelId is required for the channel filter.');
+      }
+      q = q.eq('channel_id', channelId);
+      break;
+    }
     case 'sla_risk':
       q = q.eq('metadata->ingress->>sla_at_risk', 'true');
       break;
@@ -126,22 +152,9 @@ export function applyConversationFilters(query, options) {
 }
 
 /**
- * Central inbox query: one code path for all sidebar filters.
- *
  * @param {object} params
- * @param {string} [params.filterType='all']
- * @param {string} params.currentUserId
- * @param {string} params.organizationId
- * @param {number} params.page
- * @param {number} params.pageSize
- * @param {number} params.from
- * @param {number} params.to
- * @param {boolean} [params.includeSpam=false] — only applies when filterType is `all`; includes spam rows.
  */
-/**
- * Exact row counts per sidebar bucket (parallel head-only queries).
- */
-export async function getConversationFilterCounts({ currentUserId, organizationId, inboxId = null }) {
+export async function getConversationFilterCounts({ currentUserId, organizationId }) {
   if (!currentUserId) {
     throw new HttpError(400, 'currentUserId is required.');
   }
@@ -153,7 +166,8 @@ export async function getConversationFilterCounts({ currentUserId, organizationI
   const memberId = membership.id;
 
   const countOne = async (filterType, includeSpam = false) => {
-    if (filterType === 'mentions') {
+    const ft = normalizeConversationFilterType(filterType);
+    if (ft === 'mentions') {
       const { data, error } = await supabaseAdmin.rpc('count_conversations_mentioning_user', {
         p_organization_id: organizationId,
         p_user_id: currentUserId,
@@ -165,11 +179,11 @@ export async function getConversationFilterCounts({ currentUserId, organizationI
 
     let q = supabaseAdmin.from('conversations').select('*', { count: 'exact', head: true });
     q = applyConversationFilters(q, {
-      filterType,
+      filterType: ft,
       organizationId,
-      inboxId,
+      scopeInboxId: null,
       currentUserId,
-      memberId: filterType === 'inbox' ? memberId : null,
+      memberId: ft === 'inbox' ? memberId : null,
       includeSpam,
     });
     const { count, error } = await q;
@@ -177,55 +191,31 @@ export async function getConversationFilterCounts({ currentUserId, organizationI
     return count ?? 0;
   };
 
-  const [
-    inbox,
-    mentions,
-    created_by_you,
-    all,
-    unassigned,
-    spam,
-    sla_risk,
-    ingress_spam,
-    closed,
-    resolved,
-    waiting_customer,
-    waiting_agent,
-  ] = await Promise.all([
+  const [inbox, mentions, created_by, unassigned, spam] = await Promise.all([
     countOne('inbox'),
     countOne('mentions'),
-    countOne('created_by_you'),
-    countOne('all'),
+    countOne('created_by'),
     countOne('unassigned'),
     countOne('spam'),
-    countOne('sla_risk'),
-    countOne('ingress_spam'),
-    countOne('closed'),
-    countOne('resolved'),
-    countOne('waiting_customer'),
-    countOne('waiting_agent'),
   ]);
 
   return {
     inbox,
     mentions,
-    created_by_you,
-    all,
+    created_by,
+    created_by_you: created_by,
     unassigned,
     spam,
-    sla_risk,
-    ingress_spam,
-    closed,
-    resolved,
-    waiting_customer,
-    waiting_agent,
   };
 }
 
 export async function getFilteredConversations({
-  filterType = 'all',
+  filterType = 'inbox',
   currentUserId,
   organizationId,
-  inboxId = null,
+  scopeInboxId = null,
+  assigneeMemberId = null,
+  channelId = null,
   page,
   pageSize,
   from,
@@ -241,6 +231,7 @@ export async function getFilteredConversations({
     throw new HttpError(400, 'organizationId is required.');
   }
 
+  const ft = normalizeConversationFilterType(filterType);
   const membership = await ensureOrgMembership(currentUserId, organizationId);
   const memberId = membership.id;
 
@@ -268,13 +259,13 @@ export async function getFilteredConversations({
       return {
         items: [],
         pagination: { page, pageSize, total: 0 },
-        filterType,
+        filterType: ft,
         tagId,
       };
     }
   }
 
-  if (filterType === 'mentions') {
+  if (ft === 'mentions') {
     const { data: idRows, error: rpcError } = await supabaseAdmin.rpc('conversation_ids_mentioning_user', {
       p_organization_id: organizationId,
       p_user_id: currentUserId,
@@ -288,19 +279,13 @@ export async function getFilteredConversations({
     if (total === 0) {
       return {
         items: [],
-        pagination: {
-          page,
-          pageSize,
-          total: 0,
-        },
-        filterType,
+        pagination: { page, pageSize, total: 0 },
+        filterType: ft,
       };
     }
 
     let query = supabaseAdmin.from('conversations').select('*', { count: 'exact' }).in('id', ids);
-    if (inboxId) {
-      query = query.eq('inbox_id', inboxId);
-    }
+
     if (tagConversationIds) {
       const allowed = new Set(tagConversationIds);
       const filteredIds = ids.filter((id) => allowed.has(id));
@@ -308,7 +293,7 @@ export async function getFilteredConversations({
         return {
           items: [],
           pagination: { page, pageSize, total: 0 },
-          filterType,
+          filterType: ft,
           tagId,
         };
       }
@@ -327,18 +312,20 @@ export async function getFilteredConversations({
         pageSize,
         total: count ?? total,
       },
-      filterType,
+      filterType: ft,
     };
   }
 
   let query = supabaseAdmin.from('conversations').select('*', { count: 'exact' });
 
   query = applyConversationFilters(query, {
-    filterType,
+    filterType: ft,
     organizationId,
-    inboxId,
+    scopeInboxId: ft === 'team_inbox' ? scopeInboxId : null,
     currentUserId,
-    memberId: filterType === 'inbox' ? memberId : null,
+    memberId: ft === 'inbox' ? memberId : null,
+    assigneeMemberId: ft === 'teammate' ? assigneeMemberId : null,
+    channelId: ft === 'channel' ? channelId : null,
     includeSpam: Boolean(includeSpam),
     aiIntent,
   });
@@ -359,7 +346,7 @@ export async function getFilteredConversations({
       pageSize,
       total: count ?? 0,
     },
-    filterType,
+    filterType: ft,
     ...(tagId ? { tagId } : {}),
   };
 }

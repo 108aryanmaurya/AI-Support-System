@@ -10,19 +10,25 @@ import {
   Scale,
   Search,
   SquareStack,
+  Trash2,
   User,
 } from 'lucide-react'
+import {
+  defaultInboxMemberPermissionsForAssignmentMethod,
+  INBOX_ASSIGNMENT_METHOD_DEFAULT,
+  mergeInboxSettings,
+} from '@ai-support/shared'
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
 import { apiFetch } from '../services/api.js'
-import { conversationMembersUrl } from '../services/inboxApi.js'
 import {
   createOrgInbox,
   fetchOrgInboxes,
   patchOrgInbox,
   replaceInboxMembers,
 } from '../services/inboxesApi.js'
+import { fetchOrgMembers } from '../services/orgWorkspaceApi.js'
 
 const ASSIGNMENT_METHODS = [
   {
@@ -49,6 +55,26 @@ const ASSIGNMENT_METHODS = [
     badge: 'Pro',
   },
 ]
+
+function memberDisplayName(m) {
+  const fn = typeof m.firstName === 'string' ? m.firstName.trim() : ''
+  const ln = typeof m.lastName === 'string' ? m.lastName.trim() : ''
+  const combined = `${fn} ${ln}`.trim()
+  if (combined) return combined
+  if (typeof m.displayName === 'string' && m.displayName.trim()) return m.displayName.trim()
+  if (typeof m.email === 'string' && m.email) return m.email
+  return 'Teammate'
+}
+
+function mapOrgMembersForPicker(rows) {
+  return (rows ?? []).map((m) => ({
+    id: m.id,
+    email: m.email ?? null,
+    firstName: m.firstName ?? null,
+    lastName: m.lastName ?? null,
+    displayName: memberDisplayName(m),
+  }))
+}
 
 function inboxIconColor(name) {
   const palette = ['bg-amber-500/20 text-amber-300', 'bg-sky-500/20 text-sky-300', 'bg-violet-500/20 text-violet-300']
@@ -77,7 +103,6 @@ function UpsellBlock({ title, description, linkLabel }) {
 }
 
 function TeamInboxEditor({
-  orgId,
   draft,
   members,
   isAdmin,
@@ -89,9 +114,10 @@ function TeamInboxEditor({
   onCancel,
   onDelete,
   onInviteTeammates,
+  onAssignmentMethodChange,
 }) {
   const [teammateQuery, setTeammateQuery] = useState('')
-  const [assignmentMethod, setAssignmentMethod] = useState('manual')
+  const assignmentMethod = draft.assignmentMethod ?? INBOX_ASSIGNMENT_METHOD_DEFAULT
 
   const filteredMembers = useMemo(() => {
     const q = teammateQuery.trim().toLowerCase()
@@ -134,7 +160,14 @@ function TeamInboxEditor({
       </div>
 
       <div className="mt-6">
-        <label className="text-sm font-medium text-white">Add teammates</label>
+        <label className="text-sm font-medium text-white">
+          Teammates <span className="text-rose-400">*</span>
+        </label>
+        <p className="mt-1 text-xs text-slate-500">
+          {isNew
+            ? 'Select at least one organization member. The inbox cannot be created without members.'
+            : 'Members who can access this inbox.'}
+        </p>
         <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
           <div className="relative min-w-0 flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
@@ -142,7 +175,7 @@ function TeamInboxEditor({
               type="search"
               value={teammateQuery}
               onChange={(e) => setTeammateQuery(e.target.value)}
-              placeholder="Select at least one teammate..."
+              placeholder="Search teammates…"
               className="w-full rounded-lg border border-[#2b3858] bg-[#0b1020] py-2.5 pl-9 pr-3 text-sm text-white placeholder:text-slate-500"
             />
           </div>
@@ -155,8 +188,16 @@ function TeamInboxEditor({
           </button>
         </div>
 
-        {teammateQuery || draft.memberIds.length > 0 ? (
-          <ul className="mt-3 max-h-48 space-y-1 overflow-y-auto rounded-lg border border-[#2b3858] bg-[#0b1020] p-2">
+        {members.length === 0 ? (
+          <p className="mt-3 rounded-lg border border-[#2b3858] bg-[#0b1020] px-3 py-3 text-sm text-slate-500">
+            No teammates in this organization yet.{' '}
+            <button type="button" onClick={onInviteTeammates} className="text-[#6eb5ff] hover:underline">
+              Invite someone
+            </button>{' '}
+            before creating an inbox.
+          </p>
+        ) : (
+          <ul className="mt-3 max-h-56 space-y-1 overflow-y-auto rounded-lg border border-[#2b3858] bg-[#0b1020] p-2">
             {filteredMembers.length === 0 ? (
               <li className="px-2 py-2 text-sm text-slate-500">No teammates match your search.</li>
             ) : (
@@ -170,23 +211,28 @@ function TeamInboxEditor({
                       className="rounded border-slate-600"
                     />
                     <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2b3858] text-xs font-medium text-slate-300">
-                      {(m.displayName || m.email || '?').charAt(0).toUpperCase()}
+                      {memberDisplayName(m).charAt(0).toUpperCase()}
                     </span>
-                    <span className="min-w-0 flex-1 text-sm text-slate-200">
-                      {m.displayName || m.email || m.id}
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm text-slate-200">{memberDisplayName(m)}</span>
+                      {m.email ? (
+                        <span className="block truncate text-xs text-slate-500">{m.email}</span>
+                      ) : null}
                     </span>
                   </label>
                 </li>
               ))
             )}
           </ul>
-        ) : null}
+        )}
 
         {selectedCount > 0 ? (
           <p className="mt-2 text-xs text-slate-500">
             {selectedCount} teammate{selectedCount === 1 ? '' : 's'} selected
           </p>
-        ) : null}
+        ) : (
+          <p className="mt-2 text-xs text-amber-400/90">Select at least one teammate to save.</p>
+        )}
       </div>
 
       <div className="mt-8">
@@ -199,7 +245,7 @@ function TeamInboxEditor({
               <button
                 key={method.id}
                 type="button"
-                onClick={() => setAssignmentMethod(method.id)}
+                onClick={() => onAssignmentMethodChange(method.id)}
                 className={`rounded-xl border p-4 text-left transition ${
                   selected
                     ? 'border-orange-500/60 bg-[#1a2338] ring-1 ring-orange-500/30'
@@ -225,11 +271,12 @@ function TeamInboxEditor({
           })}
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          Auto-assignment uses org-wide rules in{' '}
-          <Link to={`/org/${orgId}/settings/assignment`} className="text-[#6eb5ff] hover:underline">
-            Assignment settings
-          </Link>
-          . This selection is for display until per-inbox routing ships.
+          {assignmentMethod === 'manual'
+            ? 'Teammates assign conversations manually. Inbox members get standard inbox permissions.'
+            : assignmentMethod === 'round_robin'
+              ? 'Unassigned conversations are auto-assigned using traditional round robin among eligible inbox members (sequential rotation). Sticky customer history is not used.'
+              : 'Unassigned conversations are auto-assigned to the inbox member with the fewest open conversations (balanced / least-loaded). Sticky customer history is not used.'}{' '}
+          Org AI must be enabled for automatic assignment.
         </p>
       </div>
 
@@ -248,7 +295,7 @@ function TeamInboxEditor({
 
       <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-[#2b3858] pt-5">
         <div>
-          {!isNew && !draft.isDefault ? (
+          {!isNew ? (
             <button
               type="button"
               onClick={onDelete}
@@ -295,7 +342,12 @@ export default function OrgInboxesSettingsPage() {
   const [expandedId, setExpandedId] = useState(null)
   const [isCreatingNew, setIsCreatingNew] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [draft, setDraft] = useState({ name: '', memberIds: [], isDefault: false, inboxId: null })
+  const [draft, setDraft] = useState({
+    name: '',
+    memberIds: [],
+    inboxId: null,
+    assignmentMethod: INBOX_ASSIGNMENT_METHOD_DEFAULT,
+  })
 
   const loadMemberCounts = useCallback(
     async (inboxList) => {
@@ -327,11 +379,11 @@ export default function OrgInboxesSettingsPage() {
     try {
       const [inboxRes, memberRes] = await Promise.all([
         fetchOrgInboxes(orgId),
-        apiFetch(conversationMembersUrl(orgId)),
+        fetchOrgMembers(orgId),
       ])
       const list = (inboxRes?.inboxes ?? []).filter((ib) => ib.status === 'active')
       setInboxes(list)
-      setMembers(memberRes?.members ?? [])
+      setMembers(mapOrgMembersForPicker(memberRes?.members))
       await loadMemberCounts(list)
     } catch (e) {
       setError(e.message || 'Failed to load inboxes.')
@@ -347,7 +399,12 @@ export default function OrgInboxesSettingsPage() {
   const openNewInboxForm = () => {
     setIsCreatingNew(true)
     setExpandedId(null)
-    setDraft({ name: 'Untitled Team Inbox', memberIds: [], isDefault: false, inboxId: null })
+    setDraft({
+      name: 'Untitled Team Inbox',
+      memberIds: [],
+      inboxId: null,
+      assignmentMethod: INBOX_ASSIGNMENT_METHOD_DEFAULT,
+    })
   }
 
   const openEditInbox = async (inbox) => {
@@ -359,21 +416,33 @@ export default function OrgInboxesSettingsPage() {
         `/api/org/${encodeURIComponent(orgId)}/inboxes/${encodeURIComponent(inbox.id)}/members`,
       )
       const ids = (res?.members ?? []).map((m) => m.organizationMemberId)
+      const settings = mergeInboxSettings(inbox.settings)
       setDraft({
         name: inbox.name,
         memberIds: ids,
-        isDefault: Boolean(inbox.isDefault),
         inboxId: inbox.id,
+        assignmentMethod: settings.assignmentMethod,
       })
     } catch {
-      setDraft({ name: inbox.name, memberIds: [], isDefault: Boolean(inbox.isDefault), inboxId: inbox.id })
+      const settings = mergeInboxSettings(inbox.settings)
+      setDraft({
+        name: inbox.name,
+        memberIds: [],
+        inboxId: inbox.id,
+        assignmentMethod: settings.assignmentMethod,
+      })
     }
   }
 
   const closeForm = () => {
     setIsCreatingNew(false)
     setExpandedId(null)
-    setDraft({ name: '', memberIds: [], isDefault: false, inboxId: null })
+    setDraft({
+      name: '',
+      memberIds: [],
+      inboxId: null,
+      assignmentMethod: INBOX_ASSIGNMENT_METHOD_DEFAULT,
+    })
   }
 
   const toggleDraftMember = (memberId) => {
@@ -396,11 +465,23 @@ export default function OrgInboxesSettingsPage() {
       setError('Select at least one teammate.')
       return
     }
+    const assignmentMethod = draft.assignmentMethod ?? INBOX_ASSIGNMENT_METHOD_DEFAULT
+    const memberPermissions = Object.fromEntries(
+      draft.memberIds.map((id) => [
+        id,
+        defaultInboxMemberPermissionsForAssignmentMethod(assignmentMethod),
+      ]),
+    )
+
     setSaving(true)
     setError('')
     try {
       if (isCreatingNew || !draft.inboxId) {
-        const res = await createOrgInbox(orgId, { name, memberIds: draft.memberIds })
+        const res = await createOrgInbox(orgId, {
+          name,
+          memberIds: draft.memberIds,
+          settings: { assignmentMethod },
+        })
         if (res?.inbox) {
           setInboxes((prev) => [...prev, res.inbox].sort((a, b) => a.name.localeCompare(b.name)))
           setMemberCounts((prev) => ({ ...prev, [res.inbox.id]: draft.memberIds.length }))
@@ -408,10 +489,32 @@ export default function OrgInboxesSettingsPage() {
           await load()
         }
       } else {
-        await patchOrgInbox(orgId, draft.inboxId, { name })
-        await replaceInboxMembers(orgId, draft.inboxId, draft.memberIds)
+        await patchOrgInbox(orgId, draft.inboxId, {
+          name,
+          settings: { assignmentMethod },
+        })
+        await replaceInboxMembers(
+          orgId,
+          draft.inboxId,
+          draft.memberIds,
+          {},
+          memberPermissions,
+        )
         setInboxes((prev) =>
-          prev.map((ib) => (ib.id === draft.inboxId ? { ...ib, name } : ib)).sort((a, b) => a.name.localeCompare(b.name)),
+          prev
+            .map((ib) =>
+              ib.id === draft.inboxId
+                ? {
+                    ...ib,
+                    name,
+                    settings: mergeInboxSettings({
+                      ...mergeInboxSettings(ib.settings),
+                      assignmentMethod,
+                    }),
+                  }
+                : ib,
+            )
+            .sort((a, b) => a.name.localeCompare(b.name)),
         )
         setMemberCounts((prev) => ({ ...prev, [draft.inboxId]: draft.memberIds.length }))
       }
@@ -423,13 +526,16 @@ export default function OrgInboxesSettingsPage() {
     }
   }
 
-  const handleDelete = async () => {
-    if (!draft.inboxId || draft.isDefault) return
-    if (!window.confirm(`Delete team inbox "${draft.name}"? This archives the inbox.`)) return
+  const handleDelete = async (inboxTarget = null) => {
+    const target =
+      inboxTarget ??
+      (draft.inboxId ? { id: draft.inboxId, name: draft.name } : null)
+    if (!target?.id) return
+    if (!window.confirm(`Delete team inbox "${target.name}"? This archives the inbox.`)) return
     setSaving(true)
     setError('')
     try {
-      await patchOrgInbox(orgId, draft.inboxId, { status: 'archived' })
+      await patchOrgInbox(orgId, target.id, { status: 'archived' })
       await load()
       closeForm()
     } catch (err) {
@@ -453,9 +559,9 @@ export default function OrgInboxesSettingsPage() {
     return (
       <main className="h-full min-h-0 overflow-y-auto px-4 py-6 sm:px-8">
         <p className="text-slate-300">Only organization admins can manage team inboxes.</p>
-        <Link to={`/org/${orgId}/settings`} className="mt-4 inline-block text-sm text-[#6eb5ff] hover:underline">
+        <a href={`/org/${orgId}/settings`} className="mt-4 inline-block text-sm text-[#6eb5ff] hover:underline">
           Back to settings
-        </Link>
+        </a>
       </main>
     )
   }
@@ -512,7 +618,6 @@ export default function OrgInboxesSettingsPage() {
                   <span className="text-sm font-medium text-slate-400">New team inbox</span>
                 </div>
                 <TeamInboxEditor
-                  orgId={orgId}
                   draft={draft}
                   members={members}
                   isAdmin={isAdmin}
@@ -520,9 +625,12 @@ export default function OrgInboxesSettingsPage() {
                   saving={saving}
                   onDraftChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
                   onToggleMember={toggleDraftMember}
+                  onAssignmentMethodChange={(method) =>
+                    setDraft((d) => ({ ...d, assignmentMethod: method }))
+                  }
                   onSave={handleSave}
                   onCancel={closeForm}
-                  onDelete={handleDelete}
+                  onDelete={() => void handleDelete()}
                   onInviteTeammates={goInviteTeammates}
                 />
               </div>
@@ -547,30 +655,43 @@ export default function OrgInboxesSettingsPage() {
                   const count = memberCounts[inbox.id] ?? 0
                   return (
                     <li key={inbox.id} className="border-b border-[#2b3858] last:border-b-0">
-                      <button
-                        type="button"
-                        onClick={() => (isExpanded ? closeForm() : openEditInbox(inbox))}
-                        className="flex w-full items-center gap-4 px-4 py-4 text-left transition hover:bg-[#151b2e] sm:px-6"
-                      >
-                        <span
-                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${inboxIconColor(inbox.name)}`}
+                      <div className="flex items-center gap-1 px-2 py-2 sm:px-4">
+                        <button
+                          type="button"
+                          onClick={() => (isExpanded ? closeForm() : openEditInbox(inbox))}
+                          className="flex min-w-0 flex-1 items-center gap-4 rounded-lg px-2 py-2 text-left transition hover:bg-[#151b2e] sm:px-2"
                         >
-                          <User className="h-5 w-5" aria-hidden />
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold text-white">{inbox.name}</p>
-                          <p className="text-sm text-slate-500">
-                            {count} member{count === 1 ? '' : 's'}
-                            {inbox.isDefault ? ' · Default' : ''}
-                          </p>
-                        </div>
-                        <ChevronRight
-                          className={`h-5 w-5 shrink-0 text-slate-500 transition ${isExpanded ? 'rotate-90' : ''}`}
-                        />
-                      </button>
+                          <span
+                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${inboxIconColor(inbox.name)}`}
+                          >
+                            <User className="h-5 w-5" aria-hidden />
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate font-semibold text-white">{inbox.name}</p>
+                            <p className="text-sm text-slate-500">
+                              {count} member{count === 1 ? '' : 's'}
+                            </p>
+                          </div>
+                          <ChevronRight
+                            className={`h-5 w-5 shrink-0 text-slate-500 transition ${isExpanded ? 'rotate-90' : ''}`}
+                          />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            void handleDelete(inbox)
+                          }}
+                          className="shrink-0 rounded-lg p-2 text-slate-500 hover:bg-red-950/40 hover:text-red-400 disabled:opacity-40"
+                          aria-label={`Delete ${inbox.name}`}
+                          title="Delete team inbox"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                       {isExpanded ? (
                         <TeamInboxEditor
-                          orgId={orgId}
                           draft={draft}
                           members={members}
                           isAdmin={isAdmin}
@@ -578,9 +699,12 @@ export default function OrgInboxesSettingsPage() {
                           saving={saving}
                           onDraftChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
                           onToggleMember={toggleDraftMember}
+                          onAssignmentMethodChange={(method) =>
+                            setDraft((d) => ({ ...d, assignmentMethod: method }))
+                          }
                           onSave={handleSave}
                           onCancel={closeForm}
-                          onDelete={handleDelete}
+                          onDelete={() => void handleDelete()}
                           onInviteTeammates={goInviteTeammates}
                         />
                       ) : null}

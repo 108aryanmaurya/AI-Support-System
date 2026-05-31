@@ -7,7 +7,15 @@ function orgBase(organizationId) {
 }
 
 export function conversationsListUrl(organizationId, filterType, options = {}) {
-  const { page = 1, pageSize = 50, includeSpam = false, tagId = null, aiIntent = null, inboxId = null } = options;
+  const {
+    page = 1,
+    pageSize = 50,
+    includeSpam = false,
+    tagId = null,
+    inboxId = null,
+    memberId = null,
+    channelId = null,
+  } = options;
   const params = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
@@ -15,15 +23,14 @@ export function conversationsListUrl(organizationId, filterType, options = {}) {
   });
   if (includeSpam) params.set('includeSpam', 'true');
   if (tagId) params.set('tagId', tagId);
-  if (aiIntent) params.set('aiIntent', aiIntent);
-  if (inboxId) params.set('inboxId', inboxId);
+  if (inboxId) params.set('inbox', inboxId);
+  if (memberId) params.set('memberId', memberId);
+  if (channelId) params.set('channelId', channelId);
   return `${orgBase(organizationId)}/conversations?${params}`;
 }
 
-export function conversationCountsUrl(organizationId, inboxId = null) {
-  const base = `${orgBase(organizationId)}/conversations/counts`;
-  if (!inboxId) return base;
-  return `${base}?inboxId=${encodeURIComponent(inboxId)}`;
+export function conversationCountsUrl(organizationId) {
+  return `${orgBase(organizationId)}/conversations/counts`;
 }
 
 export function conversationMembersUrl(organizationId) {

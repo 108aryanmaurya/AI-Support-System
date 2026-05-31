@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { requireRole } from '../middleware/orgAccess.js';
 import { orgAssignmentPreviewRateLimit } from '../middleware/assignmentRateLimit.js';
 import {
-  getAgentAssignmentController,
   getAgentPresenceController,
   getAgentWorkloadController,
   getAssignmentMetricsController,
@@ -12,7 +11,6 @@ import {
   postAssignmentPreviewController,
   postPresenceHeartbeatController,
   postPresenceOfflineController,
-  putAgentAssignmentController,
   putOrgAssignmentSettingsController,
 } from '../controllers/assignment.controller.js';
 
@@ -28,7 +26,4 @@ router.post('/presence/offline', postPresenceOfflineController);
 router.get('/presence', requireRole('ADMIN'), getOrgPresenceSnapshotController);
 router.get('/agents/:memberId/presence', getAgentPresenceController);
 router.get('/agents/:memberId/workload', getAgentWorkloadController);
-router.get('/agents/:memberId', requireRole('ADMIN'), getAgentAssignmentController);
-router.put('/agents/:memberId', requireRole('ADMIN'), putAgentAssignmentController);
-
 export default router;

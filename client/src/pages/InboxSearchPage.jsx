@@ -1,11 +1,12 @@
 import { useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { Search } from 'lucide-react'
 import { InboxSidebar } from '../components/InboxSidebar.jsx'
 import { useInboxSidebarActions } from '../hooks/useInboxSidebarActions.js'
 
 export default function InboxSearchPage() {
   const { orgId: orgFromRoute } = useParams()
+  const navigate = useNavigate()
   const organizationId =
     (typeof orgFromRoute === 'string' && orgFromRoute.trim()) ||
     ''
@@ -13,8 +14,15 @@ export default function InboxSearchPage() {
   const setLoadingNoop = useCallback(() => {}, [])
   const setErrorNoop = useCallback(() => {}, [])
 
+  const goInboxFilter = useCallback(
+    (filter) => {
+      if (organizationId) navigate(`/org/${organizationId}/inbox?filter=${encodeURIComponent(filter)}`)
+    },
+    [organizationId, navigate],
+  )
+
   const {
-    onSelectSidebarFilter,
+    onSelectPrimaryFilter: hookSelectPrimary,
     mentionCue,
     activeFilter,
     filterCounts,
@@ -30,7 +38,10 @@ export default function InboxSearchPage() {
         <InboxSidebar
           activeFilter={activeFilter}
           filterCounts={filterCounts}
-          onSelectSidebarFilter={onSelectSidebarFilter}
+          onSelectPrimaryFilter={(filter) => {
+            hookSelectPrimary(filter)
+            goInboxFilter(filter)
+          }}
           mentionCue={mentionCue}
         />
         <section className="flex min-h-0 min-w-0 flex-col overflow-hidden bg-[#101729]">

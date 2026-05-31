@@ -132,7 +132,6 @@ export const ASSIGNMENT_STRATEGIES: readonly [
   'weighted_hybrid',
   'least_loaded',
   'round_robin',
-  'skill_based',
 ];
 
 export const AGENT_ROUTING_STATUSES: readonly ['active', 'inactive'];
@@ -174,10 +173,6 @@ export const ASSIGNMENT_LOG_REASONS: readonly [
   'system',
 ];
 export const ASSIGNMENT_LIMITS: {
-  maxSkillsPerAgent: number;
-  maxSkillNameLength: number;
-  minProficiency: number;
-  maxProficiency: number;
   minConcurrency: number;
   maxConcurrency: number;
   defaultConcurrency: number;
@@ -191,9 +186,6 @@ export function isAssignmentLogReason(value: unknown): boolean;
 export function normalizeShiftTime(raw: unknown): string | null;
 export function normalizeAgentTimezone(raw: unknown): string;
 export function normalizeMaxConcurrency(raw: unknown): number;
-export function validateAgentSkillsPayload(
-  raw: unknown,
-): { skill: string; proficiency: number }[];
 export function defaultAgentProfileRow(): {
   status: string;
   max_concurrency: number;
@@ -202,14 +194,25 @@ export function defaultAgentProfileRow(): {
   timezone: string;
 };
 
-export const ORG_ASSIGNMENT_SETTINGS_DEFAULTS: {
-  auto_route_enabled: boolean;
-  strategy: string;
+export const ORG_ASSIGNMENT_ORG_DEFAULTS: {
+  default_max_concurrency: number;
+  default_shift_start: string | null;
+  default_shift_end: string | null;
+  default_timezone: string;
+  fallback_notify_member_ids: readonly string[];
 };
+
+export const ORG_ASSIGNMENT_SETTINGS_DEFAULTS: typeof ORG_ASSIGNMENT_ORG_DEFAULTS;
 
 export function mergeOrgAssignmentSettings(
   raw: unknown,
-): typeof ORG_ASSIGNMENT_SETTINGS_DEFAULTS;
+): {
+  default_max_concurrency: number;
+  default_shift_start: string | null;
+  default_shift_end: string | null;
+  default_timezone: string;
+  fallback_notify_member_ids: string[];
+};
 export function isOrgAutoRouteEnabled(settings: unknown): boolean;
 
 export const CONVERSATION_CLOSED_REASONS: readonly [

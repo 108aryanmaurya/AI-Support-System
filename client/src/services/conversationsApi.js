@@ -38,16 +38,34 @@ export async function patchConversation(organizationId, conversationId, patch) {
  * @param {string | null} memberId — `organization_members.id`, or null to unassign
  */
 export async function assignConversationToMember(organizationId, conversationId, memberId) {
+  if (memberId != null && String(memberId).trim()) {
+    return patchConversation(organizationId, conversationId, {
+      assignedToMemberId: String(memberId).trim(),
+      assignmentType: 'assigned_to_agent',
+    })
+  }
+  // Clear assignee only; server keeps team_inbox_id and may set queue to assigned_to_team.
+  return patchConversation(organizationId, conversationId, {
+    assignedToMemberId: null,
+  })
+}
+
+/**
+ * Assign or clear team inbox queue on a conversation.
+ *
+ * @param {string} organizationId
+ * @param {string} conversationId
+ * @param {string | null} inboxId — `inboxes.id`, or null to clear team queue
+ */
+export async function assignConversationToTeamInbox(organizationId, conversationId, inboxId) {
   const patch =
-    memberId != null && String(memberId).trim()
+    inboxId != null && String(inboxId).trim()
       ? {
-          assignedToMemberId: String(memberId).trim(),
-          assignmentType: 'assigned_to_agent',
-        }
-      : {
+          teamInboxId: String(inboxId).trim(),
+          assignmentType: 'assigned_to_team',
           assignedToMemberId: null,
-          assignmentType: 'unassigned',
         }
+      : { teamInboxId: null }
 
   return patchConversation(organizationId, conversationId, patch)
 }

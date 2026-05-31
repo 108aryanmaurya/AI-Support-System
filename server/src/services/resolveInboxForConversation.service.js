@@ -1,7 +1,6 @@
 import { mergeInboxSettings } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
-import { getDefaultInboxId } from './inboxDefault.service.js';
 import {
   loadOrgAssignmentRouting,
   resolveTargetInbox,
@@ -10,7 +9,7 @@ import {
 
 /**
  * Deterministic inbox resolution for new/updated conversations.
- * Order: workflow override → DB inbox settings (channels/intents/tags) → assignment JSON routing → default.
+ * Order: workflow override → DB inbox settings (channels/intents/tags) → assignment JSON routing.
  *
  * @param {object} params
  * @param {string} params.organizationId
@@ -69,9 +68,25 @@ export async function resolveInboxForConversation({
     /* assignment settings optional */
   }
 
-  const defaultId = await getDefaultInboxId(organizationId);
-  if (!defaultId) throw new HttpError(500, 'No default inbox configured.');
-  return { inboxId: defaultId, source: 'default' };
+  return null;
+}
+
+/**
+ * Resolve inbox for new conversation: explicit id or routing rules; null if neither applies.
+ * @param {string} organizationId
+ * @param {string | null | undefined} inboxId
+ * @param {object} [context] — passed to {@link resolveInboxForConversation} when inboxId omitted
+ * @returns {Promise<string | null>}
+ */
+export async function resolveInboxIdForNewConversation(organizationId, inboxId = null, context = {}) {
+  if (inboxId) {
+    const valid = await validateActiveInbox(organizationId, inboxId);
+    if (!valid) throw new HttpError(400, 'Invalid inbox for this organization.');
+    return inboxId;
+  }
+
+  const resolved = await resolveInboxForConversation({ organizationId, ...context });
+  return resolved?.inboxId ?? null;
 }
 
 async function resolveFromDbInboxes({ organizationId, channelType, intent, tagNames }) {
@@ -189,10 +204,7 @@ export async function applyResolvedInboxToConversation({
     .maybeSingle();
 
   if (prior?.inbox_id && prior.inbox_id !== resolved.inboxId) {
-    const defaultId = await getDefaultInboxId(organizationId);
-    if (prior.inbox_id !== defaultId) {
-      return { inboxId: prior.inbox_id, source: 'existing', skipped: true };
-    }
+    return { inboxId: prior.inbox_id, source: 'existing', skipped: true };
   }
 
   await supabaseAdmin

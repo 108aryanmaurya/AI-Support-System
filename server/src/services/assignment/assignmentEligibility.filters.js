@@ -1,12 +1,11 @@
 import { isPresenceAssignable, isWithinAgentShift } from '@ai-support/shared';
-import { computeSkillMatchTier, isSkillMatchEligible } from '@ai-support/shared';
 
 /**
- * Pure eligibility checks (Sprint 3) — one code per failed dimension.
+ * Pure eligibility checks — one code per failed dimension.
  *
  * @param {object} member — candidate row
  * @param {object} ctx — routing context
- * @returns {{ eligible: boolean, drops: Array<{ code: string, detail?: string }>, skillMatchTier: string }}
+ * @returns {{ eligible: boolean, drops: Array<{ code: string, detail?: string }> }}
  */
 export function evaluateMemberEligibility(member, ctx) {
   /** @type {Array<{ code: string, detail?: string }>} */
@@ -49,16 +48,6 @@ export function evaluateMemberEligibility(member, ctx) {
     }
   }
 
-  const skillMatchTier = computeSkillMatchTier(member.skills ?? [], {
-    intent: ctx.intent,
-    language: ctx.language,
-    tagNames: ctx.tagNames,
-  });
-
-  if (!isSkillMatchEligible(skillMatchTier)) {
-    drops.push({ code: 'no_skill_match', detail: skillMatchTier });
-  }
-
   if (member.activeChats != null && member.maxConcurrency != null) {
     if (member.activeChats >= member.maxConcurrency) {
       drops.push({
@@ -71,6 +60,5 @@ export function evaluateMemberEligibility(member, ctx) {
   return {
     eligible: drops.length === 0,
     drops,
-    skillMatchTier,
   };
 }

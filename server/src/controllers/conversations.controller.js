@@ -9,6 +9,7 @@ import {
   CONVERSATION_INBOX_FILTER_TYPES,
   getConversationFilterCounts,
   getFilteredConversations,
+  normalizeConversationFilterType,
 } from '../services/conversationInboxFilters.service.js';
 import {
   createConversation,
@@ -73,8 +74,8 @@ export async function getConversationsController(req, res, next) {
   try {
     const organizationId = orgIdOrThrow(req);
 
-    const rawFilter = req.query.filter ?? req.query.filterType ?? 'all';
-    const filterType = String(rawFilter).trim().toLowerCase().replace(/-/g, '_');
+    const rawFilter = req.query.filter ?? req.query.filterType ?? 'inbox';
+    const filterType = normalizeConversationFilterType(String(rawFilter).trim());
     if (!CONVERSATION_INBOX_FILTER_TYPES.includes(filterType)) {
       throw new HttpError(
         400,
@@ -102,19 +103,37 @@ export async function getConversationsController(req, res, next) {
           ? req.query.inbox.trim()
           : null;
 
-    const inboxId = await resolveListInboxId({
-      inboxId: rawInboxId,
-      organizationId,
-      membership: req.orgMembership,
-      orgPermissions: req.orgPermissions,
-    });
+    const rawMemberId =
+      typeof req.query.memberId === 'string' && req.query.memberId.trim()
+        ? req.query.memberId.trim()
+        : null;
+
+    const rawChannelId =
+      typeof req.query.channelId === 'string' && req.query.channelId.trim()
+        ? req.query.channelId.trim()
+        : null;
+
+    let scopeInboxId = null;
+    if (filterType === 'team_inbox') {
+      if (!rawInboxId) {
+        throw new HttpError(400, 'inbox query param is required for team_inbox filter.');
+      }
+      scopeInboxId = await resolveListInboxId({
+        inboxId: rawInboxId,
+        organizationId,
+        membership: req.orgMembership,
+        orgPermissions: req.orgPermissions,
+      });
+    }
 
     const pagination = getPagination(req.query);
     const result = await getFilteredConversations({
       filterType,
       currentUserId: req.userId ?? req.user.id,
       organizationId,
-      inboxId,
+      scopeInboxId,
+      assigneeMemberId: filterType === 'teammate' ? rawMemberId : null,
+      channelId: filterType === 'channel' ? rawChannelId : null,
       includeSpam,
       tagId,
       aiIntent,
@@ -130,24 +149,9 @@ export async function getConversationCountsController(req, res, next) {
   try {
     const organizationId = orgIdOrThrow(req);
 
-    const rawInboxId =
-      typeof req.query.inboxId === 'string' && req.query.inboxId.trim()
-        ? req.query.inboxId.trim()
-        : typeof req.query.inbox === 'string' && req.query.inbox.trim()
-          ? req.query.inbox.trim()
-          : null;
-
-    const inboxId = await resolveListInboxId({
-      inboxId: rawInboxId,
-      organizationId,
-      membership: req.orgMembership,
-      orgPermissions: req.orgPermissions,
-    });
-
     const counts = await getConversationFilterCounts({
       currentUserId: req.userId ?? req.user.id,
       organizationId,
-      inboxId,
     });
     res.json(counts);
   } catch (error) {
@@ -206,6 +210,7 @@ export async function patchConversationController(req, res, next) {
 
     const body = req.body ?? {};
     const hasAssign = Object.prototype.hasOwnProperty.call(body, 'assignedToMemberId');
+    const hasTeamInbox = Object.prototype.hasOwnProperty.call(body, 'teamInboxId');
     const hasStatus = Object.prototype.hasOwnProperty.call(body, 'status');
     const hasPriority = Object.prototype.hasOwnProperty.call(body, 'priority');
     const hasAssignmentType = Object.prototype.hasOwnProperty.call(body, 'assignmentType');
@@ -215,6 +220,7 @@ export async function patchConversationController(req, res, next) {
 
     if (
       !hasAssign &&
+      !hasTeamInbox &&
       !hasStatus &&
       !hasPriority &&
       !hasAssignmentType &&
@@ -224,7 +230,7 @@ export async function patchConversationController(req, res, next) {
     ) {
       throw new HttpError(
         400,
-        'Provide at least one of: assignedToMemberId, status, waitingStatus, priority, assignmentType, aiEnabled, tagIds.',
+        'Provide at least one of: assignedToMemberId, teamInboxId, status, waitingStatus, priority, assignmentType, aiEnabled, tagIds.',
       );
     }
 
@@ -237,6 +243,7 @@ export async function patchConversationController(req, res, next) {
       });
       if (
         !hasAssign &&
+        !hasTeamInbox &&
         !hasStatus &&
         !hasPriority &&
         !hasAssignmentType &&
@@ -257,11 +264,21 @@ export async function patchConversationController(req, res, next) {
       assignedToMemberId = v;
     }
 
+    let teamInboxId = undefined;
+    if (hasTeamInbox) {
+      const v = body.teamInboxId;
+      if (v !== null && typeof v !== 'string') {
+        throw new HttpError(400, 'teamInboxId must be a uuid string or null.');
+      }
+      teamInboxId = v;
+    }
+
     const { conversation, priorAssignedToMemberId } = await updateConversationFields({
       organizationId,
       conversationId,
       actorUserId: req.userId ?? req.user.id,
       assignedToMemberId: hasAssign ? assignedToMemberId : undefined,
+      teamInboxId: hasTeamInbox ? teamInboxId : undefined,
       status: hasStatus ? body.status : undefined,
       waitingStatus: hasWaitingStatus ? body.waitingStatus : undefined,
       priority: hasPriority ? body.priority : undefined,
@@ -270,7 +287,7 @@ export async function patchConversationController(req, res, next) {
       orgPermissions: req.orgPermissions,
     });
 
-    if (hasAssign || hasAssignmentType) {
+    if (hasAssign || hasTeamInbox || hasAssignmentType) {
       void scheduleAssignmentWithFallback({
         organizationId,
         conversation,

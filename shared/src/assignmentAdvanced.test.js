@@ -5,14 +5,13 @@ import {
   mergeAssignmentAdvancedSettings,
 } from './assignmentAdvanced.js';
 
-test('mergeAssignmentAdvancedSettings clamps threshold and vip proficiency', () => {
+test('mergeAssignmentAdvancedSettings clamps threshold', () => {
   const merged = mergeAssignmentAdvancedSettings({
     sla_remaining_minutes_threshold: 999,
-    vip_min_proficiency: 200,
     vip_tag_names: [' VIP '],
   });
   assert.equal(merged.sla_remaining_minutes_threshold, 120);
-  assert.equal(merged.vip_min_proficiency, 70);
+  assert.equal('vip_min_proficiency' in merged, false);
   assert.deepEqual(merged.vip_tag_names, ['vip']);
 });
 

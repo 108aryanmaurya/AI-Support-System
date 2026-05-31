@@ -292,10 +292,13 @@ Non-members should not automatically access inbox conversations.
 
 | Capability | Notes |
 |------------|--------|
-| Schema | `inboxes`, `inbox_members`, `conversations.inbox_id` |
-| Admin | Settings → Inboxes (`/org/:orgId/settings/inboxes`) |
+| Schema | `inboxes`, `inbox_members` (+ `permissions` JSONB), `conversations.inbox_id`, `invites.inbox_id` / `invites.permissions` |
+| Invite flow | Settings → invite emails + optional **multi-inbox** select (required only when org has inboxes) → **Permissions** → batch invite |
+| Admin | Settings → Inboxes (`/org/:orgId/settings/inboxes`) — assignment method per inbox (`settings.assignmentMethod`: manual / round_robin / balanced); updates `manageRoundRobinAssignment` / `manageBalancedAssignmentWorkload` on members |
+| Auto-assign | `assignment.auto_route` when queue inbox (`team_inbox_id` or `inbox_id`) is round robin or balanced and org AI is on; org `auto_route_enabled` removed |
 | Agent UI | Inbox switcher (`?inbox=`), filters scoped per inbox |
 | Transfer | `POST .../conversations/:id/transfer-inbox` + activity event |
-| Routing | `resolveInboxForConversation` on create; legacy assignment JSON mapped via slug |
-| Migration | `server/scripts/migrateAssignmentInboxesToDb.js` |
+| Routing | `resolveInboxForConversation` on create when rules match; `conversations.inbox_id` may stay null |
+| Org bootstrap | No auto-created inbox on signup — admins create team inboxes in Settings |
+| Migration | `server/scripts/migrateAssignmentInboxesToDb.js` (historical `is_default` backfill only) |
 

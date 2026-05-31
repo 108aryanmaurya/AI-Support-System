@@ -123,8 +123,17 @@ export async function runReassignConversation({
       return { outcome: 'skipped', reason: 'same_assignee' };
     }
 
+    const strategy = preview.strategy ?? null;
+    if (!strategy) {
+      emitReassignEvent(organizationId, conversationId, 'assignment.reassign_skipped', {
+        reason: 'inbox_manual_assignment',
+        trigger,
+        prior_member_id: currentAssignee,
+      });
+      return { outcome: 'skipped', reason: 'inbox_manual_assignment' };
+    }
+
     const row = preview.rankedCandidates?.find((r) => r.memberId === winnerId);
-    const strategy = preview.strategy ?? routing.strategy ?? 'weighted_hybrid';
     const scoreSnapshot = {
       reassign: true,
       trigger,

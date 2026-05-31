@@ -1,8 +1,10 @@
+import { mergeSelfAssignOnReply } from '@ai-support/shared';
 import { HttpError } from '../utils/httpError.js';
+import { getOrgAssignmentSettings } from './assignment/assignmentSettings.service.js';
 import { updateConversationFields } from './conversationUpdate.service.js';
 
 /**
- * Self-assign unassigned threads when an agent sends a customer-visible reply (claim-on-first-reply).
+ * Self-assign when an agent replies to an unassigned or team-inbox thread, unless org setting is keep_queue.
  * Skips when a human assignee already exists.
  *
  * @param {object} params
@@ -28,6 +30,17 @@ export async function claimConversationOnAgentReplyIfUnassigned({
 
   const priorAssignee = conversation.assigned_to_member_id ?? null;
   if (priorAssignee) {
+    return { conversation, claimed: false };
+  }
+
+  const routing = await getOrgAssignmentSettings(organizationId);
+  const selfAssignMode = mergeSelfAssignOnReply(routing.self_assign_on_reply);
+  if (selfAssignMode === 'keep_queue') {
+    return { conversation, claimed: false };
+  }
+
+  const assignmentType = conversation.assignment_type ?? 'unassigned';
+  if (assignmentType === 'assigned_to_ai') {
     return { conversation, claimed: false };
   }
 

@@ -1,41 +1,33 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
-  ASSIGNMENT_STRATEGIES,
-  ORG_ASSIGNMENT_SETTINGS_DEFAULTS,
+  ORG_ASSIGNMENT_ORG_DEFAULTS,
   isOrgAutoRouteEnabled,
   mergeOrgAssignmentSettings,
 } from './assignmentSettings.js';
 
 describe('mergeOrgAssignmentSettings', () => {
-  it('returns defaults when raw is missing', () => {
+  it('returns org defaults when raw is missing', () => {
     assert.deepEqual(mergeOrgAssignmentSettings(undefined), {
-      ...ORG_ASSIGNMENT_SETTINGS_DEFAULTS,
+      ...ORG_ASSIGNMENT_ORG_DEFAULTS,
+      fallback_notify_member_ids: [],
     });
   });
 
-  it('merges partial assignment settings', () => {
-    assert.deepEqual(mergeOrgAssignmentSettings({ auto_route_enabled: true }), {
-      auto_route_enabled: true,
-      strategy: 'weighted_hybrid',
-    });
-  });
-
-  it('rejects unknown strategy', () => {
+  it('merges agent profile defaults', () => {
     assert.equal(
-      mergeOrgAssignmentSettings({ strategy: 'magic' }).strategy,
-      ORG_ASSIGNMENT_SETTINGS_DEFAULTS.strategy,
+      mergeOrgAssignmentSettings({ default_max_concurrency: 8 }).default_max_concurrency,
+      8,
     );
   });
 
-  it('accepts known strategies', () => {
-    for (const strategy of ASSIGNMENT_STRATEGIES) {
-      assert.equal(mergeOrgAssignmentSettings({ strategy }).strategy, strategy);
-    }
+  it('does not expose org scoring strategy', () => {
+    const merged = mergeOrgAssignmentSettings({ strategy: 'weighted_hybrid' });
+    assert.equal('strategy' in merged, false);
   });
 
-  it('isOrgAutoRouteEnabled reflects merged flag', () => {
+  it('isOrgAutoRouteEnabled is always false (per-inbox auto-route)', () => {
     assert.equal(isOrgAutoRouteEnabled(null), false);
-    assert.equal(isOrgAutoRouteEnabled({ auto_route_enabled: true }), true);
+    assert.equal(isOrgAutoRouteEnabled({ auto_route_enabled: true }), false);
   });
 });

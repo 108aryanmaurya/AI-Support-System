@@ -1,21 +1,14 @@
-import { GitBranch, Loader2, Plus, Save, Trash2, Users } from 'lucide-react'
+import {
+  defaultAssigneeSelectValue,
+  parseDefaultAssigneeSelectValue,
+} from '@ai-support/shared'
+import { ChevronDown, GitBranch, Inbox, Loader2, Save, User } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
-import {
-  fetchAgentAssignmentConfig,
-  fetchOrgAssignmentSettings,
-  putAgentAssignmentConfig,
-  putOrgAssignmentSettings,
-} from '../services/assignmentApi.js'
+import { fetchOrgAssignmentSettings, putOrgAssignmentSettings } from '../services/assignmentApi.js'
+import { fetchOrgInboxes } from '../services/inboxesApi.js'
 import { fetchOrgMembers } from '../services/orgWorkspaceApi.js'
-
-const STRATEGIES = [
-  { value: 'weighted_hybrid', label: 'Weighted hybrid (recommended)' },
-  { value: 'least_loaded', label: 'Least loaded' },
-  { value: 'round_robin', label: 'Round robin' },
-  { value: 'skill_based', label: 'Skill based' },
-]
 
 function ToggleRow({ label, description, checked, onChange, disabled }) {
   return (
@@ -38,6 +31,18 @@ function ToggleRow({ label, description, checked, onChange, disabled }) {
         onChange={(e) => onChange(e.target.checked)}
       />
     </label>
+  )
+}
+
+function SettingsSplitCard({ title, description, children }) {
+  return (
+    <div className="flex flex-col gap-5 rounded-xl border border-[#2b3858] bg-[#12192c] px-5 py-5 lg:flex-row lg:items-start lg:justify-between">
+      <div className="min-w-0 max-w-lg flex-1">
+        <h3 className="text-sm font-semibold text-white">{title}</h3>
+        <p className="mt-2 text-xs leading-relaxed text-slate-400">{description}</p>
+      </div>
+      <div className="w-full shrink-0 lg:max-w-xs lg:pt-0.5">{children}</div>
+    </div>
   )
 }
 
@@ -70,35 +75,26 @@ export default function OrgAssignmentSettingsPage() {
   const [assignment, setAssignment] = useState(null)
 
   const [members, setMembers] = useState([])
-  const [skillsMemberId, setSkillsMemberId] = useState('')
-  const [agentConfig, setAgentConfig] = useState(null)
-  const [agentLoading, setAgentLoading] = useState(false)
-  const [agentSaving, setAgentSaving] = useState(false)
-  const [agentError, setAgentError] = useState('')
-  const [agentSaved, setAgentSaved] = useState(false)
-
-  const [skillDraft, setSkillDraft] = useState({ skill: '', proficiency: 50 })
+  const [inboxes, setInboxes] = useState([])
 
   const load = useCallback(async () => {
     if (!orgId) return
     setLoading(true)
     setError('')
     try {
-      const [settingsRes, membersRes] = await Promise.all([
+      const [settingsRes, membersRes, inboxesRes] = await Promise.all([
         fetchOrgAssignmentSettings(orgId),
         fetchOrgMembers(orgId),
+        fetchOrgInboxes(orgId),
       ])
       const loaded = settingsRes?.assignment ?? {}
       setAssignment({
         ...loaded,
-        fallback_notify_member_ids: Array.isArray(loaded.fallback_notify_member_ids)
-          ? [...loaded.fallback_notify_member_ids]
-          : [],
+        default_assignee: loaded.default_assignee ?? { type: 'unassigned' },
+        self_assign_on_reply: loaded.self_assign_on_reply ?? 'assign_to_me',
       })
-      const list = Array.isArray(membersRes?.members) ? membersRes.members : []
-      setMembers(list)
-      const firstMemberId = list[0] ? memberRowId(list[0]) : ''
-      if (!skillsMemberId && firstMemberId) setSkillsMemberId(firstMemberId)
+      setMembers(Array.isArray(membersRes?.members) ? membersRes.members : [])
+      setInboxes(Array.isArray(inboxesRes?.inboxes) ? inboxesRes.inboxes : [])
     } catch (e) {
       setError(e.message || 'Failed to load assignment settings.')
     } finally {
@@ -110,29 +106,15 @@ export default function OrgAssignmentSettingsPage() {
     load()
   }, [load])
 
-  const loadAgentConfig = useCallback(async () => {
-    if (!orgId || !skillsMemberId || !isAdmin) return
-    setAgentLoading(true)
-    setAgentError('')
-    try {
-      const cfg = await fetchAgentAssignmentConfig(orgId, skillsMemberId)
-      setAgentConfig(cfg)
-    } catch (e) {
-      setAgentConfig(null)
-      setAgentError(e.message || 'Failed to load agent profile.')
-    } finally {
-      setAgentLoading(false)
-    }
-  }, [orgId, skillsMemberId, isAdmin])
-
-  useEffect(() => {
-    loadAgentConfig()
-  }, [loadAgentConfig])
-
   const vipTagsText = useMemo(() => {
     if (!assignment?.vip_tag_names) return 'vip, enterprise'
     return assignment.vip_tag_names.join(', ')
   }, [assignment?.vip_tag_names])
+
+  const defaultAssigneeValue = useMemo(() => {
+    if (!assignment) return 'unassigned'
+    return defaultAssigneeSelectValue(assignment.default_assignee)
+  }, [assignment])
 
   async function handleSaveOrg(e) {
     e.preventDefault()
@@ -145,20 +127,19 @@ export default function OrgAssignmentSettingsPage() {
         .split(',')
         .map((t) => t.trim().toLowerCase())
         .filter(Boolean)
-      const fallback_notify_member_ids = (assignment.fallback_notify_member_ids ?? []).filter(
-        (id) => typeof id === 'string' && id.trim(),
-      )
+      const { strategy: _omitStrategy, fallback_notify_member_ids: _omitFallback, ...assignmentPatch } =
+        assignment
       const res = await putOrgAssignmentSettings(orgId, {
-        ...assignment,
+        ...assignmentPatch,
         vip_tag_names,
-        fallback_notify_member_ids,
+        default_assignee: assignment.default_assignee ?? { type: 'unassigned' },
+        self_assign_on_reply: assignment.self_assign_on_reply ?? 'assign_to_me',
       })
       const savedAssignment = res?.assignment ?? assignment
       setAssignment({
         ...savedAssignment,
-        fallback_notify_member_ids: Array.isArray(savedAssignment.fallback_notify_member_ids)
-          ? [...savedAssignment.fallback_notify_member_ids]
-          : [],
+        default_assignee: savedAssignment.default_assignee ?? { type: 'unassigned' },
+        self_assign_on_reply: savedAssignment.self_assign_on_reply ?? 'assign_to_me',
       })
       setSaved(true)
     } catch (err) {
@@ -166,52 +147,6 @@ export default function OrgAssignmentSettingsPage() {
     } finally {
       setSaving(false)
     }
-  }
-
-  async function handleSaveAgent(e) {
-    e.preventDefault()
-    if (!isAdmin || !orgId || !skillsMemberId || !agentConfig) return
-    setAgentSaving(true)
-    setAgentError('')
-    setAgentSaved(false)
-    try {
-      const res = await putAgentAssignmentConfig(orgId, skillsMemberId, {
-        profile: agentConfig.profile,
-        skills: agentConfig.skills.map((s) => ({
-          skill: s.skill,
-          proficiency: s.proficiency,
-        })),
-      })
-      setAgentConfig(res)
-      setAgentSaved(true)
-    } catch (err) {
-      setAgentError(err.message || 'Failed to save agent config.')
-    } finally {
-      setAgentSaving(false)
-    }
-  }
-
-  function addSkill() {
-    const skill = skillDraft.skill.trim().toLowerCase()
-    if (!skill || !agentConfig) return
-    if (agentConfig.skills.some((s) => s.skill === skill)) {
-      setAgentError('Skill already exists for this teammate.')
-      return
-    }
-    setAgentConfig({
-      ...agentConfig,
-      skills: [...agentConfig.skills, { skill, proficiency: Number(skillDraft.proficiency) || 50 }],
-    })
-    setSkillDraft({ skill: '', proficiency: 50 })
-    setAgentError('')
-  }
-
-  function removeSkill(skill) {
-    if (!agentConfig) return
-    setAgentConfig({
-      ...agentConfig,
-      skills: agentConfig.skills.filter((s) => s.skill !== skill),
-    })
   }
 
   if (!isAdmin) {
@@ -224,7 +159,7 @@ export default function OrgAssignmentSettingsPage() {
 
   return (
     <main className="h-full min-h-0 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10">
-      <div className="mx-auto max-w-2xl">
+      <div className="mx-auto max-w-3xl">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <span className="flex h-8 w-8 items-center justify-center rounded-md border border-[#2b3858] bg-[#151b2e] text-emerald-300">
@@ -241,9 +176,12 @@ export default function OrgAssignmentSettingsPage() {
         </div>
 
         <p className="mb-6 text-sm text-slate-400">
-          Intelligent routing runs after AI classification and workflow rules. Workflow{' '}
-          <code className="text-slate-300">set_assignment</code> sets an explicit target; auto-route
-          scores eligible agents.
+          Org-wide defaults for routing, agent profiles, SLA boosts, and VIP rules. Per-inbox assignment
+          (manual, round robin, balanced) is configured under{' '}
+          <Link to={`/org/${orgId}/settings/inboxes`} className="text-[#6eb5ff] hover:underline">
+            Team inboxes
+          </Link>
+          . Workflow <code className="text-slate-300">set_assignment</code> still sets explicit targets.
         </p>
 
         {loading ? (
@@ -253,30 +191,94 @@ export default function OrgAssignmentSettingsPage() {
           </div>
         ) : !assignment ? null : (
           <form onSubmit={handleSaveOrg} className="flex flex-col gap-6">
-            <section className="flex flex-col gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Auto-route
-              </h2>
-              <ToggleRow
-                label="Enable server auto-route"
-                description="After classify + workflow, assign unassigned threads using scoring (requires AI enabled)."
-                checked={Boolean(assignment.auto_route_enabled)}
-                onChange={(v) => setAssignment({ ...assignment, auto_route_enabled: v })}
-              />
-              <label className="flex flex-col gap-1 text-sm text-slate-300">
-                Scoring strategy
-                <select
-                  value={assignment.strategy ?? 'weighted_hybrid'}
-                  onChange={(e) => setAssignment({ ...assignment, strategy: e.target.value })}
-                  className="rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
-                >
-                  {STRATEGIES.map((s) => (
-                    <option key={s.value} value={s.value}>
-                      {s.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
+            <section className="flex flex-col gap-4">
+              <SettingsSplitCard
+                title="Default assignee"
+                description="When round robin or balanced auto-assignment cannot assign an agent, the conversation is assigned to this default team inbox or teammate."
+              >
+                <div className="flex flex-col gap-2">
+                  <span className="text-xs text-slate-500">Select a team inbox or teammate</span>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 flex -translate-y-1/2 items-center text-slate-400">
+                      {defaultAssigneeValue.startsWith('inbox:') ? (
+                        <Inbox className="h-4 w-4" />
+                      ) : (
+                        <User className="h-4 w-4" />
+                      )}
+                    </span>
+                    <select
+                      value={defaultAssigneeValue}
+                      onChange={(e) => {
+                        const parsed = parseDefaultAssigneeSelectValue(e.target.value)
+                        setAssignment({ ...assignment, default_assignee: parsed })
+                      }}
+                      className="w-full appearance-none rounded-full border border-[#334060] bg-[#0f1728] py-2.5 pl-10 pr-10 text-sm text-white"
+                    >
+                      <option value="unassigned">Unassigned</option>
+                      {inboxes.map((inbox) => (
+                        <option key={inbox.id} value={`inbox:${inbox.id}`}>
+                          {inbox.name?.trim() || 'Team inbox'}
+                        </option>
+                      ))}
+                      {members.map((m) => {
+                        const mid = memberRowId(m)
+                        if (!mid) return null
+                        return (
+                          <option key={mid} value={`member:${mid}`}>
+                            {memberLabel(m)}
+                          </option>
+                        )
+                      })}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  </div>
+                </div>
+              </SettingsSplitCard>
+
+              <SettingsSplitCard
+                title="Self-assign by replying"
+                description={
+                  <>
+                    Choose what happens when you reply to a conversation that is unassigned or assigned
+                    to a team inbox.{' '}
+                    <a
+                      href="https://www.intercom.com/legal/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#6eb5ff] hover:underline"
+                    >
+                      Privacy Policy
+                    </a>
+                  </>
+                }
+              >
+                <fieldset className="flex flex-col gap-3">
+                  <label className="flex cursor-pointer items-center gap-3 text-sm text-slate-200">
+                    <input
+                      type="radio"
+                      name="self_assign_on_reply"
+                      className="h-4 w-4 border-[#334060] bg-[#0f1728] accent-[#3b82f6]"
+                      checked={assignment.self_assign_on_reply === 'assign_to_me'}
+                      onChange={() =>
+                        setAssignment({ ...assignment, self_assign_on_reply: 'assign_to_me' })
+                      }
+                    />
+                    Assign it to me
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-3 text-sm text-slate-200">
+                    <input
+                      type="radio"
+                      name="self_assign_on_reply"
+                      className="mt-0.5 h-4 w-4 shrink-0 border-[#334060] bg-[#0f1728] accent-[#3b82f6]"
+                      checked={assignment.self_assign_on_reply === 'keep_queue'}
+                      onChange={() =>
+                        setAssignment({ ...assignment, self_assign_on_reply: 'keep_queue' })
+                      }
+                    />
+                    <span>Keep it unassigned or assigned to the team inbox</span>
+                  </label>
+                </fieldset>
+              </SettingsSplitCard>
             </section>
 
             <section className="flex flex-col gap-3">
@@ -387,7 +389,7 @@ export default function OrgAssignmentSettingsPage() {
               <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">VIP</h2>
               <ToggleRow
                 label="VIP routing"
-                description="Conversations with VIP tags require higher skill proficiency and optional inbox override."
+                description="Conversations with VIP tags can use an optional team inbox override."
                 checked={Boolean(assignment.vip_routing_enabled)}
                 onChange={(v) => setAssignment({ ...assignment, vip_routing_enabled: v })}
               />
@@ -406,60 +408,6 @@ export default function OrgAssignmentSettingsPage() {
                   className="rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
                 />
               </label>
-              <label className="flex flex-col gap-1 text-sm text-slate-300">
-                Minimum proficiency for VIP
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={assignment.vip_min_proficiency ?? 70}
-                  onChange={(e) =>
-                    setAssignment({ ...assignment, vip_min_proficiency: Number(e.target.value) })
-                  }
-                  className="rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
-                />
-              </label>
-            </section>
-
-            <section className="flex flex-col gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                Fallback notifications
-              </h2>
-              <p className="text-xs text-slate-500">
-                When auto-route finds no eligible agent, these teammates receive the routing-fallback
-                email. If none are selected, the org admin email is used.
-              </p>
-              <div className="max-h-40 overflow-y-auto rounded-xl border border-[#2b3858] bg-[#12192c] p-3">
-                {members.length === 0 ? (
-                  <p className="text-xs text-slate-500">No members loaded.</p>
-                ) : (
-                  members.map((m) => {
-                    const mid = memberRowId(m)
-                    if (!mid) return null
-                    const ids = assignment.fallback_notify_member_ids ?? []
-                    const checked = ids.includes(mid)
-                    return (
-                      <label
-                        key={mid}
-                        className="flex cursor-pointer items-center gap-2 py-1 text-sm text-slate-300"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={(e) => {
-                            const next = e.target.checked
-                              ? [...new Set([...ids, mid])]
-                              : ids.filter((id) => id !== mid)
-                            setAssignment({ ...assignment, fallback_notify_member_ids: next })
-                          }}
-                          className="accent-[#3ECF8E]"
-                        />
-                        {memberLabel(m)}
-                      </label>
-                    )
-                  })
-                )}
-              </div>
             </section>
 
             {error ? (
@@ -479,145 +427,6 @@ export default function OrgAssignmentSettingsPage() {
             </button>
           </form>
         )}
-
-        <section className="mt-10 flex flex-col gap-4 border-t border-[#27314a] pt-8">
-          <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-slate-400" />
-            <h2 className="text-sm font-semibold text-white">Agent skills</h2>
-          </div>
-          <label className="flex flex-col gap-1 text-sm text-slate-300">
-            Teammate
-            <select
-              value={skillsMemberId}
-              onChange={(e) => setSkillsMemberId(e.target.value)}
-              className="rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
-            >
-              {members.map((m) => {
-                const mid = memberRowId(m)
-                if (!mid) return null
-                return (
-                  <option key={mid} value={mid}>
-                    {memberLabel(m)}
-                  </option>
-                )
-              })}
-            </select>
-          </label>
-
-          {agentLoading ? (
-            <p className="text-xs text-slate-500">Loading agent profile…</p>
-          ) : agentConfig ? (
-            <form onSubmit={handleSaveAgent} className="flex flex-col gap-4">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <label className="flex flex-col gap-1 text-sm text-slate-300">
-                  Max concurrency
-                  <input
-                    type="number"
-                    min={1}
-                    max={50}
-                    value={agentConfig.profile?.maxConcurrency ?? 5}
-                    onChange={(e) =>
-                      setAgentConfig({
-                        ...agentConfig,
-                        profile: {
-                          ...agentConfig.profile,
-                          maxConcurrency: Number(e.target.value),
-                        },
-                      })
-                    }
-                    className="rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 text-sm text-slate-300">
-                  Routing status
-                  <select
-                    value={agentConfig.profile?.status ?? 'active'}
-                    onChange={(e) =>
-                      setAgentConfig({
-                        ...agentConfig,
-                        profile: { ...agentConfig.profile, status: e.target.value },
-                      })
-                    }
-                    className="rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
-                  >
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </select>
-                </label>
-              </div>
-
-              <ul className="flex flex-col gap-2">
-                {(agentConfig.skills ?? []).map((s) => (
-                  <li
-                    key={s.skill}
-                    className="flex items-center justify-between gap-2 rounded-md border border-[#2b3858] bg-[#12192c] px-3 py-2 text-sm"
-                  >
-                    <span className="text-white">
-                      {s.skill}{' '}
-                      <span className="text-slate-500">({s.proficiency}%)</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => removeSkill(s.skill)}
-                      className="text-red-300 hover:text-red-200"
-                      aria-label={`Remove ${s.skill}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  </li>
-                ))}
-              </ul>
-
-              <div className="flex flex-wrap gap-2">
-                <input
-                  type="text"
-                  placeholder="Skill name"
-                  value={skillDraft.skill}
-                  onChange={(e) => setSkillDraft({ ...skillDraft, skill: e.target.value })}
-                  className="min-w-[120px] flex-1 rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
-                />
-                <input
-                  type="number"
-                  min={1}
-                  max={100}
-                  value={skillDraft.proficiency}
-                  onChange={(e) =>
-                    setSkillDraft({ ...skillDraft, proficiency: Number(e.target.value) })
-                  }
-                  className="w-20 rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
-                />
-                <button
-                  type="button"
-                  onClick={addSkill}
-                  className="inline-flex items-center gap-1 rounded-md border border-[#334060] px-3 py-2 text-sm text-white hover:bg-[#1a2540]"
-                >
-                  <Plus className="h-4 w-4" />
-                  Add
-                </button>
-              </div>
-
-              {agentError ? (
-                <p className="text-sm text-red-300" role="alert">
-                  {agentError}
-                </p>
-              ) : null}
-              {agentSaved ? <p className="text-sm text-emerald-400">Agent saved.</p> : null}
-
-              <button
-                type="submit"
-                disabled={agentSaving}
-                className="inline-flex w-fit items-center gap-2 rounded-md border border-[#3ECF8E] px-4 py-2 text-sm text-[#3ECF8E] hover:bg-[#3ECF8E]/10 disabled:opacity-50"
-              >
-                {agentSaving ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4" />
-                )}
-                Save teammate routing
-              </button>
-            </form>
-          ) : null}
-        </section>
       </div>
     </main>
   )

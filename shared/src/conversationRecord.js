@@ -51,11 +51,19 @@ export function normalizeConversationRecord(raw) {
         ? src.inboxId.trim()
         : null;
 
+  const team_inbox_id =
+    typeof src.team_inbox_id === 'string' && src.team_inbox_id.trim()
+      ? src.team_inbox_id.trim()
+      : typeof src.teamInboxId === 'string' && src.teamInboxId.trim()
+        ? src.teamInboxId.trim()
+        : null;
+
   return {
     ...src,
     assigned_to_member_id,
     assignment_type,
     inbox_id,
+    team_inbox_id,
   };
 }
 
@@ -97,7 +105,8 @@ export function mergeConversationRecords(prev, incoming) {
     a.assigned_to_member_id &&
     !assigned_to_member_id &&
     assignment_type !== 'unassigned' &&
-    assignment_type !== 'assigned_to_ai'
+    assignment_type !== 'assigned_to_ai' &&
+    assignment_type !== 'assigned_to_team'
   ) {
     assigned_to_member_id = a.assigned_to_member_id;
     assignment_type = a.assignment_type ?? 'assigned_to_agent';

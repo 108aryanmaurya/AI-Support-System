@@ -4,7 +4,7 @@ import {
   utcCalendarDayKey,
 } from '@ai-support/shared';
 import { supabaseAdmin } from '../../../config/supabase.js';
-import { canEnqueueAutoRoute } from '../../assignment/assignmentSettings.service.js';
+import { getOrgAiAndAutomationSettings } from '../../orgSettings.service.js';
 import { logAssignmentStructured } from '../../assignment/assignmentStructuredLog.service.js';
 import { tryScheduleAutoRouteDailyBackstop } from '../enqueueAutoRoute.service.js';
 import { enqueueAutomationJob } from '../enqueueJob.service.js';
@@ -23,13 +23,13 @@ export async function handleUnassignedScanOrg(job) {
       ? payload.dayKey.trim()
       : utcCalendarDayKey();
 
-  const gate = await canEnqueueAutoRoute(organizationId);
-  if (!gate.allowed) {
+  const { ai } = await getOrgAiAndAutomationSettings(organizationId);
+  if (!ai.ai_enabled) {
     logAssignmentStructured('info', {
       organization_id: organizationId,
       op: 'scan_unassigned_org',
       outcome: 'skipped',
-      reason: gate.reason ?? 'auto_route_disabled',
+      reason: 'ai_disabled',
       day_key: dayKey,
     });
     return;

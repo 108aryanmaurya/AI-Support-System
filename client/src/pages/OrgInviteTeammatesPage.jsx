@@ -1,11 +1,14 @@
 import { ChevronDown, ChevronRight, Inbox, LayoutGrid } from 'lucide-react'
 import { useEffect, useMemo, useState } from 'react'
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom'
-import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
 import { fetchOrgInboxes } from '../services/inboxesApi.js'
-import { postOrgInvitesBatch } from '../services/orgWorkspaceApi.js'
 import { parseInviteEmails } from '../utils/parseInviteEmails.js'
+import {
+  describeInviteInboxTargets,
+  normalizeInviteDraftInboxIds,
+  saveInviteDraft,
+} from '../utils/inviteDraftStorage.js'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -13,18 +16,14 @@ export default function OrgInviteTeammatesPage() {
   const { orgId } = useParams()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { organizations } = useOrganizationContext()
-
-  const current = organizations.find((o) => o.orgId === orgId)
+  const location = useLocation()
   const { can } = useOrgPermissionsContext()
   const canInvite = can('team.invite')
 
   const [rawEmails, setRawEmails] = useState('')
   const [inboxes, setInboxes] = useState([])
-  const [defaultInboxId, setDefaultInboxId] = useState('')
-  const [selectedInboxId, setSelectedInboxId] = useState('')
+  const [selectedInboxIds, setSelectedInboxIds] = useState([])
   const [loadingInboxes, setLoadingInboxes] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
   const inboxFromUrl = searchParams.get('inbox')?.trim() ?? ''
@@ -38,16 +37,11 @@ export default function OrgInviteTeammatesPage() {
         const list = (data?.inboxes ?? []).filter((ib) => ib.status === 'active')
         if (cancelled) return
         setInboxes(list)
-        const def = list.find((ib) => ib.isDefault)?.id ?? list[0]?.id ?? ''
-        setDefaultInboxId(def)
         if (inboxFromUrl && list.some((ib) => ib.id === inboxFromUrl)) {
-          setSelectedInboxId(inboxFromUrl)
+          setSelectedInboxIds([inboxFromUrl])
         }
       } catch {
-        if (!cancelled) {
-          setInboxes([])
-          setDefaultInboxId('')
-        }
+        if (!cancelled) setInboxes([])
       } finally {
         if (!cancelled) setLoadingInboxes(false)
       }
@@ -58,71 +52,61 @@ export default function OrgInviteTeammatesPage() {
     }
   }, [orgId, inboxFromUrl])
 
+  useEffect(() => {
+    if (loadingInboxes) return
+    setSelectedInboxIds((prev) => {
+      const active = new Set(inboxes.map((ib) => ib.id))
+      const next = prev.filter((id) => active.has(id))
+      return next.length === prev.length ? prev : next
+    })
+  }, [loadingInboxes, inboxes])
+
   const parsedEmails = useMemo(() => parseInviteEmails(rawEmails), [rawEmails])
   const validEmails = useMemo(
     () => parsedEmails.filter((e) => EMAIL_RE.test(e)),
     [parsedEmails],
   )
-  const canContinue = validEmails.length > 0 && !submitting
+  const activeInboxIdSet = useMemo(() => new Set(inboxes.map((ib) => ib.id)), [inboxes])
+  const validatedSelectedInboxIds = useMemo(
+    () => selectedInboxIds.filter((id) => activeInboxIdSet.has(id)),
+    [selectedInboxIds, activeInboxIdSet],
+  )
+  const mustSelectInbox = inboxes.length > 0
+  const canContinue =
+    validEmails.length > 0 &&
+    !loadingInboxes &&
+    (!mustSelectInbox || validatedSelectedInboxIds.length > 0)
 
-  const effectiveInboxId = selectedInboxId || defaultInboxId
-  const effectiveInbox = inboxes.find((ib) => ib.id === effectiveInboxId)
-  const usingDefaultInbox = !selectedInboxId && Boolean(defaultInboxId)
-
-  async function handleContinue() {
-    if (!canContinue) return
-    setError('')
-    setSubmitting(true)
-    try {
-      const data = await postOrgInvitesBatch(orgId, {
-        emails: validEmails,
-        role: 'AGENT',
-        inboxId: selectedInboxId || null,
-      })
-      const created = Array.isArray(data?.created) ? data.created : []
-      const errs = Array.isArray(data?.errors) ? data.errors : []
-      const emailFailed = created.filter((x) => x.emailSent === false && !x.emailSkipped)
-      const emailSkipped = created.filter((x) => x.emailSkipped === true)
-
-      if (errs.length > 0) {
-        const errMsg = errs.map((x) => `${x.email}: ${x.error}`).join('\n')
-        if (created.length === 0) {
-          setError(errMsg)
-          return
-        }
-      }
-
-      if (emailFailed.length > 0) {
-        setError(
-          `Invites created, but email could not be sent to: ${emailFailed.map((x) => x.email).join(', ')}. Check NOTIFICATION_EMAIL_FROM and NOTIFICATION_RESEND_API_KEY on the server.`,
-        )
-        return
-      }
-      if (emailSkipped.length > 0 && created.length > 0) {
-        setError(
-          `Invites created. Email was not sent (notification mail not configured). Links are in server logs when EMAIL_PROVIDER_MOCK is enabled.`,
-        )
-        return
-      }
-      if (created.length === 0) return
-
-      const inboxLabel = effectiveInbox?.name ?? 'default inbox'
-      navigate(`/org/${orgId}/settings/teammates`, {
-        replace: true,
-        state:
-          errs.length > 0
-            ? {
-                inviteNotice: `Invited ${created.length} teammate(s) to ${inboxLabel}. Skipped: ${errs.map((x) => x.email).join(', ')}`,
-              }
-            : {
-                inviteNotice: `Invited ${created.length} teammate(s). They will join ${inboxLabel} when they accept.`,
-              },
-      })
-    } catch (e) {
-      setError(e?.message || 'Could not send invites.')
-    } finally {
-      setSubmitting(false)
+  useEffect(() => {
+    const draft = location.state
+    if (!draft) return
+    if (Array.isArray(draft.emails) && draft.emails.length > 0) {
+      setRawEmails(draft.emails.join('\n'))
     }
+    const restored = normalizeInviteDraftInboxIds(draft.inboxIds ?? draft.inboxId)
+    if (restored.length > 0) setSelectedInboxIds(restored)
+  }, [location.state])
+
+  const inboxSummary = useMemo(
+    () => describeInviteInboxTargets(validatedSelectedInboxIds, inboxes),
+    [validatedSelectedInboxIds, inboxes],
+  )
+
+  function handleContinue() {
+    if (!canContinue) {
+      if (validEmails.length === 0) {
+        setError('Enter at least one valid email address.')
+      } else if (loadingInboxes) {
+        setError('Wait for team inboxes to finish loading.')
+      } else if (mustSelectInbox) {
+        setError('Select at least one team inbox.')
+      }
+      return
+    }
+    setError('')
+    const draft = { emails: validEmails, inboxIds: validatedSelectedInboxIds }
+    saveInviteDraft(orgId, draft)
+    navigate(`/org/${orgId}/settings/teammates/invite/new/permissions`, { state: draft })
   }
 
   if (!canInvite) {
@@ -157,9 +141,14 @@ export default function OrgInviteTeammatesPage() {
               type="button"
               disabled={!canContinue}
               onClick={handleContinue}
+              title={
+                !canContinue && validEmails.length > 0 && mustSelectInbox
+                  ? 'Select at least one team inbox'
+                  : undefined
+              }
               className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400"
             >
-              {submitting ? 'Sending…' : 'Continue and set permissions'}
+              Continue and set permissions
             </button>
           </div>
         </header>
@@ -180,56 +169,40 @@ export default function OrgInviteTeammatesPage() {
           </div>
 
           <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-semibold text-white">Configure their inboxes</h2>
-              <span className="rounded-full border border-[#2b3858] bg-[#151b2e] px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                Optional
-              </span>
-            </div>
+            <h2 className="text-lg font-semibold text-white">Configure their inboxes</h2>
             <p className="mt-2 text-sm text-slate-500">
-              Choose a team inbox for new teammates. If none is selected, they are added to your
-              organization&apos;s default inbox when they accept the invite.
+              {mustSelectInbox
+                ? 'Select one or more team inboxes. Invitees are only added to the inboxes you choose when they accept.'
+                : 'No team inboxes in this workspace yet. Invitees will join the organization only; you can add them to inboxes later.'}
             </p>
 
             <div className="mt-6">
               {loadingInboxes ? (
                 <p className="text-sm text-slate-600">Loading team inboxes…</p>
-              ) : inboxes.length === 0 ? (
+              ) : mustSelectInbox ? (
+                <>
+                  <InboxMultiSelect
+                    inboxes={inboxes}
+                    selectedInboxIds={selectedInboxIds}
+                    requireSelection
+                    onChange={setSelectedInboxIds}
+                  />
+                  <p className="mt-3 text-xs text-slate-500">
+                    On accept, invitees will join{' '}
+                    <span className="font-medium text-slate-400">{inboxSummary}</span>.
+                  </p>
+                </>
+              ) : (
                 <p className="text-sm text-slate-600">
-                  No team inboxes yet.{' '}
+                  Optional:{' '}
                   <Link
                     to={`/org/${orgId}/settings/inboxes`}
                     className="text-[#6eb5ff] hover:underline"
                   >
-                    Create one in settings
+                    create team inboxes
                   </Link>{' '}
-                  before inviting, or apply the database migration for default inboxes.
+                  to assign queue access when they accept.
                 </p>
-              ) : (
-                <>
-                  <InboxSingleSelect
-                    inboxes={inboxes}
-                    selectedInboxId={selectedInboxId}
-                    onSelect={setSelectedInboxId}
-                  />
-                  <p className="mt-3 text-xs text-slate-500">
-                    {usingDefaultInbox ? (
-                      <>
-                        No inbox selected — invitees will join{' '}
-                        <span className="font-medium text-slate-400">
-                          {effectiveInbox?.name ?? 'General'}
-                        </span>{' '}
-                        (default) on accept.
-                      </>
-                    ) : (
-                      <>
-                        Invitees will join{' '}
-                        <span className="font-medium text-slate-400">{effectiveInbox?.name}</span> on
-                        accept.
-                      </>
-                    )}
-                  </p>
-                </>
               )}
             </div>
           </div>
@@ -241,12 +214,24 @@ export default function OrgInviteTeammatesPage() {
   )
 }
 
-function InboxSingleSelect({ inboxes, selectedInboxId, onSelect }) {
+function InboxMultiSelect({ inboxes, selectedInboxIds, onChange, requireSelection = false }) {
   const [open, setOpen] = useState(false)
-  const selected = inboxes.find((ib) => ib.id === selectedInboxId)
-  const label = selected
-    ? selected.name
-    : 'Select inboxes (uses default if empty)'
+  const selectedSet = useMemo(() => new Set(selectedInboxIds), [selectedInboxIds])
+
+  const label =
+    selectedInboxIds.length === 0
+      ? 'Select team inboxes…'
+      : selectedInboxIds.length === 1
+        ? inboxes.find((ib) => ib.id === selectedInboxIds[0])?.name ?? '1 inbox'
+        : `${selectedInboxIds.length} inboxes selected`
+
+  function toggleInbox(id) {
+    const next = selectedSet.has(id)
+      ? selectedInboxIds.filter((x) => x !== id)
+      : [...selectedInboxIds, id]
+    if (requireSelection && next.length === 0) return
+    onChange(next)
+  }
 
   return (
     <div className="relative max-w-md">
@@ -257,54 +242,45 @@ function InboxSingleSelect({ inboxes, selectedInboxId, onSelect }) {
       >
         <span className="flex min-w-0 items-center gap-2">
           <Inbox className="h-4 w-4 shrink-0 text-slate-500" aria-hidden />
-          <span className={selected ? 'truncate font-medium text-white' : 'text-slate-500'}>
+          <span
+            className={
+              selectedInboxIds.length > 0 ? 'truncate font-medium text-white' : 'text-slate-400'
+            }
+          >
             {label}
           </span>
         </span>
-        <ChevronDown className={`h-4 w-4 shrink-0 text-slate-500 transition ${open ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-slate-500 transition ${open ? 'rotate-180' : ''}`}
+        />
       </button>
       {open ? (
         <ul
-          className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-[#2b3858] bg-[#151b2e] py-1 shadow-xl"
+          className="absolute z-20 mt-1 max-h-64 w-full overflow-auto rounded-xl border border-[#2b3858] bg-[#151b2e] py-1 shadow-xl"
           role="listbox"
+          aria-multiselectable="true"
         >
-          <li>
-            <button
-              type="button"
-              role="option"
-              aria-selected={!selectedInboxId}
-              onClick={() => {
-                onSelect('')
-                setOpen(false)
-              }}
-              className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-300 hover:bg-[#1a2238]"
-            >
-              <span className="text-slate-500">Use default inbox</span>
-            </button>
-          </li>
           {inboxes.map((ib) => {
-            const checked = selectedInboxId === ib.id
+            const checked = selectedSet.has(ib.id)
             return (
               <li key={ib.id}>
                 <button
                   type="button"
                   role="option"
                   aria-selected={checked}
-                  onClick={() => {
-                    onSelect(ib.id)
-                    setOpen(false)
-                  }}
+                  onClick={() => toggleInbox(ib.id)}
                   className="flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm text-slate-200 hover:bg-[#1a2238]"
                 >
                   <span
-                    className={`flex h-4 w-4 shrink-0 rounded-full border ${
+                    className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
                       checked ? 'border-[#3ECF8E] bg-[#3ECF8E]/30' : 'border-slate-600'
                     }`}
-                  />
+                  >
+                    {checked ? (
+                      <span className="text-[10px] font-bold text-[#3ECF8E]">✓</span>
+                    ) : null}
+                  </span>
                   <span className="min-w-0 flex-1 font-medium">{ib.name}</span>
-                  {ib.isDefault ? (
-                    <span className="text-xs text-slate-500">Default</span>
-                  ) : null}
                 </button>
               </li>
             )

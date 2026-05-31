@@ -4,7 +4,6 @@ import {
   normalizeAgentTimezone,
   normalizeMaxConcurrency,
   normalizeShiftTime,
-  validateAgentSkillsPayload,
 } from '@ai-support/shared';
 import { supabaseAdmin } from '../../config/supabase.js';
 import { HttpError } from '../../utils/httpError.js';
@@ -47,19 +46,13 @@ export async function getAgentAssignmentConfig(organizationId, memberId) {
 
   const defaults = defaultAgentProfileRow();
 
-  const [profileRes, skillsRes, presenceRes] = await Promise.all([
+  const [profileRes, presenceRes] = await Promise.all([
     supabaseAdmin
       .from('agent_profiles')
       .select('status, max_concurrency, shift_start, shift_end, timezone, updated_at')
       .eq('organization_id', organizationId)
       .eq('member_id', memberId)
       .maybeSingle(),
-    supabaseAdmin
-      .from('agent_skills')
-      .select('id, skill, proficiency')
-      .eq('organization_id', organizationId)
-      .eq('member_id', memberId)
-      .order('skill', { ascending: true }),
     supabaseAdmin
       .from('agent_presence')
       .select('presence, last_seen')
@@ -76,14 +69,6 @@ export async function getAgentAssignmentConfig(organizationId, memberId) {
     throw new HttpError(500, profileRes.error.message || 'Failed to load agent profile.');
   }
 
-  const skillsMissing =
-    skillsRes.error?.message?.includes('agent_skills') ||
-    skillsRes.error?.code === '42P01' ||
-    skillsRes.error?.code === 'PGRST205';
-  if (skillsRes.error && !skillsMissing) {
-    throw new HttpError(500, skillsRes.error.message || 'Failed to load agent skills.');
-  }
-
   const p = profileRes.data;
   const profile = {
     status: p?.status ?? defaults.status,
@@ -94,12 +79,6 @@ export async function getAgentAssignmentConfig(organizationId, memberId) {
     updatedAt: p?.updated_at ?? null,
   };
 
-  const skills = (skillsRes.data ?? []).map((s) => ({
-    id: s.id,
-    skill: s.skill,
-    proficiency: s.proficiency,
-  }));
-
   const presence = presenceRes.data
     ? { presence: presenceRes.data.presence, lastSeen: presenceRes.data.last_seen }
     : { presence: 'offline', lastSeen: null };
@@ -107,7 +86,6 @@ export async function getAgentAssignmentConfig(organizationId, memberId) {
   return {
     memberId,
     profile,
-    skills,
     presence,
   };
 }
@@ -122,119 +100,77 @@ export async function upsertAgentAssignmentConfig(organizationId, memberId, body
 
   const defaults = defaultAgentProfileRow();
   const hasProfilePatch = body.profile && typeof body.profile === 'object';
-  const hasSkillsPatch = Object.prototype.hasOwnProperty.call(body, 'skills');
 
-  if (!hasProfilePatch && !hasSkillsPatch) {
-    throw new HttpError(400, 'Provide profile and/or skills to update.');
+  if (!hasProfilePatch) {
+    throw new HttpError(400, 'Provide profile to update.');
   }
 
-  if (hasProfilePatch) {
-    const prof = body.profile;
-    let status = defaults.status;
-    if (Object.prototype.hasOwnProperty.call(prof, 'status')) {
-      const s = typeof prof.status === 'string' ? prof.status.trim() : prof.status;
-      if (!isAgentRoutingStatus(s)) {
-        throw new HttpError(400, 'profile.status must be active or inactive.');
-      }
-      status = s;
+  const prof = body.profile;
+  let status = defaults.status;
+  if (Object.prototype.hasOwnProperty.call(prof, 'status')) {
+    const s = typeof prof.status === 'string' ? prof.status.trim() : prof.status;
+    if (!isAgentRoutingStatus(s)) {
+      throw new HttpError(400, 'profile.status must be active or inactive.');
     }
+    status = s;
+  }
 
-    let maxConcurrency = defaults.max_concurrency;
-    try {
-      maxConcurrency = normalizeMaxConcurrency(
-        Object.prototype.hasOwnProperty.call(prof, 'maxConcurrency')
-          ? prof.maxConcurrency
-          : prof.max_concurrency,
-      );
-    } catch (e) {
-      throw new HttpError(400, e?.message || 'Invalid maxConcurrency.');
-    }
-
-    let shiftStart = null;
-    let shiftEnd = null;
-    let timezone = defaults.timezone;
-    try {
-      if (Object.prototype.hasOwnProperty.call(prof, 'shiftStart')) {
-        shiftStart = normalizeShiftTime(prof.shiftStart);
-      } else if (Object.prototype.hasOwnProperty.call(prof, 'shift_start')) {
-        shiftStart = normalizeShiftTime(prof.shift_start);
-      }
-      if (Object.prototype.hasOwnProperty.call(prof, 'shiftEnd')) {
-        shiftEnd = normalizeShiftTime(prof.shiftEnd);
-      } else if (Object.prototype.hasOwnProperty.call(prof, 'shift_end')) {
-        shiftEnd = normalizeShiftTime(prof.shift_end);
-      }
-      if (Object.prototype.hasOwnProperty.call(prof, 'timezone')) {
-        timezone = normalizeAgentTimezone(prof.timezone);
-      }
-    } catch (e) {
-      throw new HttpError(400, e?.message || 'Invalid profile fields.');
-    }
-
-    const now = new Date().toISOString();
-    const { error: profileErr } = await supabaseAdmin.from('agent_profiles').upsert(
-      {
-        organization_id: organizationId,
-        member_id: memberId,
-        status,
-        max_concurrency: maxConcurrency,
-        shift_start: shiftStart,
-        shift_end: shiftEnd,
-        timezone,
-        updated_at: now,
-      },
-      { onConflict: 'member_id' },
+  let maxConcurrency = defaults.max_concurrency;
+  try {
+    maxConcurrency = normalizeMaxConcurrency(
+      Object.prototype.hasOwnProperty.call(prof, 'maxConcurrency')
+        ? prof.maxConcurrency
+        : prof.max_concurrency,
     );
-
-    if (profileErr) {
-      const missing =
-        profileErr.message?.includes('agent_profiles') ||
-        profileErr.code === '42P01' ||
-        profileErr.code === 'PGRST205';
-      if (missing) {
-        throw new HttpError(503, 'Assignment schema not applied. Run database migrations.');
-      }
-      throw new HttpError(500, profileErr.message || 'Failed to save agent profile.');
-    }
+  } catch (e) {
+    throw new HttpError(400, e?.message || 'Invalid maxConcurrency.');
   }
 
-  if (hasSkillsPatch) {
-    let validated;
-    try {
-      validated = validateAgentSkillsPayload(body.skills);
-    } catch (e) {
-      throw new HttpError(400, e?.message || 'Invalid skills.');
+  let shiftStart = null;
+  let shiftEnd = null;
+  let timezone = defaults.timezone;
+  try {
+    if (Object.prototype.hasOwnProperty.call(prof, 'shiftStart')) {
+      shiftStart = normalizeShiftTime(prof.shiftStart);
+    } else if (Object.prototype.hasOwnProperty.call(prof, 'shift_start')) {
+      shiftStart = normalizeShiftTime(prof.shift_start);
     }
-
-    const { error: delErr } = await supabaseAdmin
-      .from('agent_skills')
-      .delete()
-      .eq('organization_id', organizationId)
-      .eq('member_id', memberId);
-
-    if (delErr) {
-      const missing =
-        delErr.message?.includes('agent_skills') ||
-        delErr.code === '42P01' ||
-        delErr.code === 'PGRST205';
-      if (missing) {
-        throw new HttpError(503, 'Assignment schema not applied. Run database migrations.');
-      }
-      throw new HttpError(500, delErr.message || 'Failed to replace agent skills.');
+    if (Object.prototype.hasOwnProperty.call(prof, 'shiftEnd')) {
+      shiftEnd = normalizeShiftTime(prof.shiftEnd);
+    } else if (Object.prototype.hasOwnProperty.call(prof, 'shift_end')) {
+      shiftEnd = normalizeShiftTime(prof.shift_end);
     }
-
-    if (validated.length > 0) {
-      const rows = validated.map((s) => ({
-        organization_id: organizationId,
-        member_id: memberId,
-        skill: s.skill,
-        proficiency: s.proficiency,
-      }));
-      const { error: insErr } = await supabaseAdmin.from('agent_skills').insert(rows);
-      if (insErr) {
-        throw new HttpError(500, insErr.message || 'Failed to save agent skills.');
-      }
+    if (Object.prototype.hasOwnProperty.call(prof, 'timezone')) {
+      timezone = normalizeAgentTimezone(prof.timezone);
     }
+  } catch (e) {
+    throw new HttpError(400, e?.message || 'Invalid profile fields.');
+  }
+
+  const now = new Date().toISOString();
+  const { error: profileErr } = await supabaseAdmin.from('agent_profiles').upsert(
+    {
+      organization_id: organizationId,
+      member_id: memberId,
+      status,
+      max_concurrency: maxConcurrency,
+      shift_start: shiftStart,
+      shift_end: shiftEnd,
+      timezone,
+      updated_at: now,
+    },
+    { onConflict: 'member_id' },
+  );
+
+  if (profileErr) {
+    const missing =
+      profileErr.message?.includes('agent_profiles') ||
+      profileErr.code === '42P01' ||
+      profileErr.code === 'PGRST205';
+    if (missing) {
+      throw new HttpError(503, 'Assignment schema not applied. Run database migrations.');
+    }
+    throw new HttpError(500, profileErr.message || 'Failed to save agent profile.');
   }
 
   return getAgentAssignmentConfig(organizationId, memberId);

@@ -38,14 +38,15 @@ sequenceDiagram
 | Invite email | `server/src/services/orgInviteEmail.service.js` → `internalNotificationMail.service.js` |
 | Controller | `server/src/controllers/org.controller.js` |
 | Routes | `server/src/routes/org.routes.js`, `orgWorkspace.routes.js` (invite endpoints) |
-| Schema | `supabase/migrations/20260512100000_multi_organization_saas.sql` (`invites`) |
+| Schema | `supabase/migrations/20260512100000_multi_organization_saas.sql` (`invites`); `20260530110000_invites_target_inbox.sql` (`inbox_id`); `20260530120000_inbox_member_permissions.sql` (`permissions`) |
+| Repair SQL | `supabase/scripts/repair-invite-inbox-schema.sql` — run in Supabase SQL Editor if invites fail with missing `inbox_id` / `permissions` in schema cache |
 
 ## API
 
 | Method | Path | Auth | Role |
 |--------|------|------|------|
 | POST | `/api/org/:orgId/invite` | Yes | ADMIN |
-| POST | `/api/org/:orgId/invites/batch` | Yes | ADMIN |
+| POST | `/api/org/:orgId/invites/batch` | Yes | `team.invite` | `inboxIds` when org has team inboxes (workspace-only invite if none), `permissions` |
 | GET | `/api/org/:orgId/invites` | Yes | Member |
 | GET | `/api/org/invite/:token` | No | — |
 | POST | `/api/org/accept-invite` | Yes | — |

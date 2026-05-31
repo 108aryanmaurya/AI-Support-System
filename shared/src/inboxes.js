@@ -16,6 +16,16 @@ export const INBOX_LIMITS = Object.freeze({
 
 export const DEFAULT_INBOX_NAME = 'General';
 
+/** Per-inbox assignment queue mode (stored in `inboxes.settings.assignmentMethod`). */
+export const INBOX_ASSIGNMENT_METHODS = Object.freeze(['manual', 'round_robin', 'balanced']);
+
+export const INBOX_ASSIGNMENT_METHOD_DEFAULT = 'manual';
+
+/** @param {unknown} v */
+export function isInboxAssignmentMethod(v) {
+  return typeof v === 'string' && INBOX_ASSIGNMENT_METHODS.includes(v);
+}
+
 /** @param {unknown} v */
 export function isInboxStatus(v) {
   return typeof v === 'string' && INBOX_STATUSES.includes(v);
@@ -71,7 +81,50 @@ export function mergeInboxSettings(raw) {
       }
     }
   }
-  return { channels, intents, tags, channelInboxMap };
+  const assignmentMethod = isInboxAssignmentMethod(src.assignmentMethod)
+    ? src.assignmentMethod
+    : INBOX_ASSIGNMENT_METHOD_DEFAULT;
+
+  return { channels, intents, tags, channelInboxMap, assignmentMethod };
+}
+
+/** @param {ReturnType<typeof mergeInboxSettings>} settings */
+export function isInboxAutoAssignmentEnabled(settings) {
+  return settings?.assignmentMethod !== 'manual';
+}
+
+/**
+ * Map inbox UI method → scoring strategy for `assignment.auto_route`.
+ * - `round_robin` — traditional sequential rotation among eligible inbox members
+ * - `balanced` — `least_loaded`: teammate with the fewest open (active) conversations
+ *
+ * @param {unknown} method
+ */
+export function inboxAssignmentMethodToScoringStrategy(method) {
+  if (method === 'round_robin') return 'round_robin';
+  if (method === 'balanced') return 'least_loaded';
+  return null;
+}
+
+/** Strategies driven by per-inbox assignment method (not org weighted hybrid). */
+export const INBOX_DEDICATED_ASSIGNMENT_STRATEGIES = Object.freeze(['round_robin', 'least_loaded']);
+
+/**
+ * @param {unknown} strategy
+ * @returns {boolean}
+ */
+export function isDedicatedInboxAssignmentStrategy(strategy) {
+  return (
+    typeof strategy === 'string' && INBOX_DEDICATED_ASSIGNMENT_STRATEGIES.includes(strategy)
+  );
+}
+
+/**
+ * @param {ReturnType<typeof mergeInboxSettings>} settings
+ */
+export function inboxScoringStrategyFromSettings(settings) {
+  if (!isInboxAutoAssignmentEnabled(settings)) return null;
+  return inboxAssignmentMethodToScoringStrategy(settings.assignmentMethod);
 }
 
 /**

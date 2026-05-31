@@ -15,6 +15,7 @@ import OrgSettingsHomePage from './pages/OrgSettingsHomePage.jsx'
 import OrgTeammatesPage from './pages/OrgTeammatesPage.jsx'
 import OrgTeammatesSection from './pages/OrgTeammatesSection.jsx'
 import OrgInviteTeammatesPage from './pages/OrgInviteTeammatesPage.jsx'
+import OrgInviteTeammatePermissionsPage from './pages/OrgInviteTeammatePermissionsPage.jsx'
 import OrgAiSettingsPage from './pages/OrgAiSettingsPage.jsx'
 import OrgWorkflowSettingsPage from './pages/OrgWorkflowSettingsPage.jsx'
 import OrgTagsSettingsPage from './pages/OrgTagsSettingsPage.jsx'
@@ -55,6 +56,7 @@ export default function App() {
             <Route path="teammates" element={<OrgTeammatesSection />}>
               <Route index element={<OrgTeammatesPage />} />
               <Route path="invite/new" element={<OrgInviteTeammatesPage />} />
+              <Route path="invite/new/permissions" element={<OrgInviteTeammatePermissionsPage />} />
             </Route>
             <Route path="ai" element={<OrgAiSettingsPage />} />
             <Route path="workflows" element={<OrgWorkflowSettingsPage />} />

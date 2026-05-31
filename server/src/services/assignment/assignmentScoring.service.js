@@ -132,7 +132,7 @@ export async function rankEligibleAgents({
   for (const row of eligibleRows) {
     const isSticky = Boolean(previousAgentId && row.memberId === previousAgentId);
     const factors = {
-      skill_match: skillTierToFactor(row.skillMatchTier),
+      skill_match: skillTierToFactor('generic'),
       low_workload: computeLowWorkloadFactor(row.activeChats ?? 0, row.maxConcurrency ?? 5),
       sla_performance: slaFactors.get(row.memberId) ?? 1,
       recent_activity: computeRecentActivityFactor(row.lastSeen ?? null),
@@ -169,6 +169,16 @@ export async function rankEligibleAgents({
     );
     const orderMap = new Map(ordered.map((id, i) => [id, i]));
     scored.sort((a, b) => (orderMap.get(a.memberId) ?? 0) - (orderMap.get(b.memberId) ?? 0));
+    if (scored.length > 0) {
+      scored[0].finalScore = 100;
+    }
+  } else if (strategy === 'least_loaded') {
+    scored.sort((a, b) => {
+      const acA = a.activeChats ?? 0;
+      const acB = b.activeChats ?? 0;
+      if (acA !== acB) return acA - acB;
+      return String(a.memberId).localeCompare(String(b.memberId));
+    });
     if (scored.length > 0) {
       scored[0].finalScore = 100;
     }

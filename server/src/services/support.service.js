@@ -5,10 +5,10 @@ import { HttpError } from '../utils/httpError.js';
 import { getDefaultConversationAiEnabled } from './orgSettings.service.js';
 import { clearConversationSlaAtRisk } from './ai/workflowConversationFlags.service.js';
 import { touchLastCustomerMessageAt } from './lifecycle/lifecycleMessageTimestamps.service.js';
-import { resolveInboxIdForNewConversation } from './inboxDefault.service.js';
 import {
   applyResolvedInboxToConversation,
   resolveInboxForConversation,
+  resolveInboxIdForNewConversation,
 } from './resolveInboxForConversation.service.js';
 
 function toInt(value, fallback) {
@@ -111,7 +111,10 @@ export async function createConversation({
     aiEnabled !== undefined ? Boolean(aiEnabled) : await getDefaultConversationAiEnabled(organizationId);
 
   const resolvedChannelType = channelType ?? (source === 'email' ? 'email' : 'web');
-  const inbox_id = await resolveInboxIdForNewConversation(organizationId, metadata?.inbox_id ?? null);
+  const inbox_id = await resolveInboxIdForNewConversation(organizationId, metadata?.inbox_id ?? null, {
+    channelType: resolvedChannelType,
+    tagNames: [],
+  });
 
   const insertRow = {
     organization_id: organizationId,
@@ -125,7 +128,7 @@ export async function createConversation({
     created_by: createdByUserId,
     metadata,
     ai_enabled: Boolean(resolvedAiEnabled),
-    inbox_id,
+    inbox_id: inbox_id ?? null,
   };
 
   if (resolvedChannelType === 'email') {

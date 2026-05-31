@@ -4,10 +4,7 @@ import {
   isWithinAgentShift,
 } from '@ai-support/shared';
 import { HttpError } from '../utils/httpError.js';
-import {
-  getAgentAssignmentConfig,
-  upsertAgentAssignmentConfig,
-} from '../services/assignment/agentProfile.service.js';
+import { getAgentAssignmentConfig } from '../services/assignment/agentProfile.service.js';
 import {
   getAgentPresenceForMember,
   listOrgAgentPresenceSnapshot,
@@ -93,29 +90,6 @@ export async function getConversationAssignmentAuditController(req, res, next) {
     const conversationId = conversationIdFromParams(req);
     const log = await getLatestAssignmentLogForConversation(organizationId, conversationId);
     res.json({ log });
-  } catch (e) {
-    next(e);
-  }
-}
-
-export async function getAgentAssignmentController(req, res, next) {
-  try {
-    const organizationId = orgIdOrThrow(req);
-    const memberId = memberIdOrThrow(req);
-    const config = await getAgentAssignmentConfig(organizationId, memberId);
-    res.json(config);
-  } catch (e) {
-    next(e);
-  }
-}
-
-export async function putAgentAssignmentController(req, res, next) {
-  try {
-    const organizationId = orgIdOrThrow(req);
-    const memberId = memberIdOrThrow(req);
-    const body = req.body ?? {};
-    const config = await upsertAgentAssignmentConfig(organizationId, memberId, body);
-    res.json(config);
   } catch (e) {
     next(e);
   }

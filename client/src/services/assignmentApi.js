@@ -55,26 +55,6 @@ export function putOrgAssignmentSettings(organizationId, assignment) {
 
 /**
  * @param {string} organizationId
- * @param {string} memberId
- */
-export function fetchAgentAssignmentConfig(organizationId, memberId) {
-  return apiFetch(`${orgBase(organizationId)}/agents/${encodeURIComponent(memberId)}`);
-}
-
-/**
- * @param {string} organizationId
- * @param {string} memberId
- * @param {{ profile?: object, skills?: object[] }} body
- */
-export function putAgentAssignmentConfig(organizationId, memberId, body) {
-  return apiFetch(`${orgBase(organizationId)}/agents/${encodeURIComponent(memberId)}`, {
-    method: 'PUT',
-    body: JSON.stringify(body),
-  });
-}
-
-/**
- * @param {string} organizationId
  * @param {string} conversationId
  */
 export function fetchConversationAssignmentAudit(organizationId, conversationId) {

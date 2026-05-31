@@ -1,10 +1,10 @@
-import { CONVERSATION_ACTIVE_STATUSES } from '@ai-support/shared';
+import { CONVERSATION_ACTIVE_STATUSES, isDedicatedInboxAssignmentStrategy } from '@ai-support/shared';
 import { supabaseAdmin } from '../../config/supabase.js';
 import { emitSupportEvent } from '../analytics/supportEvents.service.js';
 import { scheduleAssignmentWithFallback } from '../automation/automationNotify.service.js';
 import { updateConversationFromAutomation } from '../conversationUpdate.service.js';
 import { schedulePostInboundNotification } from '../postInboundNotification.service.js';
-import { getOrgAssignmentSettings } from './assignmentSettings.service.js';
+import { applyOrgDefaultAssigneeIfUnassigned } from './applyOrgDefaultAssignee.service.js';
 import { previewAssignmentEligibility } from './assignmentEligibility.service.js';
 import {
   acquireConversationAssignmentLock,
@@ -151,8 +151,6 @@ export async function runAutoAssignConversation({
       return { outcome: 'skipped', reason: 'already_assigned' };
     }
 
-    const routing = await getOrgAssignmentSettings(organizationId);
-    const strategyForLog = routing.strategy ?? 'weighted_hybrid';
     const preview = await previewAssignmentEligibility({
       organizationId,
       conversationId,
@@ -160,9 +158,18 @@ export async function runAutoAssignConversation({
 
     let winnerId = null;
     let scoreSnapshot = null;
-    const strategy = preview.strategy ?? routing.strategy ?? 'weighted_hybrid';
+    const strategy = preview.strategy ?? null;
+    if (!strategy) {
+      emitAutoRouteEvent(organizationId, conversationId, 'assignment.auto_skipped', {
+        reason: 'inbox_manual_assignment',
+        message_id: messageId ?? null,
+      });
+      return { outcome: 'skipped', reason: 'inbox_manual_assignment' };
+    }
+    const dedicatedInboxStrategy = isDedicatedInboxAssignmentStrategy(strategy);
 
     if (
+      !dedicatedInboxStrategy &&
       preview.previousAgentId &&
       preview.eligibleMemberIds.includes(preview.previousAgentId)
     ) {
@@ -195,7 +202,7 @@ export async function runAutoAssignConversation({
       logAssignmentStructured('info', {
         organization_id: organizationId,
         conversation_id: conversationId,
-        strategy: strategyForLog,
+        strategy,
         error_code: 'no_candidates',
         op: 'auto_route',
         duration_ms: Date.now() - startedAt,
@@ -206,14 +213,45 @@ export async function runAutoAssignConversation({
         message_id: messageId ?? null,
         duration_ms: Date.now() - startedAt,
       });
-      const useFallbackNotify = [
-        'no_candidates',
-        'no_vip_candidates',
-        'redis_unavailable',
-        'lock_held',
-      ].includes(reason);
+
+      let defaultAssigneeApplied = false;
+      if (dedicatedInboxStrategy) {
+        try {
+          const defaultResult = await applyOrgDefaultAssigneeIfUnassigned({
+            organizationId,
+            conversationId,
+          });
+          defaultAssigneeApplied = Boolean(defaultResult.applied);
+          if (defaultAssigneeApplied) {
+            logAssignmentStructured('info', {
+              organization_id: organizationId,
+              conversation_id: conversationId,
+              strategy,
+              error_code: null,
+              op: 'default_assignee_after_auto_route',
+              duration_ms: Date.now() - startedAt,
+              default_reason: defaultResult.reason,
+            });
+            emitAutoRouteEvent(organizationId, conversationId, 'assignment.default_assignee_applied', {
+              default_reason: defaultResult.reason,
+              auto_route_reason: reason,
+              message_id: messageId ?? null,
+            });
+          }
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn('[assignment] default assignee after auto_route failed', {
+            organization_id: organizationId,
+            conversation_id: conversationId,
+            error: e?.message,
+          });
+        }
+      }
+
+      const useFallbackNotify =
+        !defaultAssigneeApplied &&
+        ['no_candidates', 'no_vip_candidates', 'redis_unavailable', 'lock_held'].includes(reason);
       if (useFallbackNotify && messageId) {
-       
         void schedulePostInboundNotification({
           organizationId,
           conversationId,
@@ -223,7 +261,10 @@ export async function runAutoAssignConversation({
           primaryCodes: preview.noCandidates?.primaryCodes ?? [],
         });
       }
-      return { outcome: 'skipped', reason };
+      return {
+        outcome: defaultAssigneeApplied ? 'default_assignee' : 'skipped',
+        reason,
+      };
     }
 
     const { conversation: updated } = await updateConversationFromAutomation({

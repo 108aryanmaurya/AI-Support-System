@@ -61,7 +61,7 @@ conversations
   inbox_id  -- FK → inboxes, indexed (organization_id, inbox_id, last_message_at)
 ```
 
-**Defaults:** Every org has exactly one `is_default` inbox (created on org bootstrap / migration backfill).
+**Defaults:** Historical migration may set `is_default` on backfilled rows; new orgs do **not** auto-create a default inbox (admins create inboxes in Settings).
 
 ---
 
