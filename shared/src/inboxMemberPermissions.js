@@ -5,6 +5,27 @@
 
 export const INBOX_MEMBER_PERMISSION_ROLES = Object.freeze(['none', 'member', 'lead']);
 
+const PERMISSION_TEMPLATE_ROLE_ID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/** @param {unknown} raw */
+function parseStoredPermissionTemplateMeta(raw) {
+  if (!raw || typeof raw !== 'object') {
+    return { templateRoleId: null, templateRoleName: 'Custom' };
+  }
+  const src = /** @type {Record<string, unknown>} */ (raw);
+  const templateRoleId =
+    typeof src.templateRoleId === 'string' &&
+    PERMISSION_TEMPLATE_ROLE_ID_REGEX.test(src.templateRoleId.trim())
+      ? src.templateRoleId.trim()
+      : null;
+  const nameRaw = typeof src.templateRoleName === 'string' ? src.templateRoleName.trim() : '';
+  return {
+    templateRoleId,
+    templateRoleName: templateRoleId ? nameRaw || 'Custom' : 'Custom',
+  };
+}
+
 export const COPILOT_USAGE_MODES = Object.freeze(['off', 'included', 'unlimited']);
 
 export const CONVERSATION_ACCESS_MODES = Object.freeze([
@@ -20,7 +41,12 @@ export function defaultInboxMemberPermissions() {
   return {
     role: 'member',
     copilot: { usage: 'unlimited' },
-    conversationAccess: { mode: 'all', exceptTeamIds: [] },
+    conversationAccess: {
+      mode: 'all',
+      exceptTeamIds: [],
+      includeUnassignedForAssignedToMe: false,
+      includeUnassignedForAssignedToTeams: false,
+    },
     settings: {
       manageGeneralSecurity: true,
       manageTeammatesSeatsPermissions: true,
@@ -146,14 +172,28 @@ export function mergeInboxMemberPermissions(raw) {
     typeof convSrc.mode === 'string' && CONVERSATION_ACCESS_MODES.includes(convSrc.mode)
       ? convSrc.mode
       : defaults.conversationAccess.mode;
-  const exceptTeamIds = Array.isArray(convSrc.exceptTeamIds)
-    ? convSrc.exceptTeamIds.filter((id) => typeof id === 'string').slice(0, 32)
+  const exceptTeamIdsRaw = Array.isArray(convSrc.exceptTeamIds)
+    ? convSrc.exceptTeamIds.filter((id) => typeof id === 'string')
     : [];
+  const exceptTeamIds = [...new Set(exceptTeamIdsRaw)].slice(0, 32);
+  const includeUnassignedForAssignedToMe =
+    typeof convSrc.includeUnassignedForAssignedToMe === 'boolean'
+      ? convSrc.includeUnassignedForAssignedToMe
+      : defaults.conversationAccess.includeUnassignedForAssignedToMe;
+  const includeUnassignedForAssignedToTeams =
+    typeof convSrc.includeUnassignedForAssignedToTeams === 'boolean'
+      ? convSrc.includeUnassignedForAssignedToTeams
+      : defaults.conversationAccess.includeUnassignedForAssignedToTeams;
 
   const merged = {
     role,
     copilot: { usage },
-    conversationAccess: { mode, exceptTeamIds },
+    conversationAccess: {
+      mode,
+      exceptTeamIds,
+      includeUnassignedForAssignedToMe,
+      includeUnassignedForAssignedToTeams,
+    },
   };
 
   for (const section of BOOL_SECTIONS) {
@@ -167,6 +207,10 @@ export function mergeInboxMemberPermissions(raw) {
     merged[section] = out;
   }
 
+  const templateMeta = parseStoredPermissionTemplateMeta(src);
+  merged.templateRoleId = templateMeta.templateRoleId;
+  merged.templateRoleName = templateMeta.templateRoleName;
+
   return merged;
 }
 
@@ -175,10 +219,10 @@ export function mergeInboxMemberPermissions(raw) {
  */
 export function restrictAllInboxMemberPermissions(permissions) {
   const base = defaultInboxMemberPermissions();
+  const current = mergeInboxMemberPermissions(permissions);
   const restricted = mergeInboxMemberPermissions(permissions);
-  restricted.role = 'none';
   restricted.copilot.usage = 'off';
-  restricted.conversationAccess.mode = 'mentions_only';
+  restricted.conversationAccess = { ...current.conversationAccess };
   for (const section of BOOL_SECTIONS) {
     for (const key of Object.keys(base[section])) {
       restricted[section][key] = false;
@@ -213,11 +257,13 @@ export function defaultInboxMemberPermissionsForAssignmentMethod(assignmentMetho
 }
 
 export function allowAllInboxMemberPermissions(permissions) {
-  const next = defaultInboxMemberPermissions();
   const current = mergeInboxMemberPermissions(permissions);
-  if (current.role === 'lead' || current.role === 'member') {
-    next.role = current.role;
-  }
+  const next = defaultInboxMemberPermissions();
+  next.role = current.role;
+  next.copilot = { ...next.copilot };
+  next.conversationAccess = { ...current.conversationAccess };
+  next.templateRoleId = current.templateRoleId;
+  next.templateRoleName = current.templateRoleName;
   return next;
 }
 
@@ -228,7 +274,6 @@ export function allowAllInboxMemberPermissions(permissions) {
 export function isInboxMemberPermissionsRestricted(permissions) {
   const p = mergeInboxMemberPermissions(permissions);
   if (p.copilot.usage !== 'off') return false;
-  if (p.conversationAccess.mode !== 'mentions_only') return false;
   for (const section of BOOL_SECTIONS) {
     if (!allBoolsFalse(p[section])) return false;
   }
@@ -251,6 +296,37 @@ function allBoolsFalse(section) {
   return keys.length > 0 && keys.every((k) => section[k] === false);
 }
 
+export const CONVERSATION_ACCESS_EXCEPT_TEAMS_ERROR =
+  'At least one team should be selected while All conversations except assigned to is chosen.';
+
+/**
+ * @param {unknown} conversationAccess
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+export function validateConversationAccessForSave(conversationAccess) {
+  const src =
+    conversationAccess && typeof conversationAccess === 'object'
+      ? conversationAccess
+      : {};
+  const mode = typeof src.mode === 'string' ? src.mode : 'all';
+  const exceptTeamIds = Array.isArray(src.exceptTeamIds)
+    ? src.exceptTeamIds.filter((id) => typeof id === 'string' && id.trim())
+    : [];
+  if (mode === 'all_except_teams' && exceptTeamIds.length === 0) {
+    return { ok: false, error: CONVERSATION_ACCESS_EXCEPT_TEAMS_ERROR };
+  }
+  return { ok: true };
+}
+
+/**
+ * @param {unknown} permissions
+ * @returns {{ ok: true } | { ok: false, error: string }}
+ */
+export function validateInboxMemberPermissionsForSave(permissions) {
+  const merged = mergeInboxMemberPermissions(permissions);
+  return validateConversationAccessForSave(merged.conversationAccess);
+}
+
 /**
  * Summary badge for a permission section row.
  * @param {string} sectionId
@@ -264,14 +340,24 @@ export function inboxPermissionSectionSummary(sectionId, permissions) {
       if (p.copilot.usage === 'included') return 'Included usage';
       return 'Unlimited usage';
     case 'conversationAccess': {
-      const labels = {
-        all: 'All conversations',
-        assigned_to_me: 'Assigned to them only',
-        assigned_to_my_teams: 'Assigned to their teams only',
-        all_except_teams: 'All except selected teams',
-        mentions_only: 'Mentions and links only',
-      };
-      return labels[p.conversationAccess.mode] ?? 'Custom';
+      const { mode, includeUnassignedForAssignedToMe, includeUnassignedForAssignedToTeams, exceptTeamIds } =
+        p.conversationAccess;
+      switch (mode) {
+        case 'all':
+          return 'All conversations';
+        case 'assigned_to_me':
+          return includeUnassignedForAssignedToMe ? 'Assigned + unassigned' : 'Assigned only';
+        case 'assigned_to_my_teams':
+          return includeUnassignedForAssignedToTeams ? 'Teams + unassigned' : 'Teams only';
+        case 'all_except_teams':
+          return exceptTeamIds.length > 0
+            ? `All except ${exceptTeamIds.length} team${exceptTeamIds.length === 1 ? '' : 's'}`
+            : 'All except teams';
+        case 'mentions_only':
+          return 'Mentions and links only';
+        default:
+          return 'Custom';
+      }
     }
     case 'settings':
     case 'dataAndSecurity':

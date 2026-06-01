@@ -23,7 +23,7 @@ export async function getOrgEmailSettingsController(req, res, next) {
     const role = String(req.orgRole ?? '').toUpperCase();
     res.json({
       ...settings,
-      canEdit: role === 'ADMIN',
+      canEdit: true,
     });
   } catch (error) {
     next(error);

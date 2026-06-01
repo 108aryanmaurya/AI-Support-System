@@ -2,7 +2,7 @@
 
 ## Overview
 
-**Admins** invite teammates by email. Invitees preview the invite (public), sign in, and accept to gain `organization_members` access.
+**Admins** invite teammates by email. Invitees preview the invite (public), register or sign in, and accept to gain `organization_members` access on the **existing** workspace only (no new `organizations` or `super_organizations` row for the invitee).
 
 ## Capabilities
 
@@ -12,6 +12,7 @@
 - Public preview by token (no auth)
 - Accept invite (authenticated)
 - Teammates UI: search members, invite form, deep links
+- **Permission roles** — Admins create named templates on Teammates → Roles; invite flow picks a template (read-only) or **Custom** (editable). On accept, capabilities are stored on **`organization_members.permissions`**; `inbox_members` rows (when inboxes are selected) are queue membership only.
 - Pending token in `localStorage` across register/login
 
 ## Architecture
@@ -32,13 +33,15 @@ sequenceDiagram
 
 | Layer | Path |
 |-------|------|
-| Pages | `client/src/pages/InvitePage.jsx`, `OrgTeammatesPage.jsx`, `OrgInviteTeammatesPage.jsx`, `TeammatesInviteDeepLink.jsx` |
+| Pages | `client/src/pages/InvitePage.jsx`, `OrgTeammatesPage.jsx`, `OrgInviteTeammatesPage.jsx`, `OrgInviteTeammatePermissionsPage.jsx`, `TeammatesInviteDeepLink.jsx` |
+| Roles UI | `client/src/components/settings/OrgTeammateRolesPanel.jsx` |
+| Roles API | `server/src/services/orgTeammatePermissionRoles.service.js` |
 | Utils | `client/src/utils/pendingInviteStorage.js`, `parseInviteEmails.js` |
 | Service | `server/src/services/org.service.js` (`createInviteRecord`, `acceptInviteForUser`, …) |
 | Invite email | `server/src/services/orgInviteEmail.service.js` → `internalNotificationMail.service.js` |
 | Controller | `server/src/controllers/org.controller.js` |
 | Routes | `server/src/routes/org.routes.js`, `orgWorkspace.routes.js` (invite endpoints) |
-| Schema | `supabase/migrations/20260512100000_multi_organization_saas.sql` (`invites`); `20260530110000_invites_target_inbox.sql` (`inbox_id`); `20260530120000_inbox_member_permissions.sql` (`permissions`) |
+| Schema | `invites.permissions` (pending); `organization_members.permissions` (on accept); `20260601140000_organization_members_permissions.sql`; `org_teammate_permission_roles` (templates) |
 | Repair SQL | `supabase/scripts/repair-invite-inbox-schema.sql` — run in Supabase SQL Editor if invites fail with missing `inbox_id` / `permissions` in schema cache |
 
 ## API
@@ -51,6 +54,8 @@ sequenceDiagram
 | GET | `/api/org/invite/:token` | No | — |
 | POST | `/api/org/accept-invite` | Yes | — |
 | GET | `/api/org/:orgId/members` | Yes | Member |
+| GET | `/api/org/:orgId/teammate-permission-roles` | Yes | Member |
+| POST/PATCH/DELETE | `/api/org/:orgId/teammate-permission-roles` | Yes | ADMIN |
 
 ## Connections
 

@@ -1,5 +1,5 @@
 import { ChevronRight, LayoutGrid } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
   InboxMemberPermissionsEditor,
@@ -8,7 +8,10 @@ import {
 } from '../components/settings/InboxMemberPermissionsEditor.jsx'
 import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
 import { fetchOrgInboxes } from '../services/inboxesApi.js'
-import { postOrgInvitesBatch } from '../services/orgWorkspaceApi.js'
+import {
+  fetchOrgTeammatePermissionRoles,
+  postOrgInvitesBatch,
+} from '../services/orgWorkspaceApi.js'
 import {
   clearInviteDraft,
   describeInviteInboxTargets,
@@ -16,7 +19,13 @@ import {
   normalizeInviteDraftInboxIds,
   saveInviteDraft,
 } from '../utils/inviteDraftStorage.js'
-import { defaultInboxMemberPermissions } from '@ai-support/shared'
+import {
+  CUSTOM_PERMISSION_ROLE_NAME,
+  defaultInboxMemberPermissions,
+  inboxMemberPermissionsEqual,
+  validateInboxMemberPermissionsForSave,
+  withPermissionTemplateMeta,
+} from '@ai-support/shared'
 
 function resolveDraft(orgId, locationState) {
   const fromState = locationState
@@ -27,6 +36,13 @@ function resolveDraft(orgId, locationState) {
     }
   }
   return loadInviteDraft(orgId)
+}
+
+function initialInvitePermissions() {
+  return withPermissionTemplateMeta(defaultInboxMemberPermissions(), {
+    templateRoleId: null,
+    templateRoleName: CUSTOM_PERMISSION_ROLE_NAME,
+  })
 }
 
 export default function OrgInviteTeammatePermissionsPage() {
@@ -42,13 +58,29 @@ export default function OrgInviteTeammatePermissionsPage() {
   const emails = draft?.emails ?? []
   const inboxIds = draft?.inboxIds ?? []
 
-  const [permissions, setPermissions] = useState(() => defaultInboxMemberPermissions())
+  const [permissions, setPermissions] = useState(initialInvitePermissions)
+  const [orgRoles, setOrgRoles] = useState([])
+  const [selectedTemplateRoleId, setSelectedTemplateRoleId] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
 
   const canInvite = can('team.invite')
   const merged = useMemo(() => mergeInboxMemberPermissions(permissions), [permissions])
-  const role = merged.role ?? 'member'
+  const usingTemplate = Boolean(selectedTemplateRoleId)
+  const selectedRole = orgRoles.find((r) => r.id === selectedTemplateRoleId) ?? null
+
+  const loadOrgRoles = useCallback(async () => {
+    try {
+      const data = await fetchOrgTeammatePermissionRoles(orgId)
+      setOrgRoles(Array.isArray(data?.roles) ? data.roles : [])
+    } catch {
+      setOrgRoles([])
+    }
+  }, [orgId])
+
+  useEffect(() => {
+    void loadOrgRoles()
+  }, [loadOrgRoles])
 
   if (permissionsLoading) {
     return (
@@ -56,10 +88,6 @@ export default function OrgInviteTeammatePermissionsPage() {
         Loading permissions…
       </main>
     )
-  }
-
-  if (!canInvite) {
-    return <Navigate to={`/org/${orgId}/settings/teammates`} replace />
   }
 
   if (emails.length === 0) {
@@ -70,20 +98,76 @@ export default function OrgInviteTeammatePermissionsPage() {
   const backState = { emails, inboxIds }
 
   function handlePermissionsChange(next) {
-    setPermissions(mergeInboxMemberPermissions(next))
+    const mergedNext = mergeInboxMemberPermissions(next)
+    if (usingTemplate && selectedRole) {
+      if (!inboxMemberPermissionsEqual(mergedNext, selectedRole.permissions)) {
+        setSelectedTemplateRoleId('')
+        setPermissions(
+          withPermissionTemplateMeta(mergedNext, {
+            templateRoleId: null,
+            templateRoleName: CUSTOM_PERMISSION_ROLE_NAME,
+          }),
+        )
+        return
+      }
+    }
+    setPermissions(
+      withPermissionTemplateMeta(mergedNext, {
+        templateRoleId: selectedTemplateRoleId || null,
+        templateRoleName: selectedRole?.name ?? CUSTOM_PERMISSION_ROLE_NAME,
+      }),
+    )
+  }
+
+  function handleTemplateRoleSelect(roleId) {
+    setSelectedTemplateRoleId(roleId)
+    if (!roleId) {
+      setPermissions(
+        withPermissionTemplateMeta(merged, {
+          templateRoleId: null,
+          templateRoleName: CUSTOM_PERMISSION_ROLE_NAME,
+        }),
+      )
+      return
+    }
+    const role = orgRoles.find((r) => r.id === roleId)
+    if (!role) return
+    setPermissions(
+      withPermissionTemplateMeta(role.permissions, {
+        templateRoleId: role.id,
+        templateRoleName: role.name,
+      }),
+    )
   }
 
   async function handleSendInvites() {
     setError('')
+
+    const payloadPermissions = withPermissionTemplateMeta(merged, {
+      templateRoleId: selectedTemplateRoleId || null,
+      templateRoleName: selectedRole?.name ?? CUSTOM_PERMISSION_ROLE_NAME,
+    })
+
+    const permissionsCheck = validateInboxMemberPermissionsForSave(payloadPermissions)
+    if (!permissionsCheck.ok) {
+      setError(permissionsCheck.error)
+      return
+    }
+
     setSubmitting(true)
     saveInviteDraft(orgId, { emails, inboxIds })
 
     try {
+      const roleLabel =
+        typeof payloadPermissions.templateRoleName === 'string' &&
+        payloadPermissions.templateRoleName.trim()
+          ? payloadPermissions.templateRoleName.trim()
+          : 'member'
       const data = await postOrgInvitesBatch(orgId, {
         emails,
-        role: 'AGENT',
+        role: roleLabel,
         inboxIds,
-        permissions: merged,
+        permissions: payloadPermissions,
       })
       const created = Array.isArray(data?.created) ? data.created : []
       const errs = Array.isArray(data?.errors) ? data.errors : []
@@ -152,8 +236,9 @@ export default function OrgInviteTeammatePermissionsPage() {
             </nav>
             <h1 className="text-2xl font-semibold text-white">Permissions and roles</h1>
             <p className="mt-2 max-w-xl text-sm text-slate-500">
-              Set custom permissions for {emails.length} teammate{emails.length === 1 ? '' : 's'}.
-              The same permissions apply to each inbox they join on accept.
+              Set permissions for {emails.length} teammate{emails.length === 1 ? '' : 's'}. Leave
+              permission role unset to customize checkboxes, or pick a saved role template. The same
+              permissions apply to each inbox they join on accept.
             </p>
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -181,14 +266,36 @@ export default function OrgInviteTeammatePermissionsPage() {
           </div>
         </header>
 
+        <div className="mb-6">
+          <label className="text-sm font-medium text-slate-300">Permission role</label>
+          <select
+            value={selectedTemplateRoleId}
+            onChange={(e) => handleTemplateRoleSelect(e.target.value)}
+            className="mt-1 block w-full max-w-md rounded-lg border border-[#2b3858] bg-[#111827] px-3 py-2 text-sm text-white"
+          >
+            <option value="">No role selected</option>
+            {orgRoles.map((role) => (
+              <option key={role.id} value={role.id}>
+                {role.name}
+              </option>
+            ))}
+          </select>
+          
+          
+        </div>
+
         <InboxMemberPermissionsToolbar
           permissions={merged}
-          role={role}
-          onRoleChange={(r) => handlePermissionsChange({ ...merged, role: r })}
+          readOnly={usingTemplate}
           onChange={handlePermissionsChange}
         />
 
-        <InboxMemberPermissionsEditor permissions={merged} onChange={handlePermissionsChange} />
+        <InboxMemberPermissionsEditor
+          orgId={orgId}
+          permissions={merged}
+          readOnly={usingTemplate}
+          onChange={handlePermissionsChange}
+        />
       </div>
     </main>
   )

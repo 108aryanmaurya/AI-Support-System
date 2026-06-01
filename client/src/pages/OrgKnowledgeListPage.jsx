@@ -2,6 +2,7 @@ import { BookOpen, Plus, Search, Trash2, Upload } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js'
 import {
   archiveKnowledgeArticle,
   fetchKnowledgeArticles,
@@ -22,7 +23,7 @@ export default function OrgKnowledgeListPage() {
   const navigate = useNavigate()
   const { organizations } = useOrganizationContext()
   const currentOrg = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(currentOrg?.role ?? '').toUpperCase() === 'ADMIN'
+  const canManage = useWorkspaceCanManage(orgId)
   const [statusFilter, setStatusFilter] = useState('')
   const [articles, setArticles] = useState([])
   const [total, setTotal] = useState(0)
@@ -88,7 +89,7 @@ export default function OrgKnowledgeListPage() {
   }
 
   async function handleArchiveArticle(articleId, articleTitle) {
-    if (!orgId || !isAdmin) return
+    if (!orgId || !canManage) return
     const label = articleTitle?.trim() || 'this article'
     if (!window.confirm(`Archive "${label}"? It will be removed from search and drafts.`)) return
     setArchivingId(articleId)
@@ -276,7 +277,7 @@ export default function OrgKnowledgeListPage() {
                       {a.slug} · {a.status} · {a.visibility}
                     </span>
                   </button>
-                  {isAdmin && a.status !== 'archived' ? (
+                  {canManage && a.status !== 'archived' ? (
                     <button
                       type="button"
                       title="Archive article"

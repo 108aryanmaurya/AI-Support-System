@@ -104,7 +104,7 @@ export async function putOrgAssignmentSettings(organizationId, body) {
       ? { ...priorSettings.assignment }
       : {};
 
-  const nextAssignment = { ...priorAssignment, ...patch };
+  const nextAssignment = mergeOrgAssignmentRouting({ ...priorAssignment, ...patch });
   const nextSettings = {
     ...priorSettings,
     assignment: nextAssignment,

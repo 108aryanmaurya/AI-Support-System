@@ -4,17 +4,45 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
 import { sendTeammateInviteEmail } from './orgInviteEmail.service.js';
 import { resolveInboxIdForNewConversation } from './resolveInboxForConversation.service.js';
-import { INBOX_LIMITS, mergeInboxMemberPermissions } from '@ai-support/shared';
+import {
+  INBOX_LIMITS,
+  CUSTOM_PERMISSION_ROLE_NAME,
+  defaultInboxMemberPermissions,
+  isValidOrgPermissionRoleId,
+  mergeInboxMemberPermissions,
+  normalizeOrgPermissionRoleName,
+  validateInboxMemberPermissionsForSave,
+  withPermissionTemplateMeta,
+} from '@ai-support/shared';
 import { addInboxMember, listActiveInboxIdsForOrganization } from './inboxes.service.js';
+import {
+  mergeOrganizationMemberPermissions,
+  setOrganizationMemberPermissions,
+} from './organizationMemberPermissions.service.js';
+import { getOrCreateSuperOrganizationForUser } from './superOrganization.service.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_INVITE_INBOX_IDS = INBOX_LIMITS.maxInboxes;
 
+const MEMBER_ROLE_MAX_LEN = 64;
+
+/**
+ * Normalizes a dynamic role label for storage (invites + membership).
+ * @param {unknown} role
+ * @param {string} [fallback]
+ */
+export function normalizeMemberRole(role, fallback = 'member') {
+  const raw = typeof role === 'string' ? role.trim() : '';
+  const base = raw || (typeof fallback === 'string' ? fallback.trim() : '') || 'member';
+  return base.length > MEMBER_ROLE_MAX_LEN ? base.slice(0, MEMBER_ROLE_MAX_LEN) : base;
+}
+
+/** @deprecated Use {@link normalizeMemberRole} */
 export function isValidInviteRole(role) {
-  const r = String(role ?? '').trim().toUpperCase();
-  return r === 'ADMIN' || r === 'AGENT' ? r : null;
+  const normalized = normalizeMemberRole(role, '');
+  return normalized || null;
 }
 
 export function normalizeEmail(email) {
@@ -36,6 +64,13 @@ export async function getActiveMembership({ userId, organizationId }) {
     throw new HttpError(500, error.message || 'Failed to resolve organization membership.');
   }
   return data ?? null;
+}
+
+/** Full capability set for the user who creates a new workspace. */
+function creatorOrganizationMemberPermissions() {
+  const perms = defaultInboxMemberPermissions();
+  perms.role = 'lead';
+  return perms;
 }
 
 export async function createOrganizationWithAdmin({
@@ -61,11 +96,13 @@ export async function createOrganizationWithAdmin({
     throw new HttpError(400, 'Use case value is too long.');
   }
 
+  const superOrganizationId = await getOrCreateSuperOrganizationForUser(userId);
+
   const normalizedName = trimmed.toLowerCase();
   const { data: existingByName, error: dupErr } = await supabaseAdmin
     .from('organizations')
     .select('id, name')
-    .eq('created_by', userId);
+    .eq('super_organization_id', superOrganizationId);
 
   if (dupErr) {
     throw new HttpError(500, dupErr.message || 'Failed to check existing organizations.');
@@ -77,15 +114,18 @@ export async function createOrganizationWithAdmin({
     throw new HttpError(409, 'You already have an organization with this name.');
   }
 
+  const creatorPermissions = creatorOrganizationMemberPermissions();
+
   const { data: org, error: orgError } = await supabaseAdmin
     .from('organizations')
     .insert({
       name: trimmed,
       created_by: userId,
+      super_organization_id: superOrganizationId,
       company_size: sizeTrimmed,
       use_case: useTrimmed,
     })
-    .select('id, name, created_at, created_by')
+    .select('id, name, created_at, created_by, super_organization_id')
     .single();
 
   if (orgError || !org?.id) {
@@ -97,10 +137,11 @@ export async function createOrganizationWithAdmin({
     .insert({
       user_id: userId,
       organization_id: org.id,
-      role: 'ADMIN',
+      role: 'member',
       status: 'ACTIVE',
+      permissions: creatorPermissions,
     })
-    .select('id, role, status')
+    .select('id, role, status, permissions')
     .single();
 
   if (memberError || !member?.id) {
@@ -108,7 +149,13 @@ export async function createOrganizationWithAdmin({
     throw new HttpError(500, memberError?.message || 'Failed to create organization membership.');
   }
 
-  return { organization: org, membership: member };
+  return {
+    organization: org,
+    membership: {
+      ...member,
+      permissions: mergeOrganizationMemberPermissions(member.permissions),
+    },
+  };
 }
 
 export async function listOrganizationsForUser(userId) {
@@ -124,7 +171,8 @@ export async function listOrganizationsForUser(userId) {
         id,
         name,
         created_at,
-        created_by
+        created_by,
+        super_organization_id
       )
     `,
     )
@@ -204,6 +252,11 @@ export async function normalizeInviteInboxIdsForCreate(organizationId, input = {
 /**
  * @param {object} params
  */
+async function persistInvitePermissionsOnOrganizationMember(organizationMemberId, invite) {
+  const merged = mergeOrganizationMemberPermissions(invite.permissions);
+  await setOrganizationMemberPermissions(organizationMemberId, merged);
+}
+
 async function addMemberToInviteTargetInboxes({
   organizationId,
   invite,
@@ -219,8 +272,8 @@ async function addMemberToInviteTargetInboxes({
         organizationId,
         inboxId,
         organizationMemberId,
-        permissions: invite.permissions,
         role: memberRole,
+        storeInboxPermissions: false,
       });
     } catch (inboxErr) {
       console.warn(
@@ -375,14 +428,16 @@ export async function acceptInviteForUser({ token, userId, userEmail }) {
     );
   }
 
-  const role = isValidInviteRole(invite.role);
-  if (!role) throw new HttpError(500, 'Invite has an invalid role.');
+  const role = normalizeMemberRole(invite.role, 'member');
 
   const orgId = invite.organization_id;
+
+  const mergedInvitePermissions = mergeOrganizationMemberPermissions(invite.permissions);
 
   const existing = await getActiveMembership({ userId, organizationId: orgId });
   if (existing) {
     await supabaseAdmin.from('invites').update({ status: 'ACCEPTED' }).eq('id', invite.id);
+    await persistInvitePermissionsOnOrganizationMember(existing.id, invite);
     await addMemberToInviteTargetInboxes({
       organizationId: orgId,
       invite,
@@ -391,7 +446,7 @@ export async function acceptInviteForUser({ token, userId, userEmail }) {
     return {
       alreadyMember: true,
       organizationId: orgId,
-      membership: existing,
+      membership: { ...existing, permissions: mergedInvitePermissions },
     };
   }
 
@@ -402,8 +457,9 @@ export async function acceptInviteForUser({ token, userId, userEmail }) {
       organization_id: orgId,
       role,
       status: 'ACTIVE',
+      permissions: mergedInvitePermissions,
     })
-    .select('id, role, status')
+    .select('id, role, status, permissions')
     .single();
 
   if (insErr || !membership?.id) {
@@ -432,7 +488,10 @@ export async function acceptInviteForUser({ token, userId, userEmail }) {
   return {
     alreadyMember: false,
     organizationId: orgId,
-    membership,
+    membership: {
+      ...membership,
+      permissions: mergeOrganizationMemberPermissions(membership.permissions),
+    },
   };
 }
 
@@ -504,34 +563,7 @@ export async function assertInviteEmailNotExistingMember(organizationId, email) 
   }
 }
 
-/** Active members with profile rows from `public.users`. */
-export async function listMembersForOrganization(organizationId) {
-  const { data: rows, error } = await supabaseAdmin
-    .from('organization_members')
-    .select('id, role, status, created_at, user_id')
-    .eq('organization_id', organizationId)
-    .eq('status', 'ACTIVE')
-    .order('created_at', { ascending: true });
-
-  if (error) {
-    throw new HttpError(500, error.message || 'Failed to load members.');
-  }
-
-  const ids = [...new Set((rows ?? []).map((r) => r.user_id).filter(Boolean))];
-  const userMap = new Map();
-  if (ids.length > 0) {
-    const { data: users, error: uErr } = await supabaseAdmin
-      .from('users')
-      .select('id, email, first_name, last_name')
-      .in('id', ids);
-    if (uErr) {
-      throw new HttpError(500, uErr.message || 'Failed to load user profiles.');
-    }
-    for (const u of users ?? []) {
-      userMap.set(u.id, u);
-    }
-  }
-
+function mapMemberRowsWithUsers(rows, userMap) {
   return (rows ?? []).map((row) => {
     const u = userMap.get(row.user_id);
     return {
@@ -544,8 +576,171 @@ export async function listMembersForOrganization(organizationId) {
       email: u?.email ?? null,
       firstName: u?.first_name ?? null,
       lastName: u?.last_name ?? null,
+      permissions: mergeOrganizationMemberPermissions(row.permissions),
     };
   });
+}
+
+async function loadUserMapForMemberRows(rows) {
+  const ids = [...new Set((rows ?? []).map((r) => r.user_id).filter(Boolean))];
+  const userMap = new Map();
+  if (ids.length === 0) return userMap;
+
+  const { data: users, error: uErr } = await supabaseAdmin
+    .from('users')
+    .select('id, email, first_name, last_name')
+    .in('id', ids);
+  if (uErr) {
+    throw new HttpError(500, uErr.message || 'Failed to load user profiles.');
+  }
+  for (const u of users ?? []) {
+    userMap.set(u.id, u);
+  }
+  return userMap;
+}
+
+/** Active members with profile rows from `public.users`. */
+export async function listMembersForOrganization(organizationId) {
+  const { data: rows, error } = await supabaseAdmin
+    .from('organization_members')
+    .select('id, role, status, created_at, user_id, permissions')
+    .eq('organization_id', organizationId)
+    .eq('status', 'ACTIVE')
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load members.');
+  }
+
+  const userMap = await loadUserMapForMemberRows(rows);
+  return mapMemberRowsWithUsers(rows, userMap);
+}
+
+/**
+ * @param {string} organizationId
+ * @param {string} memberId
+ */
+export async function getOrganizationMemberById(organizationId, memberId) {
+  const { data: row, error } = await supabaseAdmin
+    .from('organization_members')
+    .select('id, role, status, created_at, user_id, permissions, organization_id')
+    .eq('id', memberId)
+    .eq('organization_id', organizationId)
+    .eq('status', 'ACTIVE')
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load member.');
+  }
+  if (!row) {
+    throw new HttpError(404, 'Teammate not found in this organization.');
+  }
+
+  const userMap = await loadUserMapForMemberRows([row]);
+  return mapMemberRowsWithUsers([row], userMap)[0];
+}
+
+/**
+ * @param {object} params
+ * @param {string} params.organizationId
+ * @param {string} params.memberId
+ * @param {unknown} params.permissions
+ */
+export async function updateOrganizationMemberPermissions({
+  organizationId,
+  memberId,
+  permissions,
+}) {
+  const member = await getOrganizationMemberById(organizationId, memberId);
+
+  const merged = mergeOrganizationMemberPermissions(permissions);
+  const check = validateInboxMemberPermissionsForSave(merged);
+  if (!check.ok) {
+    throw new HttpError(400, check.error);
+  }
+
+  const templateRoleId =
+    typeof merged.templateRoleId === 'string' && isValidOrgPermissionRoleId(merged.templateRoleId)
+      ? merged.templateRoleId.trim()
+      : null;
+
+  let storedPermissions = merged;
+  let roleLabel = normalizeMemberRole(member.role, 'member');
+
+  if (templateRoleId) {
+    const { data: template, error: tErr } = await supabaseAdmin
+      .from('org_teammate_permission_roles')
+      .select('id, name, permissions')
+      .eq('id', templateRoleId)
+      .eq('organization_id', organizationId)
+      .maybeSingle();
+
+    if (tErr) {
+      throw new HttpError(500, tErr.message || 'Failed to load permission role.');
+    }
+    if (!template) {
+      throw new HttpError(400, 'Selected permission role no longer exists.');
+    }
+
+    storedPermissions = withPermissionTemplateMeta(template.permissions, {
+      templateRoleId: template.id,
+      templateRoleName: template.name,
+    });
+    roleLabel = normalizeMemberRole(template.name, 'member');
+  } else {
+    storedPermissions = withPermissionTemplateMeta(merged, {
+      templateRoleId: null,
+      templateRoleName: CUSTOM_PERMISSION_ROLE_NAME,
+    });
+    const customName =
+      typeof merged.templateRoleName === 'string' ? merged.templateRoleName.trim() : '';
+    if (customName && customName.toLowerCase() !== CUSTOM_PERMISSION_ROLE_NAME.toLowerCase()) {
+      roleLabel = normalizeMemberRole(customName, roleLabel);
+    }
+  }
+
+  const { data: updated, error } = await supabaseAdmin
+    .from('organization_members')
+    .update({
+      permissions: storedPermissions,
+      role: roleLabel,
+    })
+    .eq('id', memberId)
+    .eq('organization_id', organizationId)
+    .select('id, role, status, created_at, user_id, permissions')
+    .single();
+
+  if (error || !updated) {
+    throw new HttpError(500, error?.message || 'Failed to update teammate permissions.');
+  }
+
+  const userMap = await loadUserMapForMemberRows([updated]);
+  return mapMemberRowsWithUsers([updated], userMap)[0];
+}
+
+/**
+ * @param {object} params
+ * @param {string} params.organizationId
+ * @param {string} params.memberId
+ * @param {string} params.actorUserId
+ */
+export async function removeOrganizationMember({ organizationId, memberId, actorUserId }) {
+  const member = await getOrganizationMemberById(organizationId, memberId);
+  if (member.userId === actorUserId) {
+    throw new HttpError(400, 'You cannot remove yourself from this workspace.');
+  }
+
+  const { error } = await supabaseAdmin
+    .from('organization_members')
+    .delete()
+    .eq('id', memberId)
+    .eq('organization_id', organizationId);
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to remove teammate.');
+  }
+
+  return { removed: true, memberId };
 }
 
 /** Pending invites for an organization (not expired; caller may filter further). */
@@ -613,18 +808,16 @@ export async function createInvitesBatchForOrganization({
     throw new HttpError(400, 'Maximum 50 emails per request.');
   }
 
-  const r = isValidInviteRole(role) ?? 'AGENT';
+  const mergedPermissions = mergeInboxMemberPermissions(permissions);
+  const roleFromTemplate =
+    typeof mergedPermissions?.templateRoleName === 'string'
+      ? mergedPermissions.templateRoleName.trim()
+      : '';
+  const r = normalizeMemberRole(role, roleFromTemplate || 'member');
   const targetInboxIds = await normalizeInviteInboxIdsForCreate(organizationId, {
     inboxIds,
     inboxId,
   });
-  if (targetInboxIds.length === 0) {
-    const activeInboxIds = await listActiveInboxIdsForOrganization(organizationId);
-    if (activeInboxIds.length > 0) {
-      throw new HttpError(400, 'Select at least one team inbox for invitees.');
-    }
-  }
-  const mergedPermissions = mergeInboxMemberPermissions(permissions);
   const expiresAtIso = new Date(Date.now() + INVITE_TTL_MS).toISOString();
 
   const { data: orgRow } = await supabaseAdmin

@@ -24,7 +24,7 @@ export async function getWorkflowRulesController(req, res, next) {
     const role = req.orgMembership?.role?.toUpperCase() ?? '';
     res.json({
       ...payload,
-      meta: { canEdit: role === 'ADMIN' },
+      meta: { canEdit: true },
     });
   } catch (e) {
     next(e);

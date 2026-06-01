@@ -3,6 +3,7 @@ import {
   ChevronDown,
   Download,
   HelpCircle,
+  Pencil,
   Search,
   Users,
   X,
@@ -10,9 +11,10 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom'
 import { useAuthContext } from '../context/AuthContext.jsx'
-import { useOrganizationContext } from '../context/OrganizationContext.jsx'
 import { useOrgPermissionsContext } from '../context/OrgPermissionsContext.jsx'
 import { RestrictedControl } from '../components/RestrictedControl.jsx'
+import { OrgTeammateRolesPanel } from '../components/settings/OrgTeammateRolesPanel.jsx'
+import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js'
 import { fetchOrgMembers, fetchOrgPendingInvites } from '../services/orgWorkspaceApi.js'
 
 const teammateTabs = [
@@ -41,6 +43,12 @@ function displayNameFromMember(m) {
   return 'Teammate'
 }
 
+function teammateProfilePath(orgId, member) {
+  const id = member?.membershipId ?? member?.id
+  if (!orgId || !id) return '#'
+  return `/org/${orgId}/admins/teammate/${id}`
+}
+
 function initialsFromName(name) {
   return name
     .split(/\s+/)
@@ -52,10 +60,20 @@ function initialsFromName(name) {
 }
 
 function permissionLabel(role) {
-  const r = String(role ?? '').toUpperCase()
-  if (r === 'ADMIN') return 'Complete Access'
-  if (r === 'AGENT') return 'Agent'
+  const r = typeof role === 'string' ? role.trim() : ''
   return r || '—'
+}
+
+function permissionDisplayLabel(m) {
+  const templateName = m?.permissions?.templateRoleName
+  if (
+    typeof templateName === 'string' &&
+    templateName.trim() &&
+    templateName.trim().toLowerCase() !== 'custom'
+  ) {
+    return templateName.trim()
+  }
+  return permissionLabel(m?.role)
 }
 
 export default function OrgTeammatesPage() {
@@ -63,8 +81,7 @@ export default function OrgTeammatesPage() {
   const location = useLocation()
   const navigate = useNavigate()
   const { user } = useAuthContext()
-  const { organizations } = useOrganizationContext()
-  const current = organizations.find((o) => o.orgId === orgId)
+  const canManageWorkspace = useWorkspaceCanManage(orgId)
   const { can, deny } = useOrgPermissionsContext()
   const canInvite = can('team.invite')
   const inviteDenyReason = deny('team.invite')
@@ -154,6 +171,16 @@ export default function OrgTeammatesPage() {
   }
 
   const invitePath = `/org/${orgId}/settings/teammates/invite/new`
+
+  function editPermissionsPath(membershipId) {
+    return `/org/${orgId}/settings/teammates/${membershipId}/permissions`
+  }
+
+  function openEditPermissions(m) {
+    const id = m.membershipId ?? m.id
+    if (!id) return
+    navigate(editPermissionsPath(id), { state: { member: m } })
+  }
 
   return (
     <main className="h-full min-h-0 overflow-y-auto bg-[#0b1020] px-4 py-6 text-slate-100 sm:px-8 lg:px-10">
@@ -363,25 +390,54 @@ export default function OrgTeammatesPage() {
                     filteredMembers.map((m) => {
                       const name = displayNameFromMember(m)
                       const isSelf = user?.id && m.userId === user.id
+                      const profilePath = teammateProfilePath(orgId, m)
                       return (
-                        <tr key={m.membershipId ?? m.userId} className="border-b border-[#2b3858]/80 text-slate-300">
+                        <tr
+                          key={m.membershipId ?? m.userId}
+                          className="group/row cursor-pointer border-b border-[#2b3858]/80 text-slate-300 transition hover:bg-[#111827]/40"
+                          onClick={() => navigate(profilePath)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                              e.preventDefault()
+                              navigate(profilePath)
+                            }
+                          }}
+                          tabIndex={0}
+                          role="link"
+                          aria-label={`View ${name}'s profile`}
+                        >
                           <td className="px-4 py-4 align-top">
                             <div className="flex items-start gap-3">
-                              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2b3858] text-xs font-semibold text-slate-200">
+                              <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#2b3858] text-xs font-semibold text-slate-200 transition group-hover/row:bg-[#334060]">
                                 {initialsFromName(name)}
                               </span>
-                              <div>
-                                <p className="font-medium text-white">
-                                  {name}
-                                  {isSelf ? (
-                                    <span className="ml-2 text-xs font-normal text-slate-500">(you)</span>
-                                  ) : null}
-                                </p>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-medium text-white transition group-hover/row:text-[#3ECF8E]">
+                                    {name}
+                                    {isSelf ? (
+                                      <span className="ml-2 text-xs font-normal text-slate-500">
+                                        (you)
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      openEditPermissions(m)
+                                    }}
+                                    className="rounded p-1 text-slate-500 opacity-0 transition hover:bg-white/5 hover:text-[#3ECF8E] group-hover/row:opacity-100 focus:opacity-100"
+                                    aria-label={`Change ${name}'s permissions`}
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
                                 <p className="text-xs text-slate-500">{m.email ?? '—'}</p>
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-4 align-middle">
+                          <td className="px-4 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
                             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-semibold text-emerald-400">
                               Active
                               <ChevronDown className="h-3 w-3" />
@@ -392,7 +448,7 @@ export default function OrgTeammatesPage() {
                               FULL
                             </span>
                           </td>
-                          <td className="px-4 py-4 align-middle">
+                          <td className="px-4 py-4 align-middle" onClick={(e) => e.stopPropagation()}>
                             <button
                               type="button"
                               className="inline-flex items-center gap-1 rounded-md border border-[#2b3858] bg-[#151b2e] px-2 py-1 text-xs text-slate-200"
@@ -401,7 +457,9 @@ export default function OrgTeammatesPage() {
                               <ChevronDown className="h-3 w-3 text-slate-500" />
                             </button>
                           </td>
-                          <td className="px-4 py-4 align-middle text-slate-300">{permissionLabel(m.role)}</td>
+                          <td className="px-4 py-4 align-middle text-slate-300">
+                            {permissionDisplayLabel(m)}
+                          </td>
                           <td className="px-4 py-4 align-middle text-slate-500">—</td>
                           <td className="px-4 py-4 align-middle text-slate-400">Disabled</td>
                           <td className="px-4 py-4 align-middle text-slate-500">—</td>
@@ -468,10 +526,15 @@ export default function OrgTeammatesPage() {
           </div>
         ) : null}
 
-        {activeTab !== 'teammates' && activeTab !== 'invited' ? (
+        {activeTab === 'roles' ? (
+          <OrgTeammateRolesPanel orgId={orgId} canManage={canManageWorkspace} />
+        ) : null}
+
+        {activeTab !== 'teammates' && activeTab !== 'invited' && activeTab !== 'roles' ? (
           <div className="rounded-xl border border-[#2b3858] bg-[#111827]/50 px-6 py-16 text-center text-sm text-slate-500">
-            This section is not wired yet. Switch to the <strong className="text-slate-400">Teammates</strong> or{' '}
-            <strong className="text-slate-400">Invited</strong> tab.
+            This section is not wired yet. Switch to the <strong className="text-slate-400">Teammates</strong>,{' '}
+            <strong className="text-slate-400">Invited</strong>, or <strong className="text-slate-400">Roles</strong>{' '}
+            tab.
           </div>
         ) : null}
       </div>

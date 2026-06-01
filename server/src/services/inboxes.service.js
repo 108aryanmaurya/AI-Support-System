@@ -9,6 +9,7 @@ import {
 } from '@ai-support/shared';
 import { supabaseAdmin } from '../config/supabase.js';
 import { HttpError } from '../utils/httpError.js';
+import { loadOrganizationMemberPermissionsMap } from './organizationMemberPermissions.service.js';
 function normalizeInboxRow(row) {
   if (!row) return row;
   return {
@@ -209,16 +210,28 @@ export async function listInboxMembers(organizationId, inboxId) {
 
   const { data, error } = await supabaseAdmin
     .from('inbox_members')
-    .select('organization_member_id, role, created_at')
+    .select('organization_member_id, role, created_at, permissions')
     .eq('inbox_id', inboxId);
 
   if (error) throw new HttpError(500, error.message || 'Failed to list inbox members.');
-  return (data ?? []).map((r) => ({
-    organizationMemberId: r.organization_member_id,
-    role: r.role,
-    permissions: mergeInboxMemberPermissions(r.permissions),
-    createdAt: r.created_at,
-  }));
+
+  const memberIds = (data ?? []).map((r) => r.organization_member_id).filter(Boolean);
+  const permissionsByMemberId = await loadOrganizationMemberPermissionsMap(memberIds);
+
+  return (data ?? []).map((r) => {
+    const fromOrg = permissionsByMemberId.get(r.organization_member_id);
+    const fromInbox = mergeInboxMemberPermissions(r.permissions);
+    const hasLegacyInboxPerms =
+      r.permissions &&
+      typeof r.permissions === 'object' &&
+      Object.keys(r.permissions).length > 0;
+    return {
+      organizationMemberId: r.organization_member_id,
+      role: r.role,
+      permissions: fromOrg ?? (hasLegacyInboxPerms ? fromInbox : mergeInboxMemberPermissions(null)),
+      createdAt: r.created_at,
+    };
+  });
 }
 
 /**
@@ -299,6 +312,8 @@ export async function addInboxMember({
   organizationMemberId,
   role = 'member',
   permissions = undefined,
+  /** When false, inbox row is queue membership only; capabilities live on organization_members. */
+  storeInboxPermissions = true,
 }) {
   await assertInboxInOrg(organizationId, inboxId);
 
@@ -314,7 +329,9 @@ export async function addInboxMember({
   if (!member) throw new HttpError(400, 'Member is not active in this organization.');
 
   const memberRole = isInboxMemberRole(role) ? role : 'member';
-  const mergedPermissions = mergeInboxMemberPermissions(permissions);
+  const mergedPermissions = storeInboxPermissions
+    ? mergeInboxMemberPermissions(permissions)
+    : {};
   const { error } = await supabaseAdmin.from('inbox_members').upsert(
     {
       inbox_id: inboxId,

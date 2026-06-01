@@ -39,6 +39,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Landing page** — marketing site with feature highlights, testimonials, CTAs
 - **Login page**
 - **Registration page** — account creation (name, email, password); redirects to invite flow or `/continue`
+- **General workspace settings** — `/settings/general`: name, time zone, App ID copy, team-mention & CSAT toggles (`organizations.settings.workspace.general`); workspace deletion request (14-day flow)
 - **Onboarding hub** (`/onboarding`)
   - Create new organization (multi-step: workspace name, company size, use case, teammate emails)
   - Join via invite token (URL or pasted token)
@@ -49,10 +50,11 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ## 4. Multi-organization (SaaS tenancy)
 
-- **Organizations** — create, list for current user, `created_by` provenance
-- **Organization members** — roles `ADMIN` | `AGENT`, status `ACTIVE` | `INVITED`
+- **Super organizations** — one per user who creates workspaces; holds multiple `organizations`
+- **Organizations** — created only via Create organization flow (`POST /api/org/create`); `super_organization_id`, `created_by`
+- **Organization members** — dynamic `role` label + JSON `permissions`; status `ACTIVE` | `INVITED`; creator gets full permissions on create
 - **Org-scoped API** — `/api/org/:orgId/*` with membership enforced from URL only (`requireOrgAccess`)
-- **Role-based actions** — `requireRole('ADMIN')` for invites and batch invites
+- **Member permissions** — `GET /api/org/:orgId/members/me` returns current user's `organization_members.permissions` + derived org capabilities; UI gates via `OrgPermissionsContext` (reloads on org switch from URL)
 - **Organization context (client)** — loads `GET /api/org/my`, exposes memberships to UI
 - **Org selector** — pick workspace when user belongs to multiple orgs
 - **Org switcher** — change active workspace from navbar
@@ -64,8 +66,8 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ## 5. Team invitations & membership
 
-- **Create invite** — `POST /api/org/:orgId/invite` (ADMIN); sends invite email via Resend notification config
-- **Batch invites** — `POST /api/org/:orgId/invites/batch` (ADMIN); `inboxIds` required only when org has team inboxes + `permissions` JSON; emails each created invite
+- **Create invite** — `POST /api/org/:orgId/invite`; sends invite email via Resend notification config
+- **Batch invites** — `POST /api/org/:orgId/invites/batch`; `inboxIds` + `permissions` JSON; emails each created invite
 - **Invite permissions step** — `/settings/teammates/invite/new/permissions` after emails/inbox; granular `inbox_members.permissions` stored on invite and applied on accept
 - **List pending invites** — `GET /api/org/:orgId/invites`
 - **Public invite preview** — `GET /api/org/invite/:token` (org name, role, expiry state)
@@ -74,7 +76,9 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Pending invite token storage** — survives register → login → accept
 - **Teammates settings**
   - List members with search
+  - **Teammate profile** — `/org/:orgId/admins/teammate/:memberId`: public profile view/edit, account, team inboxes, assigned conversations feed (`users.profile` JSONB)
   - Invite teammates UI (`/settings/teammates/invite/new` → permissions → send)
+  - **Permission roles** — Teammates → Roles tab (ADMIN): create named templates; invite permissions step picks template (read-only) or **Custom** (editable; stored on `inbox_members.permissions`)
   - Deep link route for new invites (`/teammates/invite/new`)
 - **List organization members** — inbox assignment picker + `GET .../conversations/members`
 

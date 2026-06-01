@@ -1,21 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  conversationMatchesVipTags,
-  mergeAssignmentAdvancedSettings,
-} from './assignmentAdvanced.js';
+import { mergeAssignmentAdvancedSettings } from './assignmentAdvanced.js';
 
-test('mergeAssignmentAdvancedSettings clamps threshold', () => {
+test('mergeAssignmentAdvancedSettings enables reassignment by default', () => {
   const merged = mergeAssignmentAdvancedSettings({
-    sla_remaining_minutes_threshold: 999,
-    vip_tag_names: [' VIP '],
+    reassign_enabled: false,
+    sla_routing_enabled: true,
+    vip_routing_enabled: true,
   });
-  assert.equal(merged.sla_remaining_minutes_threshold, 120);
-  assert.equal('vip_min_proficiency' in merged, false);
-  assert.deepEqual(merged.vip_tag_names, ['vip']);
-});
-
-test('conversationMatchesVipTags', () => {
-  assert.equal(conversationMatchesVipTags(['billing', 'vip'], ['vip', 'enterprise']), true);
-  assert.equal(conversationMatchesVipTags(['billing'], ['vip']), false);
+  assert.equal(merged.reassign_enabled, true);
+  assert.equal(merged.reassign_on_agent_offline, true);
+  assert.equal('sla_routing_enabled' in merged, false);
+  assert.equal('vip_routing_enabled' in merged, false);
 });

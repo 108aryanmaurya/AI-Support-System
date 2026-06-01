@@ -144,12 +144,6 @@ export async function getAgentWorkloadController(req, res, next) {
   try {
     const organizationId = orgIdOrThrow(req);
     const memberId = memberIdOrThrow(req);
-    const role = req.orgMembership?.role?.toUpperCase() ?? '';
-    const selfId = req.orgMembership?.id;
-    if (role !== 'ADMIN' && selfId !== memberId) {
-      throw new HttpError(403, 'Insufficient permissions for this member workload.');
-    }
-
     const [activeChats, capacity, config] = await Promise.all([
       syncActiveChatsFromDb(organizationId, memberId),
       memberHasConcurrencyCapacity(organizationId, memberId),
@@ -209,11 +203,6 @@ export async function getAgentPresenceController(req, res, next) {
   try {
     const organizationId = orgIdOrThrow(req);
     const memberId = memberIdOrThrow(req);
-    const role = req.orgMembership?.role?.toUpperCase() ?? '';
-    const selfId = req.orgMembership?.id;
-    if (role !== 'ADMIN' && selfId !== memberId) {
-      throw new HttpError(403, 'Insufficient permissions for this member presence.');
-    }
     const presence = await getAgentPresenceForMember(organizationId, memberId);
     res.json(presence);
   } catch (e) {

@@ -21,6 +21,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js'
 import { apiFetch } from '../services/api.js'
 import {
   createOrgInbox,
@@ -105,7 +106,7 @@ function UpsellBlock({ title, description, linkLabel }) {
 function TeamInboxEditor({
   draft,
   members,
-  isAdmin,
+  canManage,
   isNew,
   saving,
   onDraftChange,
@@ -315,7 +316,7 @@ function TeamInboxEditor({
           </button>
           <button
             type="button"
-            disabled={!canSave || saving || !isAdmin}
+            disabled={!canSave || saving || !canManage}
             onClick={onSave}
             className="rounded-lg bg-white px-5 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
           >
@@ -332,7 +333,7 @@ export default function OrgInboxesSettingsPage() {
   const navigate = useNavigate()
   const { organizations } = useOrganizationContext()
   const current = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(current?.role ?? '').toUpperCase() === 'ADMIN'
+  const canManage = useWorkspaceCanManage(orgId)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -455,7 +456,7 @@ export default function OrgInboxesSettingsPage() {
   }
 
   const handleSave = async () => {
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     const name = draft.name.trim()
     if (!name) {
       setError('Inbox name is required.')
@@ -555,7 +556,7 @@ export default function OrgInboxesSettingsPage() {
     navigate(`/org/${orgId}/settings/teammates/invite/new${inboxParam}`)
   }
 
-  if (!isAdmin) {
+  if (!canManage) {
     return (
       <main className="h-full min-h-0 overflow-y-auto px-4 py-6 sm:px-8">
         <p className="text-slate-300">Only organization admins can manage team inboxes.</p>
@@ -620,7 +621,7 @@ export default function OrgInboxesSettingsPage() {
                 <TeamInboxEditor
                   draft={draft}
                   members={members}
-                  isAdmin={isAdmin}
+                  canManage={canManage}
                   isNew
                   saving={saving}
                   onDraftChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
@@ -694,7 +695,7 @@ export default function OrgInboxesSettingsPage() {
                         <TeamInboxEditor
                           draft={draft}
                           members={members}
-                          isAdmin={isAdmin}
+                          canManage={canManage}
                           isNew={false}
                           saving={saving}
                           onDraftChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}

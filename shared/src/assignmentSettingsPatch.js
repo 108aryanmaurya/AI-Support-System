@@ -2,18 +2,9 @@
  * Whitelist patch keys for `PUT .../assignment/settings` (Sprint 7+).
  */
 
-const BOOL_KEYS = [
-  'sla_routing_enabled',
-  'reassign_enabled',
-  'reassign_on_sla_warning',
-  'reassign_on_agent_offline',
-  'vip_routing_enabled',
-];
-
-const NUM_KEYS = ['sla_remaining_minutes_threshold', 'default_max_concurrency'];
+const NUM_KEYS = ['default_max_concurrency'];
 
 const STRING_KEYS = [
-  'vip_target_inbox_id',
   'default_shift_start',
   'default_shift_end',
   'default_timezone',
@@ -33,12 +24,6 @@ export function buildAssignmentSettingsPatch(body) {
   /** @type {Record<string, unknown>} */
   const out = {};
 
-  for (const key of BOOL_KEYS) {
-    if (Object.prototype.hasOwnProperty.call(src, key)) {
-      out[key] = Boolean(src[key]);
-    }
-  }
-
   for (const key of NUM_KEYS) {
     if (Object.prototype.hasOwnProperty.call(src, key)) {
       const n = Number(src[key]);
@@ -55,13 +40,6 @@ export function buildAssignmentSettingsPatch(body) {
         out[key] = v.trim();
       }
     }
-  }
-
-  if (Object.prototype.hasOwnProperty.call(src, 'vip_tag_names') && Array.isArray(src.vip_tag_names)) {
-    out.vip_tag_names = src.vip_tag_names
-      .filter((t) => typeof t === 'string' && t.trim())
-      .map((t) => t.trim().toLowerCase().slice(0, 64))
-      .slice(0, 16);
   }
 
   if (

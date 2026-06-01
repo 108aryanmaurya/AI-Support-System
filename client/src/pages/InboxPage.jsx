@@ -555,10 +555,7 @@ export default function InboxPage() {
     [organizationId, composerAiDisabledReason, captureComposerSelection, getComposerTargetText],
   )
 
-  const isOrgAdmin = useMemo(() => {
-    const orgRow = organizations.find((o) => o.orgId === organizationId)
-    return String(orgRow?.role ?? '').toUpperCase() === 'ADMIN'
-  }, [organizations, organizationId])
+  const isOrgAdmin = true
 
   const myMembership = useMemo(() => {
     const fromMembers = orgMembers.find((m) => m.userId === user?.id)

@@ -8,6 +8,11 @@ import {
   getOrgLifecycleSettingsForAdmin,
   putOrgLifecycleSettings,
 } from '../services/lifecycle/orgLifecycleSettings.service.js';
+import {
+  getOrgGeneralSettings,
+  patchOrgGeneralSettings,
+  requestOrganizationDeletion,
+} from '../services/orgGeneralSettings.service.js';
 
 function orgIdOrThrow(req) {
   const id = req.orgId ?? req.organizationId;
@@ -151,7 +156,7 @@ export async function getOrgAiSettingsController(req, res, next) {
     res.json({
       ...settings,
       meta: {
-        canEdit: role === 'ADMIN',
+        canEdit: true,
         phases: {
           assist: 'Phase 3',
           autoTag: 'Phase 3–4',
@@ -173,7 +178,7 @@ export async function getOrgLifecycleSettingsController(req, res, next) {
     const role = req.orgMembership?.role?.toUpperCase() ?? '';
     res.json({
       lifecycle,
-      meta: { canEdit: role === 'ADMIN' },
+      meta: { canEdit: true },
     });
   } catch (e) {
     next(e);
@@ -189,6 +194,85 @@ export async function patchOrgLifecycleSettingsController(req, res, next) {
       ...saved,
       meta: { canEdit: true },
     });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function getOrgGeneralSettingsController(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const data = await getOrgGeneralSettings(organizationId);
+    res.json({
+      ...data,
+      meta: { canEdit: true },
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function patchOrgGeneralSettingsController(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const body = req.body ?? {};
+    const patch = {};
+
+    if (Object.prototype.hasOwnProperty.call(body, 'name')) {
+      if (typeof body.name !== 'string') {
+        throw new HttpError(400, 'name must be a string.');
+      }
+      patch.name = body.name;
+    }
+
+    const generalBody = body.general && typeof body.general === 'object' ? body.general : body;
+
+    if (Object.prototype.hasOwnProperty.call(generalBody, 'timezone')) {
+      if (typeof generalBody.timezone !== 'string') {
+        throw new HttpError(400, 'timezone must be a string.');
+      }
+      patch.timezone = generalBody.timezone;
+    }
+    if (Object.prototype.hasOwnProperty.call(generalBody, 'disable_team_mentions_in_notes')) {
+      patch.disable_team_mentions_in_notes = parseBool(
+        generalBody.disable_team_mentions_in_notes,
+        'disable_team_mentions_in_notes',
+      );
+    }
+    if (Object.prototype.hasOwnProperty.call(generalBody, 'hide_csat_scores_from_agents')) {
+      patch.hide_csat_scores_from_agents = parseBool(
+        generalBody.hide_csat_scores_from_agents,
+        'hide_csat_scores_from_agents',
+      );
+    }
+
+    if (Object.keys(patch).length === 0) {
+      throw new HttpError(400, 'No valid fields to update.');
+    }
+
+    const saved = await patchOrgGeneralSettings(organizationId, patch);
+    res.json({
+      ...saved,
+      meta: { canEdit: true },
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function postOrgGeneralDeletionRequestController(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const confirmFullName = req.body?.confirmFullName ?? req.body?.confirm_full_name;
+    if (typeof confirmFullName !== 'string' || !confirmFullName.trim()) {
+      throw new HttpError(400, 'confirmFullName is required.');
+    }
+    const result = await requestOrganizationDeletion(
+      organizationId,
+      req.user.id,
+      confirmFullName,
+    );
+    res.json(result);
   } catch (e) {
     next(e);
   }

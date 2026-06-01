@@ -2,7 +2,6 @@ import { supabaseAdmin } from '../../config/supabase.js';
 import { emitSupportEvent } from '../analytics/supportEvents.service.js';
 import { updateConversationFromAutomation } from '../conversationUpdate.service.js';
 import { scheduleAssignmentWithFallback } from '../automation/automationNotify.service.js';
-import { getOrgAssignmentSettings } from './assignmentSettings.service.js';
 import { previewAssignmentEligibility } from './assignmentEligibility.service.js';
 import {
   acquireConversationAssignmentLock,
@@ -44,11 +43,6 @@ export async function runReassignConversation({
 }) {
   if (!organizationId || !conversationId) {
     return { outcome: 'skipped', reason: 'missing_ids' };
-  }
-
-  const routing = await getOrgAssignmentSettings(organizationId);
-  if (!routing.reassign_enabled) {
-    return { outcome: 'skipped', reason: 'reassign_disabled' };
   }
 
   const startedAt = Date.now();
@@ -143,8 +137,6 @@ export async function runReassignConversation({
       factors: row?.factors ?? null,
       skillMatchTier: row?.skillMatchTier ?? null,
       targetInbox: preview.targetInbox?.inboxId ?? null,
-      sla: preview.sla ?? null,
-      vip: preview.vip ?? null,
     };
 
     const { conversation: updated } = await updateConversationFromAutomation({
@@ -186,7 +178,6 @@ export async function runReassignConversation({
       strategy,
       trigger,
       final_score: scoreSnapshot.finalScore,
-      sla_urgent: Boolean(preview.sla?.urgent),
       duration_ms: durationMs,
     });
 

@@ -14,6 +14,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { WORKFLOW_TRIGGERS } from '@ai-support/shared'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js'
 import {
   dryRunWorkflow,
   fetchWorkflowMetrics,
@@ -57,7 +58,7 @@ export default function OrgWorkflowSettingsPage() {
   const { orgId } = useParams()
   const { organizations } = useOrganizationContext()
   const current = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(current?.role ?? '').toUpperCase() === 'ADMIN'
+  const canManage = useWorkspaceCanManage(orgId)
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -106,7 +107,7 @@ export default function OrgWorkflowSettingsPage() {
 
   async function handleSave(e) {
     e.preventDefault()
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     setSaving(true)
     setError('')
     setSaved(false)
@@ -174,7 +175,7 @@ export default function OrgWorkflowSettingsPage() {
   }
 
   async function runTestNotification() {
-    if (!orgId || !isAdmin) return
+    if (!orgId || !canManage) return
     setNotifyLoading(true)
     setNotifyMsg('')
     setError('')
@@ -213,7 +214,7 @@ export default function OrgWorkflowSettingsPage() {
           </Link>
         </div>
 
-        {!isAdmin ? (
+        {!canManage ? (
           <p className="mb-4 rounded-lg border border-amber-900/40 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
             Only workspace admins can edit rules. You can run dry-runs and view metrics.
           </p>
@@ -277,7 +278,7 @@ export default function OrgWorkflowSettingsPage() {
                     type="checkbox"
                     className="rounded border-[#2b3858] accent-[#3ECF8E]"
                     checked={Boolean(schedule.enabled)}
-                    disabled={!isAdmin}
+                    disabled={!canManage}
                     onChange={(e) => setSchedule((s) => ({ ...s, enabled: e.target.checked }))}
                   />
                   Enable schedule trigger scans (cron)
@@ -288,7 +289,7 @@ export default function OrgWorkflowSettingsPage() {
                     <input
                       type="text"
                       value={schedule.timezone ?? 'UTC'}
-                      disabled={!isAdmin}
+                      disabled={!canManage}
                       onChange={(e) => setSchedule((s) => ({ ...s, timezone: e.target.value }))}
                       className="mt-1 w-full rounded-lg border border-[#2b3858] bg-[#111827] px-3 py-2 text-sm text-white disabled:opacity-60"
                     />
@@ -300,7 +301,7 @@ export default function OrgWorkflowSettingsPage() {
                         type="text"
                         placeholder="09:00"
                         value={schedule.start ?? '09:00'}
-                        disabled={!isAdmin}
+                        disabled={!canManage}
                         onChange={(e) => setSchedule((s) => ({ ...s, start: e.target.value }))}
                         className="w-full rounded-lg border border-[#2b3858] bg-[#111827] px-3 py-2 text-sm text-white disabled:opacity-60"
                       />
@@ -309,7 +310,7 @@ export default function OrgWorkflowSettingsPage() {
                         type="text"
                         placeholder="17:00"
                         value={schedule.end ?? '17:00'}
-                        disabled={!isAdmin}
+                        disabled={!canManage}
                         onChange={(e) => setSchedule((s) => ({ ...s, end: e.target.value }))}
                         className="w-full rounded-lg border border-[#2b3858] bg-[#111827] px-3 py-2 text-sm text-white disabled:opacity-60"
                       />
@@ -322,7 +323,7 @@ export default function OrgWorkflowSettingsPage() {
             <section>
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">Rules</h2>
-                {isAdmin ? (
+                {canManage ? (
                   <button
                     type="button"
                     onClick={addRule}
@@ -350,7 +351,7 @@ export default function OrgWorkflowSettingsPage() {
                             <input
                               type="checkbox"
                               checked={rule.enabled !== false}
-                              disabled={!isAdmin}
+                              disabled={!canManage}
                               onChange={(e) => updateRule(index, { enabled: e.target.checked })}
                               className="rounded accent-[#3ECF8E]"
                             />
@@ -360,13 +361,13 @@ export default function OrgWorkflowSettingsPage() {
                             <input
                               type="text"
                               value={rule.name ?? ''}
-                              disabled={!isAdmin}
+                              disabled={!canManage}
                               onChange={(e) => updateRule(index, { name: e.target.value })}
                               className="w-full rounded-md border border-[#334060] bg-[#0f1728] px-2 py-1 text-sm font-medium text-white disabled:opacity-60"
                             />
                             <select
                               value={rule.trigger ?? 'inbound_message'}
-                              disabled={!isAdmin}
+                              disabled={!canManage}
                               onChange={(e) => updateRule(index, { trigger: e.target.value })}
                               className="mt-2 w-full rounded-md border border-[#334060] bg-[#0f1728] px-2 py-1 text-xs text-slate-300 disabled:opacity-60"
                             >
@@ -377,7 +378,7 @@ export default function OrgWorkflowSettingsPage() {
                               ))}
                             </select>
                           </div>
-                          {isAdmin ? (
+                          {canManage ? (
                             <div className="flex shrink-0 flex-col gap-1">
                               <button
                                 type="button"
@@ -415,7 +416,7 @@ export default function OrgWorkflowSettingsPage() {
                         >
                           {expanded ? 'Hide' : 'Edit'} conditions &amp; actions (JSON)
                         </button>
-                        {expanded && isAdmin ? (
+                        {expanded && canManage ? (
                           <div className="mt-2 space-y-2">
                             <label className="block text-xs text-slate-500">
                               Conditions
@@ -518,7 +519,7 @@ export default function OrgWorkflowSettingsPage() {
               ) : null}
             </section>
 
-            {isAdmin ? (
+            {canManage ? (
               <section className="rounded-xl border border-[#2b3858] bg-[#12192c] p-4">
                 <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
                   <Bell size={14} /> Test notification
@@ -545,7 +546,7 @@ export default function OrgWorkflowSettingsPage() {
               Phase 4 paths.
             </p>
 
-            {isAdmin ? (
+            {canManage ? (
               <button
                 type="submit"
                 disabled={saving}

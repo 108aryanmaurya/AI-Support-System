@@ -6,12 +6,14 @@ test('buildAssignmentSettingsPatch whitelists known keys', () => {
   const patch = buildAssignmentSettingsPatch({
     strategy: 'least_loaded',
     unknown_key: 'x',
-    vip_tag_names: [' VIP '],
+    sla_routing_enabled: true,
+    vip_tag_names: ['vip'],
     fallback_notify_member_ids: ['uuid-1'],
   });
   assert.equal(patch.strategy, undefined);
   assert.equal(patch.unknown_key, undefined);
-  assert.deepEqual(patch.vip_tag_names, ['vip']);
+  assert.equal(patch.sla_routing_enabled, undefined);
+  assert.equal(patch.vip_tag_names, undefined);
   assert.deepEqual(patch.fallback_notify_member_ids, ['uuid-1']);
 });
 

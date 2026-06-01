@@ -16,6 +16,8 @@ import OrgTeammatesPage from './pages/OrgTeammatesPage.jsx'
 import OrgTeammatesSection from './pages/OrgTeammatesSection.jsx'
 import OrgInviteTeammatesPage from './pages/OrgInviteTeammatesPage.jsx'
 import OrgInviteTeammatePermissionsPage from './pages/OrgInviteTeammatePermissionsPage.jsx'
+import OrgEditTeammatePermissionsPage from './pages/OrgEditTeammatePermissionsPage.jsx'
+import OrgTeammateProfilePage from './pages/OrgTeammateProfilePage.jsx'
 import OrgAiSettingsPage from './pages/OrgAiSettingsPage.jsx'
 import OrgWorkflowSettingsPage from './pages/OrgWorkflowSettingsPage.jsx'
 import OrgTagsSettingsPage from './pages/OrgTagsSettingsPage.jsx'
@@ -23,6 +25,7 @@ import OrgInboxesSettingsPage from './pages/OrgInboxesSettingsPage.jsx'
 import OrgAssignmentSettingsPage from './pages/OrgAssignmentSettingsPage.jsx'
 import OrgEmailSettingsPage from './pages/OrgEmailSettingsPage.jsx'
 import OrgLifecycleSettingsPage from './pages/OrgLifecycleSettingsPage.jsx'
+import OrgGeneralSettingsPage from './pages/OrgGeneralSettingsPage.jsx'
 import OrgKnowledgeListPage from './pages/OrgKnowledgeListPage.jsx'
 import OrgKnowledgeEditorPage from './pages/OrgKnowledgeEditorPage.jsx'
 import TeammatesInviteDeepLink from './pages/TeammatesInviteDeepLink.jsx'
@@ -51,12 +54,15 @@ export default function App() {
           <Route path="knowledge/:articleId" element={<OrgKnowledgeEditorPage />} />
           <Route path="reports" element={<OrgReportsPage />} />
           <Route path="search" element={<InboxSearchPage />} />
+          <Route path="admins/teammate/:teammateId" element={<OrgTeammateProfilePage />} />
           <Route path="settings" element={<OrgSettingsLayout />}>
             <Route index element={<OrgSettingsHomePage />} />
+            <Route path="general" element={<OrgGeneralSettingsPage />} />
             <Route path="teammates" element={<OrgTeammatesSection />}>
               <Route index element={<OrgTeammatesPage />} />
               <Route path="invite/new" element={<OrgInviteTeammatesPage />} />
               <Route path="invite/new/permissions" element={<OrgInviteTeammatePermissionsPage />} />
+              <Route path=":memberId/permissions" element={<OrgEditTeammatePermissionsPage />} />
             </Route>
             <Route path="ai" element={<OrgAiSettingsPage />} />
             <Route path="workflows" element={<OrgWorkflowSettingsPage />} />

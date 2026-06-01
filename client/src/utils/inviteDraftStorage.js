@@ -1,5 +1,17 @@
 const PREFIX = 'org-invite-draft:'
 
+export const INVITE_INBOX_REQUIRED_ERROR = 'Select at least one team inbox.'
+
+/**
+ * @param {string[]} inboxIds
+ * @param {number} activeInboxCount
+ */
+export function inviteRequiresInboxSelection(activeInboxCount, inboxIds) {
+  if (activeInboxCount <= 0) return false
+  const ids = Array.isArray(inboxIds) ? inboxIds : []
+  return ids.length === 0
+}
+
 export function inviteDraftKey(orgId) {
   return `${PREFIX}${orgId}`
 }

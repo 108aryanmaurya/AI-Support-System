@@ -2,6 +2,7 @@ import { Clock, Loader2, Save } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js'
 import {
   fetchOrgLifecycleSettings,
   patchOrgLifecycleSettings,
@@ -57,7 +58,7 @@ export default function OrgLifecycleSettingsPage() {
   const { orgId } = useParams()
   const { organizations } = useOrganizationContext()
   const current = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(current?.role ?? '').toUpperCase() === 'ADMIN'
+  const canManage = useWorkspaceCanManage(orgId)
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -113,7 +114,7 @@ export default function OrgLifecycleSettingsPage() {
   }, [load])
 
   const onSave = async () => {
-    if (!orgId || !lifecycle || !isAdmin) return
+    if (!orgId || !lifecycle || !canManage) return
     setSaving(true)
     setError('')
     setSaved(false)
@@ -130,7 +131,7 @@ export default function OrgLifecycleSettingsPage() {
     }
   }
 
-  const disabled = !isAdmin || saving
+  const disabled = !canManage || saving
 
   return (
     <main className="h-full min-h-0 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10">
@@ -157,7 +158,7 @@ export default function OrgLifecycleSettingsPage() {
           every 15 minutes.
         </p>
 
-        {!isAdmin ? (
+        {!canManage ? (
           <p className="mb-4 rounded-lg border border-amber-900/40 bg-amber-950/30 px-3 py-2 text-sm text-amber-100">
             Only organization admins can edit lifecycle settings.
           </p>
@@ -268,7 +269,7 @@ export default function OrgLifecycleSettingsPage() {
               />
             </section>
 
-            {isAdmin ? (
+            {canManage ? (
               <button
                 type="button"
                 disabled={disabled}

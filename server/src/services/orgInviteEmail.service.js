@@ -2,10 +2,8 @@ import { supabaseAdmin } from '../config/supabase.js';
 import { sendNotificationEmailIfConfigured } from './internalNotificationMail.service.js';
 
 function formatInviteRole(role) {
-  const r = String(role ?? '').trim().toUpperCase();
-  if (r === 'ADMIN') return 'Admin';
-  if (r === 'AGENT') return 'Agent';
-  return r || 'Member';
+  const r = typeof role === 'string' ? role.trim() : '';
+  return r || 'Teammate';
 }
 
 function formatExpiry(expiresAtIso) {

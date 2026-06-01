@@ -15,11 +15,6 @@ export function evaluateMemberEligibility(member, ctx) {
     drops.push({ code: 'member_not_active', detail: member.membershipStatus ?? 'unknown' });
   }
 
-  const role = typeof member.role === 'string' ? member.role.toUpperCase() : '';
-  if (role && role !== 'ADMIN' && role !== 'AGENT') {
-    drops.push({ code: 'role_not_allowed', detail: role });
-  }
-
   if (member.routingStatus === 'inactive') {
     drops.push({ code: 'agent_inactive' });
   }

@@ -1,6 +1,4 @@
 import {
-  applySlaUrgentRanking,
-  conversationMatchesVipTags,
   defaultAgentProfileRow,
   inboxScoringStrategyFromSettings,
   isDedicatedInboxAssignmentStrategy,
@@ -10,7 +8,6 @@ import { supabaseAdmin } from '../../config/supabase.js';
 import { getConversationAiSignals } from '../ai/conversationAiSignals.service.js';
 import { getConversationTags } from '../tags.service.js';
 import { getAssignmentRedisSnapshot } from './assignmentRedis.service.js';
-import { resolveSlaRoutingContext } from './assignmentSlaBoost.service.js';
 import {
   getInboxById,
   loadOrgAssignmentRouting,
@@ -140,13 +137,6 @@ export async function previewAssignmentEligibility({
     /* tags optional */
   }
 
-  const isVip =
-    routing.vip_routing_enabled &&
-    conversationMatchesVipTags(tagNames, routing.vip_tag_names ?? []);
-
-  const effectiveOverrideInboxId =
-    isVip && routing.vip_target_inbox_id ? routing.vip_target_inbox_id : overrideInboxId;
-
   const targetInbox = resolveTargetInbox({
     routing,
     metadata: conv.metadata,
@@ -154,7 +144,7 @@ export async function previewAssignmentEligibility({
     intent,
     language,
     tagNames,
-    overrideInboxId: effectiveOverrideInboxId,
+    overrideInboxId,
   });
 
   const queueInboxId = conv.team_inbox_id ?? conv.inbox_id ?? null;
@@ -274,26 +264,6 @@ export async function previewAssignmentEligibility({
     });
   }
 
-  const slaContext = await resolveSlaRoutingContext(organizationId, conversationId, routing);
-  let slaBoostApplied = false;
-  if (
-    slaContext.urgent &&
-    ranking.rankedCandidates.length > 0 &&
-    !dedicatedInboxStrategy
-  ) {
-    const activeChatsByMember = new Map(
-      filteredEligibleRows.map((r) => [r.memberId, r.activeChats ?? 0]),
-    );
-    const boosted = applySlaUrgentRanking(ranking.rankedCandidates, activeChatsByMember);
-    ranking = {
-      ...ranking,
-      rankedCandidates: boosted.rankedCandidates,
-      recommendedMemberId: boosted.recommendedMemberId,
-    };
-    slaBoostApplied = boosted.slaBoostApplied;
-  }
-  slaContext.slaBoostApplied = slaBoostApplied;
-
   const scoreByMember = new Map(
     ranking.rankedCandidates.map((r) => [r.memberId, r]),
   );
@@ -329,7 +299,7 @@ export async function previewAssignmentEligibility({
   const noCandidates =
     filteredEligibleMemberIds.length === 0
       ? {
-          reason: isVip ? 'no_vip_candidates' : 'no_candidates',
+          reason: 'no_candidates',
           primaryCodes: Object.entries(dropCodeCounts)
             .sort((a, b) => b[1] - a[1])
             .slice(0, 5)
@@ -354,13 +324,6 @@ export async function previewAssignmentEligibility({
     rankedCandidates: ranking.rankedCandidates,
     recommendedMemberId: ranking.recommendedMemberId,
     previousAgentId,
-    sla: slaContext,
-    vip: isVip
-      ? {
-          matched: true,
-          targetInboxId: routing.vip_target_inbox_id ?? null,
-        }
-      : { matched: false },
     summary: {
       totalMembers: candidates.length,
       eligibleCount: filteredEligibleMemberIds.length,

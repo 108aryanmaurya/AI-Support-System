@@ -71,15 +71,15 @@ export default function OrgInviteTeammatesPage() {
     () => selectedInboxIds.filter((id) => activeInboxIdSet.has(id)),
     [selectedInboxIds, activeInboxIdSet],
   )
-  const mustSelectInbox = inboxes.length > 0
-  const canContinue =
-    validEmails.length > 0 &&
-    !loadingInboxes &&
-    (!mustSelectInbox || validatedSelectedInboxIds.length > 0)
+  const hasInboxes = inboxes.length > 0
+  const canContinue = validEmails.length > 0 && !loadingInboxes
 
   useEffect(() => {
     const draft = location.state
     if (!draft) return
+    if (typeof draft.inviteError === 'string' && draft.inviteError.trim()) {
+      setError(draft.inviteError.trim())
+    }
     if (Array.isArray(draft.emails) && draft.emails.length > 0) {
       setRawEmails(draft.emails.join('\n'))
     }
@@ -98,8 +98,6 @@ export default function OrgInviteTeammatesPage() {
         setError('Enter at least one valid email address.')
       } else if (loadingInboxes) {
         setError('Wait for team inboxes to finish loading.')
-      } else if (mustSelectInbox) {
-        setError('Select at least one team inbox.')
       }
       return
     }
@@ -141,11 +139,6 @@ export default function OrgInviteTeammatesPage() {
               type="button"
               disabled={!canContinue}
               onClick={handleContinue}
-              title={
-                !canContinue && validEmails.length > 0 && mustSelectInbox
-                  ? 'Select at least one team inbox'
-                  : undefined
-              }
               className="rounded-lg bg-white px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:bg-slate-600 disabled:text-slate-400"
             >
               Continue and set permissions
@@ -171,25 +164,33 @@ export default function OrgInviteTeammatesPage() {
           <div>
             <h2 className="text-lg font-semibold text-white">Configure their inboxes</h2>
             <p className="mt-2 text-sm text-slate-500">
-              {mustSelectInbox
-                ? 'Select one or more team inboxes. Invitees are only added to the inboxes you choose when they accept.'
+              {hasInboxes
+                ? 'Optional: select team inboxes to add invitees to those queues when they accept. Leave empty to invite them to the workspace only.'
                 : 'No team inboxes in this workspace yet. Invitees will join the organization only; you can add them to inboxes later.'}
             </p>
 
             <div className="mt-6">
               {loadingInboxes ? (
                 <p className="text-sm text-slate-600">Loading team inboxes…</p>
-              ) : mustSelectInbox ? (
+              ) : hasInboxes ? (
                 <>
                   <InboxMultiSelect
                     inboxes={inboxes}
                     selectedInboxIds={selectedInboxIds}
-                    requireSelection
                     onChange={setSelectedInboxIds}
                   />
                   <p className="mt-3 text-xs text-slate-500">
-                    On accept, invitees will join{' '}
-                    <span className="font-medium text-slate-400">{inboxSummary}</span>.
+                    {validatedSelectedInboxIds.length > 0 ? (
+                      <>
+                        On accept, invitees will join{' '}
+                        <span className="font-medium text-slate-400">{inboxSummary}</span>.
+                      </>
+                    ) : (
+                      <>
+                        No inboxes selected — invitees join the workspace only on accept. You can
+                        assign inboxes later.
+                      </>
+                    )}
                   </p>
                 </>
               ) : (
@@ -214,7 +215,7 @@ export default function OrgInviteTeammatesPage() {
   )
 }
 
-function InboxMultiSelect({ inboxes, selectedInboxIds, onChange, requireSelection = false }) {
+function InboxMultiSelect({ inboxes, selectedInboxIds, onChange }) {
   const [open, setOpen] = useState(false)
   const selectedSet = useMemo(() => new Set(selectedInboxIds), [selectedInboxIds])
 
@@ -229,7 +230,6 @@ function InboxMultiSelect({ inboxes, selectedInboxIds, onChange, requireSelectio
     const next = selectedSet.has(id)
       ? selectedInboxIds.filter((x) => x !== id)
       : [...selectedInboxIds, id]
-    if (requireSelection && next.length === 0) return
     onChange(next)
   }
 

@@ -111,7 +111,7 @@ export default function OnboardingPage() {
       for (const email of emails) {
         await apiFetch(`/api/org/${id}/invite`, {
           method: 'POST',
-          body: JSON.stringify({ email, role: 'AGENT' }),
+          body: JSON.stringify({ email, role: 'member' }),
         })
       }
 

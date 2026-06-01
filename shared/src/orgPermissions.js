@@ -1,6 +1,7 @@
 /**
  * Org RBAC capabilities in `organizations.settings.permissions`.
- * Role presets: ADMIN (all org-scoped) vs AGENT (restricted defaults).
+ * Legacy ADMIN/AGENT presets remain for tests; runtime uses permissive defaults until
+ * `organization_members.permissions` is enforced per member.
  */
 
 export const ORG_PERMISSIONS_AGENT_DEFAULTS = Object.freeze({
@@ -133,14 +134,13 @@ export function mergeOrgPermissions(raw, roleDefaults = ORG_PERMISSIONS_AGENT_DE
 }
 
 /**
- * @param {'ADMIN' | 'AGENT' | string | null | undefined} role
+ * Effective org capability preset for a member.
+ * Until per-member JSON is enforced, all active members receive full org-scoped access.
+ *
+ * @param {string | null | undefined} _role — dynamic role label (unused for gating today)
  */
-export function permissionsForRole(role) {
-  const r = typeof role === 'string' ? role.trim().toUpperCase() : '';
-  if (r === 'ADMIN') {
-    return mergeOrgPermissions({}, ORG_PERMISSIONS_ADMIN_DEFAULTS);
-  }
-  return mergeOrgPermissions({}, ORG_PERMISSIONS_AGENT_DEFAULTS);
+export function permissionsForRole(_role) {
+  return mergeOrgPermissions({}, ORG_PERMISSIONS_ADMIN_DEFAULTS);
 }
 
 /**

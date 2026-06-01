@@ -111,6 +111,7 @@ export default function OrgSettingsHomePage() {
           <h2 className="mb-4 text-xs font-semibold uppercase tracking-wider text-slate-500">Workspace</h2>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <SettingsCard
+              to={`/org/${orgId}/settings/general`}
               icon={List}
               iconClass="bg-violet-600"
               title="General"
@@ -130,36 +131,7 @@ export default function OrgSettingsHomePage() {
               title="Office hours"
               description="Choose your office hours to manage customer expectations."
             />
-            <div className="opacity-75">
-              <SettingsCard
-                icon={Gift}
-                iconClass="bg-violet-600"
-                title="Referrals"
-                badge="Earn $100"
-                description="Get credit when you refer a business to ResolveAI."
-              />
-            </div>
-            <SettingsCard
-              icon={Layers}
-              iconClass="bg-violet-600"
-              title="Brands"
-              description="Set up and manage your brands."
-            />
-            <SettingsCard
-              icon={ShieldCheck}
-              iconClass="bg-violet-600"
-              title="Security"
-              titleExtra={
-                <AlertTriangle className="h-4 w-4 text-amber-400" aria-label="Review recommended" />
-              }
-              description="Configure all security settings for your workspace and data."
-            />
-            <SettingsCard
-              icon={Languages}
-              iconClass="bg-violet-600"
-              title="Multilingual"
-              description="Set up and manage your multilingual settings."
-            />
+           
           </div>
         </section>
 

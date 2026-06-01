@@ -8,15 +8,19 @@ import {
   createOrganizationWithAdmin,
   assertInviteEmailNotExistingMember,
   getInviteByToken,
-  isValidInviteRole,
+  normalizeMemberRole,
   listChannelsForOrganization,
+  getOrganizationMemberById,
   listMembersForOrganization,
   listOrganizationsForUser,
   listPendingInvitesForOrganization,
   newInviteToken,
+  removeOrganizationMember,
+  updateOrganizationMemberPermissions,
   validateInviteEmail,
 } from '../services/org.service.js';
 import { sendTeammateInviteEmail } from '../services/orgInviteEmail.service.js';
+import { getCurrentMemberPermissionsPayload } from '../services/currentMemberPermissions.service.js';
 import { supabaseAdmin } from '../config/supabase.js';
 
 const INVITE_TTL_MS = 48 * 60 * 60 * 1000;
@@ -61,12 +65,16 @@ export async function createInviteController(req, res, next) {
     const organizationId = req.orgId ?? req.organizationId;
     const emailRaw = req.body?.email;
     const roleRaw = req.body?.role;
+    const permissionsRaw = req.body?.permissions;
 
     const email = validateInviteEmail(emailRaw);
     if (!email) throw new HttpError(400, 'A valid email is required.');
 
-    const role = isValidInviteRole(roleRaw);
-    if (!role) throw new HttpError(400, 'role must be ADMIN or AGENT.');
+    const mergedPerms =
+      permissionsRaw && typeof permissionsRaw === 'object' ? permissionsRaw : {};
+    const templateName =
+      typeof mergedPerms.templateRoleName === 'string' ? mergedPerms.templateRoleName.trim() : '';
+    const role = normalizeMemberRole(roleRaw, templateName || 'member');
 
     await assertInviteEmailNotExistingMember(organizationId, email);
 
@@ -80,6 +88,7 @@ export async function createInviteController(req, res, next) {
       role,
       expiresAtIso,
       token,
+      permissions: permissionsRaw,
     });
 
     const absoluteLink = `${env.publicAppUrl}/invite?token=${encodeURIComponent(token)}`;
@@ -167,6 +176,66 @@ export async function listMembersController(req, res, next) {
     const organizationId = req.orgId ?? req.organizationId;
     const members = await listMembersForOrganization(organizationId);
     res.json({ members });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/** Current user's membership + effective capabilities for this workspace (URL `orgId`). */
+export async function getCurrentMemberController(req, res, next) {
+  try {
+    const organizationId = req.orgId ?? req.organizationId;
+    const membershipId = req.orgMembership?.id;
+    if (!membershipId) {
+      throw new HttpError(403, 'You do not have access to this organization.');
+    }
+    const payload = await getCurrentMemberPermissionsPayload(organizationId, membershipId);
+    res.json(payload);
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function getMemberController(req, res, next) {
+  try {
+    const organizationId = req.orgId ?? req.organizationId;
+    const memberId = req.params?.memberId;
+    const member = await getOrganizationMemberById(organizationId, memberId);
+    res.json({ member });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function patchMemberPermissionsController(req, res, next) {
+  try {
+    const organizationId = req.orgId ?? req.organizationId;
+    const memberId = req.params?.memberId;
+    const permissions = req.body?.permissions;
+    if (!permissions || typeof permissions !== 'object') {
+      throw new HttpError(400, 'permissions object is required.');
+    }
+    const member = await updateOrganizationMemberPermissions({
+      organizationId,
+      memberId,
+      permissions,
+    });
+    res.json({ member });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function deleteMemberController(req, res, next) {
+  try {
+    const organizationId = req.orgId ?? req.organizationId;
+    const memberId = req.params?.memberId;
+    const result = await removeOrganizationMember({
+      organizationId,
+      memberId,
+      actorUserId: req.user.id,
+    });
+    res.json(result);
   } catch (error) {
     next(error);
   }

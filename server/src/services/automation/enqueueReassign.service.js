@@ -64,10 +64,6 @@ export function scheduleReassignForOfflineAgent(organizationId, memberId) {
   void (async () => {
     try {
       const { CONVERSATION_ACTIVE_STATUSES } = await import('@ai-support/shared');
-      const { getOrgAssignmentSettings } = await import('../assignment/assignmentSettings.service.js');
-
-      const routing = await getOrgAssignmentSettings(organizationId);
-      if (!routing.reassign_enabled || !routing.reassign_on_agent_offline) return;
 
       const { data: convs, error } = await supabaseAdmin
         .from('conversations')

@@ -1,5 +1,5 @@
-import { hasOrgPermission } from '@ai-support/shared';
 import { HttpError } from '../utils/httpError.js';
+import { getCurrentMemberPermissionsPayload } from '../services/currentMemberPermissions.service.js';
 import { getOrgPermissionsSettings, patchOrgSettings } from '../services/orgSettings.service.js';
 import { emitSupportEvent } from '../services/analytics/supportEvents.service.js';
 
@@ -12,10 +12,21 @@ function orgIdOrThrow(req) {
 export async function getOrgPermissionsController(req, res, next) {
   try {
     const organizationId = orgIdOrThrow(req);
-    const role = req.orgMembership?.role ?? 'AGENT';
-    const permissions = await getOrgPermissionsSettings(organizationId, role);
-    const canEdit = hasOrgPermission(req.orgPermissions, 'team.configure_permissions');
-    res.json({ permissions, role, canEdit });
+    const membershipId = req.orgMembership?.id;
+    if (!membershipId) {
+      throw new HttpError(403, 'You do not have access to this organization.');
+    }
+
+    const payload = await getCurrentMemberPermissionsPayload(organizationId, membershipId);
+    const canEdit = Boolean(
+      payload.permissions?.team?.configure_permissions === true ||
+        payload.permissions?.team?.invite === true,
+    );
+
+    res.json({
+      ...payload,
+      canEdit,
+    });
   } catch (e) {
     next(e);
   }

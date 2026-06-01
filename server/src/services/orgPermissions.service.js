@@ -1,41 +1,28 @@
-import { hasOrgPermission, mergeOrgPermissions, permissionsForRole } from '@ai-support/shared';
-import { supabaseAdmin } from '../config/supabase.js';
+import { deriveOrgCapabilitiesFromMemberPermissions, hasOrgPermission } from '@ai-support/shared';
 import { HttpError } from '../utils/httpError.js';
+import { getOrganizationMemberPermissions } from './organizationMemberPermissions.service.js';
 
 /**
- * @param {string} organizationId
- */
-async function loadOrgSettings(organizationId) {
-  const { data, error } = await supabaseAdmin
-    .from('organizations')
-    .select('settings')
-    .eq('id', organizationId)
-    .maybeSingle();
-
-  if (error) {
-    throw new HttpError(500, error.message || 'Failed to load organization settings.');
-  }
-  if (!data) {
-    throw new HttpError(404, 'Organization not found.');
-  }
-  return data.settings && typeof data.settings === 'object' ? data.settings : {};
-}
-
-/**
- * Effective permissions for a member (role preset ⊕ org overrides).
+ * Effective org capabilities for a member from `organization_members.permissions`.
  *
  * @param {string} organizationId
- * @param {{ role?: string | null }} membership
+ * @param {{ id?: string | null, role?: string | null }} membership
  */
-export async function getOrgPermissionsForMember(organizationId, membership) {
-  const role = membership?.role ?? 'AGENT';
-  const preset = permissionsForRole(role);
-  const settings = await loadOrgSettings(organizationId);
-  const overrides =
-    settings.permissions && typeof settings.permissions === 'object'
-      ? settings.permissions
-      : {};
-  return mergeOrgPermissions(overrides, preset);
+export async function getOrgPermissionsForMember(_organizationId, membership) {
+  const memberId = membership?.id;
+  if (!memberId) {
+    return deriveOrgCapabilitiesFromMemberPermissions(null);
+  }
+
+  try {
+    const memberPermissions = await getOrganizationMemberPermissions(memberId);
+    return deriveOrgCapabilitiesFromMemberPermissions(memberPermissions);
+  } catch (e) {
+    if (e instanceof HttpError && e.status === 404) {
+      throw new HttpError(403, 'You do not have access to this organization.');
+    }
+    throw e;
+  }
 }
 
 /**

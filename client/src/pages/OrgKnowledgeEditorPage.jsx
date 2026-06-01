@@ -2,6 +2,7 @@ import { ArrowLeft, Save, Trash2, Upload } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js'
 import {
   archiveKnowledgeArticle,
   createKnowledgeArticle,
@@ -18,7 +19,7 @@ export default function OrgKnowledgeEditorPage() {
   const navigate = useNavigate()
   const { organizations } = useOrganizationContext()
   const currentOrg = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(currentOrg?.role ?? '').toUpperCase() === 'ADMIN'
+  const canManage = useWorkspaceCanManage(orgId)
   const isNew = articleId === 'new' || !articleId
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
@@ -92,7 +93,7 @@ export default function OrgKnowledgeEditorPage() {
 
   async function handleArchive() {
     const id = resolvedId ?? articleId
-    if (!orgId || !id || isNew || !isAdmin) return
+    if (!orgId || !id || isNew || !canManage) return
     const label = title.trim() || 'this article'
     if (!window.confirm(`Archive "${label}"? It will be removed from search and drafts.`)) return
     setSaving(true)
@@ -173,7 +174,7 @@ export default function OrgKnowledgeEditorPage() {
           <Upload size={14} />
           Publish
         </button>
-        {isAdmin && !isNew && resolvedId && status !== 'archived' ? (
+        {canManage && !isNew && resolvedId && status !== 'archived' ? (
           <button
             type="button"
             disabled={saving}

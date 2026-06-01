@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthContext } from '../context/AuthContext.jsx'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
 import { getLastOrgId, setLastOrgId } from '../utils/lastOrgStorage.js'
+import { getPendingInviteToken } from '../utils/pendingInviteStorage.js'
 
 /**
  * After login / registration: loads org membership and routes to onboarding,
@@ -27,6 +28,11 @@ export default function PostAuthRedirect() {
     }
 
     if (organizations.length === 0) {
+      const pendingInvite = getPendingInviteToken()
+      if (pendingInvite) {
+        navigate(`/invite?token=${encodeURIComponent(pendingInvite)}`, { replace: true })
+        return
+      }
       navigate('/onboarding', { replace: true })
       return
     }

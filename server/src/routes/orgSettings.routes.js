@@ -2,9 +2,12 @@ import { Router } from 'express';
 import { requirePermission, requireRole } from '../middleware/orgAccess.js';
 import {
   getOrgAiSettingsController,
+  getOrgGeneralSettingsController,
   getOrgLifecycleSettingsController,
   patchOrgAiSettingsController,
+  patchOrgGeneralSettingsController,
   patchOrgLifecycleSettingsController,
+  postOrgGeneralDeletionRequestController,
 } from '../controllers/orgSettings.controller.js';
 import {
   getOrgPermissionsController,
@@ -22,6 +25,10 @@ import {
 } from '../controllers/orgEmailSettings.controller.js';
 
 const router = Router({ mergeParams: true });
+
+router.get('/general', getOrgGeneralSettingsController);
+router.patch('/general', patchOrgGeneralSettingsController);
+router.post('/general/request-deletion', postOrgGeneralDeletionRequestController);
 
 router.get('/permissions', getOrgPermissionsController);
 router.patch(

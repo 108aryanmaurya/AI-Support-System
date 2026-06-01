@@ -161,16 +161,19 @@ export {
 
 export { isWithinAgentShift } from './agentShiftHours.js';
 
-export {
-  ASSIGNMENT_ADVANCED_DEFAULTS,
-  conversationMatchesVipTags,
-  mergeAssignmentAdvancedSettings,
-} from './assignmentAdvanced.js';
+export { deriveOrgCapabilitiesFromMemberPermissions } from './memberOrgCapabilities.js';
 
 export {
-  applySlaUrgentRanking,
-  isSlaRemainingUrgent,
-} from './assignmentSlaBoost.js';
+  TEAMMATE_BIO_MAX_LENGTH,
+  TEAMMATE_PROFILE_DEFAULTS,
+  buildTeammateProfilePatch,
+  mergeTeammateProfile,
+} from './teammateProfile.js';
+
+export {
+  ASSIGNMENT_ADVANCED_DEFAULTS,
+  mergeAssignmentAdvancedSettings,
+} from './assignmentAdvanced.js';
 
 export {
   ASSIGNMENT_INBOX_LIMITS,
@@ -225,6 +228,15 @@ export {
   mergeOrgLifecycleSettingsFromOrg,
 } from './lifecycleSettings.js';
 
+export {
+  ORG_GENERAL_SETTINGS_DEFAULTS,
+  generalSettingsFromOrgSettings,
+  mergeOrgGeneralSettings,
+  workspaceGeneralRawFromOrgSettings,
+  normalizeOrgTimezone,
+  organizationAppId,
+} from './generalSettings.js';
+
 export { percentile, stddevActiveChats } from './assignmentMetricsMath.js';
 
 export {
@@ -264,6 +276,7 @@ export {
 } from './inboxes.js';
 
 export {
+  CONVERSATION_ACCESS_EXCEPT_TEAMS_ERROR,
   CONVERSATION_ACCESS_MODES,
   COPILOT_USAGE_MODES,
   INBOX_MEMBER_PERMISSION_ROLES,
@@ -279,7 +292,24 @@ export {
   isInboxMemberPermissionsRestricted,
   mergeInboxMemberPermissions,
   restrictAllInboxMemberPermissions,
+  validateConversationAccessForSave,
+  validateInboxMemberPermissionsForSave,
 } from './inboxMemberPermissions.js';
+
+export {
+  CUSTOM_PERMISSION_ROLE_NAME,
+  MAX_ORG_PERMISSION_ROLE_NAME_LENGTH,
+  MAX_ORG_PERMISSION_ROLES_PER_ORG,
+  inboxMemberPermissionsEqual,
+  isValidOrgPermissionRoleDescription,
+  isValidOrgPermissionRoleId,
+  isValidOrgPermissionRoleName,
+  MAX_ORG_PERMISSION_ROLE_DESCRIPTION_LENGTH,
+  normalizeOrgPermissionRoleDescription,
+  normalizeOrgPermissionRoleName,
+  parsePermissionTemplateMeta,
+  withPermissionTemplateMeta,
+} from './orgTeammatePermissionRoles.js';
 
 export {
   KNOWLEDGE_ALLOWED_UPLOAD_EXTENSIONS,

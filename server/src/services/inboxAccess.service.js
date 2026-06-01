@@ -15,9 +15,7 @@ import { getOrgPermissionsForMember } from './orgPermissions.service.js';
 export async function listAccessibleInboxIds({ organizationId, membership, orgPermissions }) {
   const permissions =
     orgPermissions ?? (await getOrgPermissionsForMember(organizationId, membership));
-  const viewAll =
-    String(membership.role ?? '').toUpperCase() === 'ADMIN' ||
-    hasOrgPermission(permissions, 'conversations.view_all_inboxes');
+  const viewAll = hasOrgPermission(permissions, 'conversations.view_all_inboxes');
 
   if (viewAll) {
     const { data, error } = await supabaseAdmin

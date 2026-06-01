@@ -6,33 +6,10 @@ import { ChevronDown, GitBranch, Inbox, Loader2, Save, User } from 'lucide-react
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js'
 import { fetchOrgAssignmentSettings, putOrgAssignmentSettings } from '../services/assignmentApi.js'
 import { fetchOrgInboxes } from '../services/inboxesApi.js'
 import { fetchOrgMembers } from '../services/orgWorkspaceApi.js'
-
-function ToggleRow({ label, description, checked, onChange, disabled }) {
-  return (
-    <label
-      className={`flex cursor-pointer items-start justify-between gap-4 rounded-xl border border-[#2b3858] bg-[#12192c] px-4 py-3 ${
-        disabled ? 'cursor-not-allowed opacity-60' : ''
-      }`}
-    >
-      <span className="min-w-0 flex-1">
-        <span className="text-sm font-medium text-white">{label}</span>
-        {description ? (
-          <p className="mt-1 text-xs leading-snug text-slate-400">{description}</p>
-        ) : null}
-      </span>
-      <input
-        type="checkbox"
-        className="mt-1 h-4 w-4 shrink-0 rounded border-[#2b3858] bg-[#0e1526] accent-[#3ECF8E]"
-        checked={checked}
-        disabled={disabled}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-    </label>
-  )
-}
 
 function SettingsSplitCard({ title, description, children }) {
   return (
@@ -66,7 +43,7 @@ export default function OrgAssignmentSettingsPage() {
   const { orgId } = useParams()
   const { organizations } = useOrganizationContext()
   const current = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(current?.role ?? '').toUpperCase() === 'ADMIN'
+  const canManage = useWorkspaceCanManage(orgId)
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -106,11 +83,6 @@ export default function OrgAssignmentSettingsPage() {
     load()
   }, [load])
 
-  const vipTagsText = useMemo(() => {
-    if (!assignment?.vip_tag_names) return 'vip, enterprise'
-    return assignment.vip_tag_names.join(', ')
-  }, [assignment?.vip_tag_names])
-
   const defaultAssigneeValue = useMemo(() => {
     if (!assignment) return 'unassigned'
     return defaultAssigneeSelectValue(assignment.default_assignee)
@@ -118,20 +90,15 @@ export default function OrgAssignmentSettingsPage() {
 
   async function handleSaveOrg(e) {
     e.preventDefault()
-    if (!isAdmin || !assignment || !orgId) return
+    if (!canManage || !assignment || !orgId) return
     setSaving(true)
     setError('')
     setSaved(false)
     try {
-      const vip_tag_names = vipTagsText
-        .split(',')
-        .map((t) => t.trim().toLowerCase())
-        .filter(Boolean)
       const { strategy: _omitStrategy, fallback_notify_member_ids: _omitFallback, ...assignmentPatch } =
         assignment
       const res = await putOrgAssignmentSettings(orgId, {
         ...assignmentPatch,
-        vip_tag_names,
         default_assignee: assignment.default_assignee ?? { type: 'unassigned' },
         self_assign_on_reply: assignment.self_assign_on_reply ?? 'assign_to_me',
       })
@@ -149,7 +116,7 @@ export default function OrgAssignmentSettingsPage() {
     }
   }
 
-  if (!isAdmin) {
+  if (!canManage) {
     return (
       <main className="h-full min-h-0 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10">
         <p className="text-sm text-slate-400">Only organization admins can configure assignment.</p>
@@ -176,7 +143,7 @@ export default function OrgAssignmentSettingsPage() {
         </div>
 
         <p className="mb-6 text-sm text-slate-400">
-          Org-wide defaults for routing, agent profiles, SLA boosts, and VIP rules. Per-inbox assignment
+          Org-wide defaults for routing and agent profiles. Per-inbox assignment
           (manual, round robin, balanced) is configured under{' '}
           <Link to={`/org/${orgId}/settings/inboxes`} className="text-[#6eb5ff] hover:underline">
             Team inboxes
@@ -338,76 +305,6 @@ export default function OrgAssignmentSettingsPage() {
                   />
                 </label>
               </div>
-            </section>
-
-            <section className="flex flex-col gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                SLA &amp; reassignment
-              </h2>
-              <ToggleRow
-                label="SLA-urgent routing"
-                description="When first-response SLA is almost due, prefer agents with the lowest active chat load."
-                checked={Boolean(assignment.sla_routing_enabled)}
-                onChange={(v) => setAssignment({ ...assignment, sla_routing_enabled: v })}
-              />
-              <label className="flex flex-col gap-1 text-sm text-slate-300">
-                SLA urgent threshold (minutes remaining)
-                <input
-                  type="number"
-                  min={1}
-                  max={120}
-                  value={assignment.sla_remaining_minutes_threshold ?? 5}
-                  onChange={(e) =>
-                    setAssignment({
-                      ...assignment,
-                      sla_remaining_minutes_threshold: Number(e.target.value),
-                    })
-                  }
-                  className="rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
-                />
-              </label>
-              <ToggleRow
-                label="Enable reassignment"
-                checked={Boolean(assignment.reassign_enabled)}
-                onChange={(v) => setAssignment({ ...assignment, reassign_enabled: v })}
-              />
-              <ToggleRow
-                label="Reassign on SLA warning"
-                checked={Boolean(assignment.reassign_on_sla_warning)}
-                onChange={(v) => setAssignment({ ...assignment, reassign_on_sla_warning: v })}
-                disabled={!assignment.reassign_enabled}
-              />
-              <ToggleRow
-                label="Reassign when assignee goes offline"
-                checked={Boolean(assignment.reassign_on_agent_offline)}
-                onChange={(v) => setAssignment({ ...assignment, reassign_on_agent_offline: v })}
-                disabled={!assignment.reassign_enabled}
-              />
-            </section>
-
-            <section className="flex flex-col gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-slate-500">VIP</h2>
-              <ToggleRow
-                label="VIP routing"
-                description="Conversations with VIP tags can use an optional team inbox override."
-                checked={Boolean(assignment.vip_routing_enabled)}
-                onChange={(v) => setAssignment({ ...assignment, vip_routing_enabled: v })}
-              />
-              <label className="flex flex-col gap-1 text-sm text-slate-300">
-                VIP tag names (comma-separated)
-                <input
-                  type="text"
-                  value={vipTagsText}
-                  onChange={(e) => {
-                    const vip_tag_names = e.target.value
-                      .split(',')
-                      .map((t) => t.trim().toLowerCase())
-                      .filter(Boolean)
-                    setAssignment({ ...assignment, vip_tag_names })
-                  }}
-                  className="rounded-md border border-[#334060] bg-[#0f1728] px-3 py-2 text-sm text-white"
-                />
-              </label>
             </section>
 
             {error ? (

@@ -43,7 +43,7 @@ export async function emailForMember(organizationId, memberId) {
   return email || null;
 }
 
-/** Org creator email, else first ACTIVE ADMIN (by membership created_at). */
+/** Org creator email (`organizations.created_by`), else earliest ACTIVE member. */
 export async function resolveOrgAdminNotificationEmail(organizationId) {
   const { data: org, error: orgErr } = await supabaseAdmin
     .from('organizations')
@@ -61,21 +61,20 @@ export async function resolveOrgAdminNotificationEmail(organizationId) {
     if (e) return e;
   }
 
-  const { data: admins, error: aErr } = await supabaseAdmin
+  const { data: members, error: aErr } = await supabaseAdmin
     .from('organization_members')
     .select('user_id')
     .eq('organization_id', organizationId)
     .eq('status', 'ACTIVE')
-    .eq('role', 'ADMIN')
     .order('created_at', { ascending: true })
     .limit(5);
 
-  if (aErr || !admins?.length) return null;
+  if (aErr || !members?.length) return null;
 
-  const ids = [...new Set(admins.map((r) => r.user_id).filter(Boolean))];
+  const ids = [...new Set(members.map((r) => r.user_id).filter(Boolean))];
   const { data: users } = await supabaseAdmin.from('users').select('id, email').in('id', ids);
 
-  for (const row of admins) {
+  for (const row of members) {
     const u = users?.find((x) => x.id === row.user_id);
     const e = typeof u?.email === 'string' ? u.email.trim().toLowerCase() : '';
     if (e) return e;

@@ -2,6 +2,7 @@ import { Bot, Loader2, Save } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js'
 import { getAiHealth } from '../services/aiApi.js'
 import { fetchOrgAiSettings, patchOrgAiSettings } from '../services/orgSettingsApi.js'
 
@@ -38,7 +39,7 @@ export default function OrgAiSettingsPage() {
   const { orgId } = useParams()
   const { organizations } = useOrganizationContext()
   const current = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(current?.role ?? '').toUpperCase() === 'ADMIN'
+  const canManage = useWorkspaceCanManage(orgId)
 
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -88,7 +89,7 @@ export default function OrgAiSettingsPage() {
 
   async function handleSave(e) {
     e.preventDefault()
-    if (!isAdmin || !ai || !automation || !ingress) return
+    if (!canManage || !ai || !automation || !ingress) return
     setSaving(true)
     setError('')
     setSaved(false)
@@ -125,7 +126,7 @@ export default function OrgAiSettingsPage() {
           </Link>
         </div>
 
-        {!isAdmin ? (
+        {!canManage ? (
           <p className="mb-4 rounded-lg border border-amber-900/40 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
             Only workspace admins can change these settings. You can view current values below.
           </p>
@@ -196,7 +197,7 @@ export default function OrgAiSettingsPage() {
                   label="Enable AI for this workspace"
                   description="Master switch. When off, AI assignment and per-conversation AI are blocked."
                   checked={ai.ai_enabled}
-                  disabled={!isAdmin}
+                  disabled={!canManage}
                   onChange={(v) => setAi((prev) => ({ ...prev, ai_enabled: v }))}
                 />
                 <ToggleRow
@@ -204,7 +205,7 @@ export default function OrgAiSettingsPage() {
                   description="Suggest replies, summarize threads, and rewrite tone in the inbox."
                   phase="Phase 3"
                   checked={ai.assist_enabled}
-                  disabled={!isAdmin || masterOff}
+                  disabled={!canManage || masterOff}
                   onChange={(v) => setAi((prev) => ({ ...prev, assist_enabled: v }))}
                 />
                 <ToggleRow
@@ -220,7 +221,7 @@ export default function OrgAiSettingsPage() {
                   }
                   phase="Phase 3–4"
                   checked={ai.auto_tag_enabled}
-                  disabled={!isAdmin || masterOff}
+                  disabled={!canManage || masterOff}
                   onChange={(v) => setAi((prev) => ({ ...prev, auto_tag_enabled: v }))}
                 />
                 <ToggleRow
@@ -239,7 +240,7 @@ export default function OrgAiSettingsPage() {
                   }
                   phase="Phase 4"
                   checked={ai.workflow_automation_enabled}
-                  disabled={!isAdmin || masterOff}
+                  disabled={!canManage || masterOff}
                   onChange={(v) => setAi((prev) => ({ ...prev, workflow_automation_enabled: v }))}
                 />
                 <ToggleRow
@@ -247,7 +248,7 @@ export default function OrgAiSettingsPage() {
                   description="Assign unassigned conversations to the AI queue when rules match."
                   phase="Phase 4"
                   checked={ai.auto_route_to_ai}
-                  disabled={!isAdmin || masterOff}
+                  disabled={!canManage || masterOff}
                   onChange={(v) => setAi((prev) => ({ ...prev, auto_route_to_ai: v }))}
                 />
                 <ToggleRow
@@ -255,14 +256,14 @@ export default function OrgAiSettingsPage() {
                   description="Allow AI to send customer-visible messages with approval guardrails."
                   phase="Phase 6"
                   checked={ai.autonomous_replies_enabled}
-                  disabled={!isAdmin || masterOff}
+                  disabled={!canManage || masterOff}
                   onChange={(v) => setAi((prev) => ({ ...prev, autonomous_replies_enabled: v }))}
                 />
                 <ToggleRow
                   label="AI enabled on new conversations"
                   description="Default for conversations.ai_enabled when a thread is created."
                   checked={ai.default_conversation_ai_enabled}
-                  disabled={!isAdmin || masterOff}
+                  disabled={!canManage || masterOff}
                   onChange={(v) =>
                     setAi((prev) => ({ ...prev, default_conversation_ai_enabled: v }))
                   }
@@ -273,7 +274,7 @@ export default function OrgAiSettingsPage() {
                 <span className="text-xs font-medium text-slate-400">Model tier (future)</span>
                 <select
                   value={ai.model_tier}
-                  disabled={!isAdmin || masterOff}
+                  disabled={!canManage || masterOff}
                   onChange={(e) => setAi((prev) => ({ ...prev, model_tier: e.target.value }))}
                   className="mt-1 w-full rounded-lg border border-[#2b3858] bg-[#111827] px-3 py-2 text-sm text-white disabled:opacity-60"
                 >
@@ -293,7 +294,7 @@ export default function OrgAiSettingsPage() {
                   description="Flag or reject noisy inbound messages (blocklist, links, shouting)."
                   phase="Phase 4"
                   checked={ingress.spam_enabled}
-                  disabled={!isAdmin}
+                  disabled={!canManage}
                   onChange={(v) => setIngress((prev) => ({ ...prev, spam_enabled: v }))}
                 />
                 <ToggleRow
@@ -301,7 +302,7 @@ export default function OrgAiSettingsPage() {
                   description="When on, spam is rejected with HTTP 422 instead of flagged in the Spam inbox."
                   phase="Phase 4"
                   checked={ingress.spam_action === 'reject'}
-                  disabled={!isAdmin || !ingress.spam_enabled}
+                  disabled={!canManage || !ingress.spam_enabled}
                   onChange={(v) =>
                     setIngress((prev) => ({ ...prev, spam_action: v ? 'reject' : 'flag' }))
                   }
@@ -311,7 +312,7 @@ export default function OrgAiSettingsPage() {
                   description="Suppress repeat customer messages with the same content within the time window."
                   phase="Phase 4"
                   checked={ingress.duplicate_enabled}
-                  disabled={!isAdmin}
+                  disabled={!canManage}
                   onChange={(v) => setIngress((prev) => ({ ...prev, duplicate_enabled: v }))}
                 />
               </div>
@@ -322,7 +323,7 @@ export default function OrgAiSettingsPage() {
                   min={1}
                   max={1440}
                   value={ingress.duplicate_window_minutes}
-                  disabled={!isAdmin || !ingress.duplicate_enabled}
+                  disabled={!canManage || !ingress.duplicate_enabled}
                   onChange={(e) =>
                     setIngress((prev) => ({
                       ...prev,
@@ -343,7 +344,7 @@ export default function OrgAiSettingsPage() {
                   label="Email on new customer message"
                   description="Notify assignee or admin when a customer sends a message."
                   checked={automation.inbound_notify_enabled}
-                  disabled={!isAdmin}
+                  disabled={!canManage}
                   onChange={(v) =>
                     setAutomation((prev) => ({ ...prev, inbound_notify_enabled: v }))
                   }
@@ -352,7 +353,7 @@ export default function OrgAiSettingsPage() {
                   label="Email on assignment"
                   description="Notify the teammate when a conversation is assigned to them."
                   checked={automation.assignment_notify_enabled}
-                  disabled={!isAdmin}
+                  disabled={!canManage}
                   onChange={(v) =>
                     setAutomation((prev) => ({ ...prev, assignment_notify_enabled: v }))
                   }
@@ -361,7 +362,7 @@ export default function OrgAiSettingsPage() {
                   label="Email when @mentioned on internal note"
                   description="Notify teammates when another agent mentions them on a conversation (default on)."
                   checked={automation.mention_notify_enabled ?? true}
-                  disabled={!isAdmin}
+                  disabled={!canManage}
                   onChange={(v) =>
                     setAutomation((prev) => ({ ...prev, mention_notify_enabled: v }))
                   }
@@ -370,14 +371,14 @@ export default function OrgAiSettingsPage() {
                   label="First-response SLA monitoring"
                   description="Background worker checks for breaches and records analytics events."
                   checked={automation.sla_enabled}
-                  disabled={!isAdmin}
+                  disabled={!canManage}
                   onChange={(v) => setAutomation((prev) => ({ ...prev, sla_enabled: v }))}
                 />
                 <ToggleRow
                   label="Email on SLA breach"
                   description="Notify assignee or routing fallback when a breach is detected (not only via workflow rules)."
                   checked={automation.sla_notify_enabled ?? true}
-                  disabled={!isAdmin || !automation.sla_enabled}
+                  disabled={!canManage || !automation.sla_enabled}
                   onChange={(v) =>
                     setAutomation((prev) => ({ ...prev, sla_notify_enabled: v }))
                   }
@@ -392,7 +393,7 @@ export default function OrgAiSettingsPage() {
                     min={1}
                     max={10080}
                     value={automation.first_response_sla_minutes}
-                    disabled={!isAdmin || !automation.sla_enabled}
+                    disabled={!canManage || !automation.sla_enabled}
                     onChange={(e) =>
                       setAutomation((prev) => ({
                         ...prev,
@@ -412,7 +413,7 @@ export default function OrgAiSettingsPage() {
                     min={1}
                     max={10080}
                     value={automation.next_response_sla_minutes ?? automation.first_response_sla_minutes}
-                    disabled={!isAdmin || !automation.sla_enabled}
+                    disabled={!canManage || !automation.sla_enabled}
                     onChange={(e) =>
                       setAutomation((prev) => ({
                         ...prev,
@@ -425,7 +426,7 @@ export default function OrgAiSettingsPage() {
               </div>
             </section>
 
-            {isAdmin ? (
+            {canManage ? (
               <button
                 type="submit"
                 disabled={saving}

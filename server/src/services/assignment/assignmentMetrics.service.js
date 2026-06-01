@@ -15,7 +15,6 @@ const ASSIGNMENT_EVENT_TYPES = [
 
 const FALLBACK_SKIP_REASONS = new Set([
   'no_candidates',
-  'no_vip_candidates',
   'no_candidates_after_exclude',
 ]);
 

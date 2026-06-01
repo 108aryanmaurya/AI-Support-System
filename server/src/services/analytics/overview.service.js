@@ -169,7 +169,7 @@ export async function getAnalyticsConversations(organizationId, query) {
 export async function getAnalyticsTeam(organizationId, query, membership) {
   const range = parseAnalyticsDateRange(query);
   const role = membership?.role?.toUpperCase();
-  const filterMemberId = role === 'AGENT' ? membership.id : null;
+  const filterMemberId = null;
 
   const team = await fetchAiMetrics(
     organizationId,

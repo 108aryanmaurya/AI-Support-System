@@ -1,27 +1,51 @@
 import { createContext, useContext, useMemo } from 'react'
-import { hasOrgPermission } from '@ai-support/shared'
-import { useOrgPermissions } from '../hooks/useOrgPermissions.js'
 import { permissionDenialMessage } from '../lib/permissionUx.js'
+import { useOrgPermissions } from '../hooks/useOrgPermissions.js'
 
 const OrgPermissionsContext = createContext(null)
 
 export function OrgPermissionsProvider({ orgId, children }) {
-  const { permissions, role, loading, error, refresh } = useOrgPermissions(orgId)
+  const {
+    permissions,
+    memberPermissions,
+    membershipId,
+    role,
+    loading,
+    error,
+    refresh,
+    can: canPermission,
+  } = useOrgPermissions(orgId)
 
   const value = useMemo(() => {
-    const can = (key) => hasOrgPermission(permissions, key)
+    const can = (key) => canPermission(key)
     const deny = (key) => (can(key) ? null : permissionDenialMessage(key))
+    const isAdmin =
+      can('team.configure_permissions') ||
+      can('team.manage_members') ||
+      can('team.invite')
+
     return {
       permissions,
+      memberPermissions,
+      membershipId,
       role,
       loading,
       error,
       refresh,
       can,
       deny,
-      isAdmin: String(role ?? '').toUpperCase() === 'ADMIN',
+      isAdmin,
     }
-  }, [permissions, role, loading, error, refresh])
+  }, [
+    permissions,
+    memberPermissions,
+    membershipId,
+    role,
+    loading,
+    error,
+    refresh,
+    canPermission,
+  ])
 
   return <OrgPermissionsContext.Provider value={value}>{children}</OrgPermissionsContext.Provider>
 }
@@ -34,7 +58,7 @@ export function useOrgPermissionsContext() {
   return ctx
 }
 
-/** Safe when provider is absent (returns permissive stubs). */
+/** Safe when provider is absent (returns null). */
 export function useOrgPermissionsContextOptional() {
   return useContext(OrgPermissionsContext)
 }

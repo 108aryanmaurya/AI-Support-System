@@ -2,6 +2,7 @@ import { Loader2, Plus, Save, Tag, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js'
 import {
   createOrgTag,
   deleteOrgTag,
@@ -30,7 +31,7 @@ export default function OrgTagsSettingsPage() {
   const { orgId } = useParams()
   const { organizations } = useOrganizationContext()
   const current = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(current?.role ?? '').toUpperCase() === 'ADMIN'
+  const canManage = useWorkspaceCanManage(orgId)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -66,7 +67,7 @@ export default function OrgTagsSettingsPage() {
 
   async function handleCreate(e) {
     e.preventDefault()
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     const name = newName.trim()
     if (!name) {
       setError('Tag name is required.')
@@ -104,7 +105,7 @@ export default function OrgTagsSettingsPage() {
   }
 
   async function handleSaveEdit(tagId) {
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     const name = editName.trim()
     if (!name) {
       setError('Tag name is required.')
@@ -129,7 +130,7 @@ export default function OrgTagsSettingsPage() {
   }
 
   async function handleDelete(tag) {
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     const ok = window.confirm(
       `Delete tag "${tag.name}"? It will be removed from all conversations that use it.`,
     )
@@ -169,7 +170,7 @@ export default function OrgTagsSettingsPage() {
           </Link>
         </div>
 
-        {!isAdmin ? (
+        {!canManage ? (
           <p className="mb-4 rounded-lg border border-amber-900/50 bg-amber-950/30 px-3 py-2 text-sm text-amber-200">
             Only workspace admins can create, edit, or delete tags. You can view the list below.
           </p>
@@ -181,7 +182,7 @@ export default function OrgTagsSettingsPage() {
           </p>
         ) : null}
 
-        {isAdmin ? (
+        {canManage ? (
           <form
             onSubmit={handleCreate}
             className="mb-8 rounded-xl border border-[#2b3858] bg-[#12192c] p-4"
@@ -242,7 +243,7 @@ export default function OrgTagsSettingsPage() {
           ) : tags.length === 0 ? (
             <p className="px-4 py-6 text-sm text-slate-400">
               No tags yet.
-              {isAdmin ? ' Create one above to use them in the inbox and for AI auto-tagging.' : ''}
+              {canManage ? ' Create one above to use them in the inbox and for AI auto-tagging.' : ''}
             </p>
           ) : (
             <ul className="divide-y divide-[#2b3858]">
@@ -308,7 +309,7 @@ export default function OrgTagsSettingsPage() {
                     ) : (
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <TagPreview name={tag.name} color={tag.color || DEFAULT_COLOR} />
-                        {isAdmin ? (
+                        {canManage ? (
                           <div className="flex gap-2">
                             <button
                               type="button"

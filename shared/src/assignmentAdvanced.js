@@ -1,66 +1,20 @@
 /**
- * Sprint 6+ org assignment settings (merged into `organizations.settings.assignment`).
+ * Org assignment routing behavior (merged into `organizations.settings.assignment`).
+ * SLA-urgent ranking, VIP routing, and SLA-triggered reassignment were removed.
  */
 
 export const ASSIGNMENT_ADVANCED_DEFAULTS = Object.freeze({
-  sla_routing_enabled: false,
-  /** When remaining first-response SLA is below this many minutes, apply SLA boost. */
-  sla_remaining_minutes_threshold: 5,
-  reassign_enabled: false,
-  /** Enqueue reassignment when `ai.workflow_sla` fires. */
-  reassign_on_sla_warning: false,
-  /** Reassign open threads when assignee goes offline (heartbeat offline). */
-  reassign_on_agent_offline: false,
-  vip_routing_enabled: false,
-  vip_tag_names: Object.freeze(['vip', 'enterprise']),
-  /** Optional inbox id override for VIP threads. */
-  vip_target_inbox_id: null,
+  /** Reassignment jobs (e.g. assignee offline) are always enabled. */
+  reassign_enabled: true,
+  reassign_on_agent_offline: true,
 });
 
 /**
- * @param {unknown} raw
+ * @param {unknown} _raw — legacy keys in stored JSON are ignored
  */
-export function mergeAssignmentAdvancedSettings(raw) {
-  const src = raw && typeof raw === 'object' ? raw : {};
-
-  const threshold = Number(src.sla_remaining_minutes_threshold);
-
-  const vipTags = [];
-  if (Array.isArray(src.vip_tag_names)) {
-    for (const t of src.vip_tag_names) {
-      if (typeof t !== 'string' || !t.trim()) continue;
-      vipTags.push(t.trim().toLowerCase().slice(0, 64));
-      if (vipTags.length >= 16) break;
-    }
-  }
-
+export function mergeAssignmentAdvancedSettings(_raw) {
   return {
-    sla_routing_enabled: src.sla_routing_enabled ?? ASSIGNMENT_ADVANCED_DEFAULTS.sla_routing_enabled,
-    sla_remaining_minutes_threshold:
-      Number.isFinite(threshold) && threshold > 0
-        ? Math.min(120, Math.round(threshold))
-        : ASSIGNMENT_ADVANCED_DEFAULTS.sla_remaining_minutes_threshold,
-    reassign_enabled: src.reassign_enabled ?? ASSIGNMENT_ADVANCED_DEFAULTS.reassign_enabled,
-    reassign_on_sla_warning:
-      src.reassign_on_sla_warning ?? ASSIGNMENT_ADVANCED_DEFAULTS.reassign_on_sla_warning,
-    reassign_on_agent_offline:
-      src.reassign_on_agent_offline ?? ASSIGNMENT_ADVANCED_DEFAULTS.reassign_on_agent_offline,
-    vip_routing_enabled: src.vip_routing_enabled ?? ASSIGNMENT_ADVANCED_DEFAULTS.vip_routing_enabled,
-    vip_tag_names:
-      vipTags.length > 0 ? vipTags : [...ASSIGNMENT_ADVANCED_DEFAULTS.vip_tag_names],
-    vip_target_inbox_id:
-      typeof src.vip_target_inbox_id === 'string' && src.vip_target_inbox_id.trim()
-        ? src.vip_target_inbox_id.trim().slice(0, 64)
-        : null,
+    reassign_enabled: ASSIGNMENT_ADVANCED_DEFAULTS.reassign_enabled,
+    reassign_on_agent_offline: ASSIGNMENT_ADVANCED_DEFAULTS.reassign_on_agent_offline,
   };
-}
-
-/**
- * @param {string[]} tagNames — lowercase
- * @param {string[]} vipTagNames
- */
-export function conversationMatchesVipTags(tagNames, vipTagNames) {
-  const tags = tagNames ?? [];
-  const vip = vipTagNames ?? [];
-  return vip.some((v) => tags.includes(v));
 }

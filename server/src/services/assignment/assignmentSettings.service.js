@@ -113,14 +113,10 @@ export async function canEnqueueAutoRoute(organizationId, conversationId = null)
 }
 
 /**
- * Gate for `assignment.reassign` jobs (Sprint 6+).
+ * Gate for `assignment.reassign` jobs (always enabled).
  *
  * @param {string} organizationId
  */
-export async function canEnqueueReassign(organizationId) {
-  const assignment = await getOrgAssignmentSettings(organizationId);
-  if (!assignment.reassign_enabled) {
-    return { allowed: false, reason: 'reassign_disabled' };
-  }
+export async function canEnqueueReassign(_organizationId) {
   return { allowed: true };
 }

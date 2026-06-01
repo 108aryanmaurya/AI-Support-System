@@ -250,7 +250,7 @@ export async function runAutoAssignConversation({
 
       const useFallbackNotify =
         !defaultAssigneeApplied &&
-        ['no_candidates', 'no_vip_candidates', 'redis_unavailable', 'lock_held'].includes(reason);
+        ['no_candidates', 'redis_unavailable', 'lock_held'].includes(reason);
       if (useFallbackNotify && messageId) {
         void schedulePostInboundNotification({
           organizationId,

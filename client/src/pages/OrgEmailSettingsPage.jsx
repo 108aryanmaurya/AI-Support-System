@@ -2,6 +2,7 @@ import { Check, Copy, Loader2, Mail, RefreshCw, Trash2 } from 'lucide-react'
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { useOrganizationContext } from '../context/OrganizationContext.jsx'
+import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js'
 import {
   deleteOrgEmailSettings,
   fetchOrgEmailSettings,
@@ -53,7 +54,7 @@ export default function OrgEmailSettingsPage() {
   const { orgId } = useParams()
   const { organizations } = useOrganizationContext()
   const current = organizations.find((o) => o.orgId === orgId)
-  const isAdmin = String(current?.role ?? '').toUpperCase() === 'ADMIN'
+  const canManage = useWorkspaceCanManage(orgId)
 
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -89,7 +90,7 @@ export default function OrgEmailSettingsPage() {
 
   async function handleStartForwarding(e) {
     e.preventDefault()
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     setBusy('forwarding')
     setError('')
     try {
@@ -103,7 +104,7 @@ export default function OrgEmailSettingsPage() {
   }
 
   async function handleConfirmForwarding() {
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     setBusy('forwardConfirm')
     setError('')
     try {
@@ -118,7 +119,7 @@ export default function OrgEmailSettingsPage() {
 
   async function handleStartSendingDomain(e) {
     e.preventDefault()
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     setBusy('sendingDomain')
     setError('')
     try {
@@ -134,7 +135,7 @@ export default function OrgEmailSettingsPage() {
 
   async function handleStartDnsMode(e) {
     e.preventDefault()
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     setBusy('dnsMode')
     setError('')
     try {
@@ -149,7 +150,7 @@ export default function OrgEmailSettingsPage() {
   }
 
   async function handleVerify() {
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     setBusy('verify')
     setError('')
     try {
@@ -165,7 +166,7 @@ export default function OrgEmailSettingsPage() {
 
   async function handleSaveAddresses(e) {
     e.preventDefault()
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     setBusy('addresses')
     setError('')
     try {
@@ -183,7 +184,7 @@ export default function OrgEmailSettingsPage() {
   }
 
   async function handleDisconnect() {
-    if (!isAdmin || !orgId) return
+    if (!canManage || !orgId) return
     if (!window.confirm('Disconnect email for this workspace? The email channel will be deactivated.')) {
       return
     }
@@ -225,7 +226,7 @@ export default function OrgEmailSettingsPage() {
           </div>
         </div>
 
-        {!isAdmin ? (
+        {!canManage ? (
           <p className="rounded-xl border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
             Only workspace admins can configure email.
           </p>
@@ -268,14 +269,14 @@ export default function OrgEmailSettingsPage() {
                     value={displaySupportEmail}
                     onChange={(e) => setDisplaySupportEmail(e.target.value)}
                     placeholder="support@yourcompany.com"
-                    disabled={!isAdmin || busy === 'forwarding'}
+                    disabled={!canManage || busy === 'forwarding'}
                     className="mt-1 w-full rounded-xl border border-[#2b3858] bg-[#12192c] px-3 py-2 text-sm text-white placeholder:text-slate-500 disabled:opacity-60"
                   />
                 </label>
                 {!hasForwardAddress ? (
                   <button
                     type="submit"
-                    disabled={!isAdmin || busy === 'forwarding'}
+                    disabled={!canManage || busy === 'forwarding'}
                     className="inline-flex items-center gap-2 rounded-xl bg-[#3ECF8E] px-4 py-2 text-sm font-semibold text-[#0b1020] disabled:opacity-50"
                   >
                     {busy === 'forwarding' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -302,7 +303,7 @@ export default function OrgEmailSettingsPage() {
                     <button
                       type="button"
                       onClick={handleConfirmForwarding}
-                      disabled={!isAdmin || busy === 'forwardConfirm'}
+                      disabled={!canManage || busy === 'forwardConfirm'}
                       className="inline-flex items-center gap-2 rounded-xl border border-[#3ECF8E]/40 bg-[#3ECF8E]/10 px-4 py-2 text-sm font-medium text-[#3ECF8E] disabled:opacity-50"
                     >
                       {busy === 'forwardConfirm' ? (
@@ -345,12 +346,12 @@ export default function OrgEmailSettingsPage() {
                       value={subdomainInput}
                       onChange={(e) => setSubdomainInput(e.target.value)}
                       placeholder="support.yourcompany.com"
-                      disabled={!isAdmin || busy === 'sendingDomain'}
+                      disabled={!canManage || busy === 'sendingDomain'}
                       className="min-w-0 flex-1 rounded-xl border border-[#2b3858] bg-[#12192c] px-3 py-2 text-sm text-white placeholder:text-slate-500 disabled:opacity-60"
                     />
                     <button
                       type="submit"
-                      disabled={!isAdmin || busy === 'sendingDomain'}
+                      disabled={!canManage || busy === 'sendingDomain'}
                       className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#3ECF8E] px-4 py-2 text-sm font-semibold text-[#0b1020] disabled:opacity-50"
                     >
                       {busy === 'sendingDomain' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -401,7 +402,7 @@ export default function OrgEmailSettingsPage() {
                     <button
                       type="button"
                       onClick={handleVerify}
-                      disabled={!isAdmin || busy === 'verify'}
+                      disabled={!canManage || busy === 'verify'}
                       className="mt-4 inline-flex items-center gap-2 rounded-xl border border-[#3ECF8E]/40 bg-[#3ECF8E]/10 px-4 py-2 text-sm font-medium text-[#3ECF8E] disabled:opacity-50"
                     >
                       {busy === 'verify' ? (
@@ -429,7 +430,7 @@ export default function OrgEmailSettingsPage() {
                         type="text"
                         value={outboundLocal}
                         onChange={(e) => setOutboundLocal(e.target.value)}
-                        disabled={!isAdmin || busy === 'addresses'}
+                        disabled={!canManage || busy === 'addresses'}
                         className="w-32 border-0 bg-transparent px-3 py-2 text-sm text-white focus:outline-none disabled:opacity-60"
                       />
                       <span className="text-sm text-slate-500">@{subdomain}</span>
@@ -437,7 +438,7 @@ export default function OrgEmailSettingsPage() {
                   </label>
                   <button
                     type="submit"
-                    disabled={!isAdmin || busy === 'addresses'}
+                    disabled={!canManage || busy === 'addresses'}
                     className="inline-flex items-center gap-2 rounded-xl bg-[#3ECF8E] px-4 py-2 text-sm font-semibold text-[#0b1020] disabled:opacity-50"
                   >
                     {busy === 'addresses' ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -448,7 +449,7 @@ export default function OrgEmailSettingsPage() {
             ) : null}
 
             {/* Advanced: full DNS mode */}
-            {isAdmin ? (
+            {canManage ? (
               <section className="rounded-2xl border border-dashed border-[#2b3858] bg-[#0a0f1a] p-5">
                 <button
                   type="button"
@@ -528,7 +529,7 @@ export default function OrgEmailSettingsPage() {
               </section>
             ) : null}
 
-            {configured && isAdmin ? (
+            {configured && canManage ? (
               <section className="border-t border-[#1d253a] pt-6">
                 <button
                   type="button"

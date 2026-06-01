@@ -13,6 +13,7 @@ import {
   Zap,
 } from 'lucide-react'
 import { useMemo, useState } from 'react'
+import { ConversationAccessSection } from './ConversationAccessSection.jsx'
 import {
   INBOX_PERMISSION_FIELD_LABELS,
   INBOX_PERMISSION_INBOX_GROUPS,
@@ -42,12 +43,17 @@ const SECTION_ICONS = {
  * @param {object} props
  * @param {object} props.permissions
  * @param {(next: object) => void} props.onChange
+ * @param {boolean} [props.readOnly]
+ * @param {string} [props.orgId] — loads team inboxes for conversation access picker
  */
-export function InboxMemberPermissionsEditor({ permissions, onChange }) {
+export function InboxMemberPermissionsEditor({ permissions, onChange, readOnly = false, orgId }) {
   const merged = useMemo(() => mergeInboxMemberPermissions(permissions), [permissions])
   const [expandedId, setExpandedId] = useState('copilot')
 
-  const setPermissions = (patch) => onChange(mergeInboxMemberPermissions({ ...merged, ...patch }))
+  const setPermissions = (patch) => {
+    if (readOnly) return
+    onChange(mergeInboxMemberPermissions({ ...merged, ...patch }))
+  }
 
   const setBoolSection = (sectionId, key, value) => {
     setPermissions({
@@ -77,10 +83,15 @@ export function InboxMemberPermissionsEditor({ permissions, onChange }) {
         const isOpen = expandedId === section.id
         const summary = inboxPermissionSectionSummary(section.id, merged)
 
+        const overflowClass =
+          section.id === 'conversationAccess' && isOpen ? 'overflow-visible' : 'overflow-hidden'
+
         return (
           <div
             key={section.id}
-            className="overflow-hidden rounded-xl border border-[#2b3858] bg-[#12192c]"
+            className={`${overflowClass} rounded-xl border border-[#2b3858] bg-[#12192c] ${
+              section.id === 'conversationAccess' && isOpen ? 'relative z-20' : ''
+            }`}
           >
             <button
               type="button"
@@ -102,6 +113,7 @@ export function InboxMemberPermissionsEditor({ permissions, onChange }) {
                 {section.type === 'copilot' ? (
                   <RadioGroup
                     name="copilot-usage"
+                    readOnly={readOnly}
                     value={merged.copilot.usage}
                     onChange={(usage) => setPermissions({ copilot: { usage } })}
                     options={[
@@ -113,27 +125,13 @@ export function InboxMemberPermissionsEditor({ permissions, onChange }) {
                 ) : null}
 
                 {section.type === 'conversationAccess' ? (
-                  <RadioGroup
-                    name="conversation-access"
-                    value={merged.conversationAccess.mode}
-                    onChange={(mode) =>
-                      setPermissions({ conversationAccess: { ...merged.conversationAccess, mode } })
+                  <ConversationAccessSection
+                    conversationAccess={merged.conversationAccess}
+                    readOnly={readOnly}
+                    orgId={orgId}
+                    onChange={(next) =>
+                      setPermissions({ conversationAccess: { ...merged.conversationAccess, ...next } })
                     }
-                    options={[
-                      { value: 'all', label: 'All conversations' },
-                      { value: 'assigned_to_me', label: 'Conversations assigned to them only' },
-                      { value: 'assigned_to_my_teams', label: 'Conversations assigned to their teams only' },
-                      {
-                        value: 'all_except_teams',
-                        label: 'All conversations except assigned to',
-                        hint: 'Select teams',
-                      },
-                      {
-                        value: 'mentions_only',
-                        label: 'Conversations accessed via @ mentions or URL links only',
-                        disabled: true,
-                      },
-                    ]}
                   />
                 ) : null}
 
@@ -141,6 +139,7 @@ export function InboxMemberPermissionsEditor({ permissions, onChange }) {
                   <BooleanSection
                     sectionId={section.id}
                     merged={merged}
+                    readOnly={readOnly}
                     allChecked={allCheckedInSection(section.id)}
                     onSelectAll={(v) => setAllInSection(section.id, v)}
                     onToggle={setBoolSection}
@@ -158,6 +157,7 @@ export function InboxMemberPermissionsEditor({ permissions, onChange }) {
                           keys={group.keys}
                           sectionId="inbox"
                           merged={merged}
+                          readOnly={readOnly}
                           onToggle={setBoolSection}
                           indentMacros={group.title === 'Macros'}
                         />
@@ -167,7 +167,7 @@ export function InboxMemberPermissionsEditor({ permissions, onChange }) {
                 ) : null}
 
                 {section.type === 'reports' ? (
-                  <ReportsTree merged={merged} onToggle={setBoolSection} />
+                  <ReportsTree merged={merged} readOnly={readOnly} onToggle={setBoolSection} />
                 ) : null}
               </div>
             ) : null}
@@ -178,39 +178,24 @@ export function InboxMemberPermissionsEditor({ permissions, onChange }) {
   )
 }
 
-export function InboxMemberPermissionsToolbar({ permissions, onChange, role, onRoleChange }) {
+export function InboxMemberPermissionsToolbar({ permissions, onChange, readOnly = false }) {
   const restricted = isInboxMemberPermissionsRestricted(permissions)
 
   function handleToggleAll() {
+    if (readOnly) return
     const next = restricted
       ? allowAllInboxMemberPermissions(permissions)
       : restrictAllInboxMemberPermissions(permissions)
     onChange(next)
-    onRoleChange(next.role ?? 'member')
   }
 
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-      <div>
-        <label className="text-sm font-medium text-slate-300">Role</label>
-        <select
-          value={role}
-          onChange={(e) => {
-            const r = e.target.value
-            onRoleChange(r)
-            onChange(mergeInboxMemberPermissions({ ...permissions, role: r }))
-          }}
-          className="mt-1 block min-w-[200px] rounded-lg border border-[#2b3858] bg-[#111827] px-3 py-2 text-sm text-white"
-        >
-          <option value="none">No role</option>
-          <option value="member">Member</option>
-          <option value="lead">Lead</option>
-        </select>
-      </div>
+    <div className="mb-6 flex flex-wrap items-center justify-end gap-4">
       <button
         type="button"
+        disabled={readOnly}
         onClick={handleToggleAll}
-        className="inline-flex items-center gap-1 rounded-lg border border-[#2b3858] px-3 py-2 text-sm text-slate-300 hover:bg-[#151b2e]"
+        className="inline-flex items-center gap-1 rounded-lg border border-[#2b3858] px-3 py-2 text-sm text-slate-300 hover:bg-[#151b2e] disabled:cursor-not-allowed disabled:opacity-60"
       >
         {restricted ? 'Allow all' : 'Restrict all'}
         <ChevronRight className="h-4 w-4" />
@@ -219,7 +204,7 @@ export function InboxMemberPermissionsToolbar({ permissions, onChange, role, onR
   )
 }
 
-function BooleanSection({ sectionId, merged, allChecked, onSelectAll, onToggle }) {
+function BooleanSection({ sectionId, merged, allChecked, onSelectAll, onToggle, readOnly = false }) {
   const labels = INBOX_PERMISSION_FIELD_LABELS[sectionId]
   return (
     <div>
@@ -227,8 +212,9 @@ function BooleanSection({ sectionId, merged, allChecked, onSelectAll, onToggle }
         <input
           type="checkbox"
           checked={allChecked}
+          disabled={readOnly}
           onChange={(e) => onSelectAll(e.target.checked)}
-          className="rounded border-slate-600"
+          className="rounded border-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
         />
         Select all
       </label>
@@ -236,13 +222,14 @@ function BooleanSection({ sectionId, merged, allChecked, onSelectAll, onToggle }
         keys={Object.keys(labels)}
         sectionId={sectionId}
         merged={merged}
+        readOnly={readOnly}
         onToggle={onToggle}
       />
     </div>
   )
 }
 
-function CheckboxList({ keys, sectionId, merged, onToggle, indentMacros = false }) {
+function CheckboxList({ keys, sectionId, merged, onToggle, indentMacros = false, readOnly = false }) {
   const labels = INBOX_PERMISSION_FIELD_LABELS[sectionId]
   const macroChildKeys = new Set(['createMacros', 'editMacros', 'deleteMacros'])
 
@@ -257,8 +244,9 @@ function CheckboxList({ keys, sectionId, merged, onToggle, indentMacros = false 
             <input
               type="checkbox"
               checked={Boolean(merged[sectionId][key])}
+              disabled={readOnly}
               onChange={(e) => onToggle(sectionId, key, e.target.checked)}
-              className="mt-0.5 rounded border-slate-600"
+              className="mt-0.5 rounded border-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <span>{labels[key]}</span>
           </label>
@@ -268,7 +256,7 @@ function CheckboxList({ keys, sectionId, merged, onToggle, indentMacros = false 
   )
 }
 
-function ReportsTree({ merged, onToggle }) {
+function ReportsTree({ merged, onToggle, readOnly = false }) {
   const labels = INBOX_PERMISSION_FIELD_LABELS.reports
   const tree = INBOX_PERMISSION_REPORTS_TREE[0]
 
@@ -279,8 +267,9 @@ function ReportsTree({ merged, onToggle }) {
           <input
             type="checkbox"
             checked={Boolean(merged.reports[tree.key])}
+            disabled={readOnly}
             onChange={(e) => onToggle('reports', tree.key, e.target.checked)}
-            className="mt-0.5 rounded border-slate-600"
+            className="mt-0.5 rounded border-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
           />
           <span>{labels[tree.key]}</span>
         </label>
@@ -292,8 +281,8 @@ function ReportsTree({ merged, onToggle }) {
                   type="checkbox"
                   checked={Boolean(merged.reports[childKey])}
                   onChange={(e) => onToggle('reports', childKey, e.target.checked)}
-                  className="mt-0.5 rounded border-slate-600"
-                  disabled={!merged.reports[tree.key]}
+                  className="mt-0.5 rounded border-slate-600 disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={readOnly || !merged.reports[tree.key]}
                 />
                 <span>{labels[childKey]}</span>
               </label>
@@ -305,14 +294,14 @@ function ReportsTree({ merged, onToggle }) {
   )
 }
 
-function RadioGroup({ name, value, onChange, options }) {
+function RadioGroup({ name, value, onChange, options, readOnly = false }) {
   return (
     <ul className="space-y-3">
       {options.map((opt) => (
         <li key={opt.value}>
           <label
             className={`flex cursor-pointer items-start gap-3 text-sm ${
-              opt.disabled ? 'cursor-not-allowed text-slate-600' : 'text-slate-300'
+              opt.disabled || readOnly ? 'cursor-not-allowed text-slate-600' : 'text-slate-300'
             }`}
           >
             <input
@@ -320,9 +309,9 @@ function RadioGroup({ name, value, onChange, options }) {
               name={name}
               value={opt.value}
               checked={value === opt.value}
-              disabled={opt.disabled}
-              onChange={() => !opt.disabled && onChange(opt.value)}
-              className="mt-1"
+              disabled={opt.disabled || readOnly}
+              onChange={() => !opt.disabled && !readOnly && onChange(opt.value)}
+              className="mt-1 disabled:cursor-not-allowed disabled:opacity-60"
             />
             <span>
               {opt.label}

@@ -2,7 +2,7 @@
 
 ## Overview
 
-New users **register an account**, then either **create a workspace (organization)** or **join via invite**. Routing after auth is centralized on `/continue`.
+New users **register an account** (no workspace is created). They then either **create a workspace (organization)** under their super organization or **join via invite** (membership only). Routing after auth is centralized on `/continue`.
 
 ## Capabilities
 

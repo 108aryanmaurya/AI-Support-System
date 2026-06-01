@@ -15,10 +15,24 @@ import inboxesRoutes from './inboxes.routes.js';
 import {
   createInviteController,
   createInvitesBatchController,
+  deleteMemberController,
+  getCurrentMemberController,
+  getMemberController,
   listMembersController,
   listPendingInvitesController,
   listWorkspaceChannelsController,
+  patchMemberPermissionsController,
 } from '../controllers/org.controller.js';
+import {
+  getTeammateProfileController,
+  patchTeammateProfileController,
+} from '../controllers/teammateProfile.controller.js';
+import {
+  createOrgTeammatePermissionRoleController,
+  deleteOrgTeammatePermissionRoleController,
+  listOrgTeammatePermissionRolesController,
+  updateOrgTeammatePermissionRoleController,
+} from '../controllers/orgTeammatePermissionRoles.controller.js';
 
 /**
  * Authenticated org workspace mounted at `/api/org/:orgId`.
@@ -30,11 +44,33 @@ router.use(requireAuth);
 router.use(requireOrgAccess());
 
 router.get('/members', listMembersController);
+router.get('/members/me', getCurrentMemberController);
+router.get('/members/:memberId/profile', getTeammateProfileController);
+router.patch('/members/:memberId/profile', patchTeammateProfileController);
+router.get('/members/:memberId', getMemberController);
+router.patch('/members/:memberId', patchMemberPermissionsController);
+router.delete('/members/:memberId', deleteMemberController);
 router.get('/channels', listWorkspaceChannelsController);
 router.get('/audit/events', requirePermission('analytics.view_org'), listOrgAuditEventsController);
 router.post('/invites/batch', requirePermission('team.invite'), createInvitesBatchController);
 router.get('/invites', listPendingInvitesController);
 router.post('/invite', requirePermission('team.invite'), createInviteController);
+router.get('/teammate-permission-roles', listOrgTeammatePermissionRolesController);
+router.post(
+  '/teammate-permission-roles',
+  requireRole('ADMIN'),
+  createOrgTeammatePermissionRoleController,
+);
+router.patch(
+  '/teammate-permission-roles/:roleId',
+  requireRole('ADMIN'),
+  updateOrgTeammatePermissionRoleController,
+);
+router.delete(
+  '/teammate-permission-roles/:roleId',
+  requireRole('ADMIN'),
+  deleteOrgTeammatePermissionRoleController,
+);
 router.use('/settings', orgSettingsRoutes);
 router.use('/ai', orgAiRoutes);
 router.use('/knowledge', orgKnowledgeRoutes);

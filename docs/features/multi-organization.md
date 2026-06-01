@@ -2,13 +2,16 @@
 
 ## Overview
 
-Every customer workspace is an **organization**. Users belong via **organization_members** with role and status. All agent product data is scoped by `organization_id`; the API enforces membership from the URL segment `:orgId` only.
+Account holders own a **super_organization** (one per user who creates workspaces). Each **organization** is a workspace under that super org. Users belong to workspaces via **organization_members** with role, status, and optional granular `permissions`. Invite acceptance adds membership only — no new organization or super organization for the invitee.
+
+Signup creates `public.users` only. Workspaces are created through onboarding **Create organization** (`POST /api/org/create`). All agent product data is scoped by `organization_id`; the API enforces membership from the URL segment `:orgId` only.
 
 ## Capabilities
 
-- Create organization; list “my orgs”
+- Create organization under caller’s super organization; list “my orgs” (membership-based)
+- Workspace creator: `organizations.created_by`, full `permissions` on initial `organization_members` row
 - ACTIVE membership required for workspace APIs
-- Roles: `ADMIN`, `AGENT`
+- Dynamic role labels on `organization_members.role` (templates from Teammates → Roles)
 - Client: org list context, selector, switcher, last-org `localStorage`
 - URL pattern: `/org/:orgId/inbox`, `/reports`, `/settings`, etc.
 
@@ -28,13 +31,13 @@ flowchart TB
 | Layer | Path |
 |-------|------|
 | Middleware | `server/src/middleware/orgAccess.js` (`requireOrgAccess`, `requireRole`) |
-| Service | `server/src/services/org.service.js` |
+| Service | `server/src/services/org.service.js`, `server/src/services/superOrganization.service.js` |
 | Controller | `server/src/controllers/org.controller.js` |
 | Routes | `server/src/routes/org.routes.js`, `server/src/routes/orgWorkspace.routes.js` |
 | Client context | `client/src/context/OrganizationContext.jsx` |
 | Layout | `client/src/layouts/OrgWorkspaceLayout.jsx` |
 | Storage | `client/src/utils/lastOrgStorage.js` |
-| Schema | `supabase/migrations/20260512100000_multi_organization_saas.sql` |
+| Schema | `supabase/migrations/20260512100000_multi_organization_saas.sql`, `20260601150000_super_organizations.sql` |
 
 ## API
 
@@ -48,7 +51,7 @@ flowchart TB
 
 ## Database
 
-- `organizations`, `organization_members`, `invites`
+- `super_organizations`, `organizations` (`super_organization_id`, `created_by`), `organization_members` (`permissions`), `invites`
 - RLS: members see only their org’s data (see [security](./security-and-access-control.md))
 
 ## Connections

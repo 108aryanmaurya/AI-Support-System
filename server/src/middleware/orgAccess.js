@@ -87,47 +87,36 @@ export function requireOrgAccess(options = {}) {
 export const requireOrgParamAccess = requireOrgAccess();
 
 /**
- * Must run after {@link requireOrgAccess}. Restricts to one or more organization_roles.
+ * Legacy ADMIN/AGENT gate — disabled until `organization_members.permissions` is enforced.
+ * @deprecated Use {@link requirePermission} when capability checks are wired to member JSON.
  */
-export function requireRole(...allowedRoles) {
-  const allowed = new Set(
-    allowedRoles
-      .flat()
-      .filter(Boolean)
-      .map((r) => String(r).trim().toUpperCase()),
-  );
-
-  return function requireRoleMiddleware(req, res, next) {
-    const role = req.orgMembership?.role;
-    if (!role || !allowed.has(role)) {
-      res.status(403).json({ error: 'Insufficient permissions for this organization.' });
-      return;
-    }
+export function requireRole(..._allowedRoles) {
+  return function requireRoleMiddleware(_req, _res, next) {
     next();
   };
 }
 
 /**
- * Must run after {@link requireOrgAccess}. Checks capability flags on `req.orgPermissions`.
- * ADMIN role presets satisfy all org-scoped keys.
+ * Capability gate from `organization_members.permissions` (via {@link getOrgPermissionsForMember}).
  *
  * @param {...string} permissionKeys — e.g. `team.invite`, `conversations.mark_spam`
  */
 export function requirePermission(...permissionKeys) {
-  const keys = permissionKeys.flat().filter(Boolean);
+  return async function requirePermissionMiddleware(req, res, next) {
+    try {
+      const perms =
+        req.orgPermissions ??
+        (await getOrgPermissionsForMember(req.orgId ?? req.organizationId, req.orgMembership));
 
-  return function requirePermissionMiddleware(req, res, next) {
-    const permissions = req.orgPermissions;
-    if (!permissions) {
-      res.status(500).json({ error: 'Permissions not loaded (middleware misconfigured).' });
-      return;
-    }
-    for (const key of keys) {
-      if (!hasOrgPermission(permissions, key)) {
-        res.status(403).json({ error: 'Insufficient permissions for this action.' });
-        return;
+      for (const key of permissionKeys) {
+        if (!hasOrgPermission(perms, key)) {
+          res.status(403).json({ error: 'Insufficient permissions for this action.' });
+          return;
+        }
       }
+      next();
+    } catch (e) {
+      next(e);
     }
-    next();
   };
 }
