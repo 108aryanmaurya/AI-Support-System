@@ -11,6 +11,7 @@ Each **conversation** belongs to exactly one **channel** (`channel_type` + `chan
 - List channels: `GET /api/org/:orgId/channels`
 - **Web**: public incoming POST + web adapter for outbound
 - **Email**: inbound webhook, threading, Resend outbound (or mock); agent inbox send also emails the customer on **any** channel when `customers.email` is set and an org email channel exists
+- **New conversation composer (Email/Chat)**: `POST /api/org/:orgId/conversations/compose` uses the same outbound email pipeline; chat realtime delivery is pending and currently uses email fallback
 - **Email DNS setup (admin UI)** — subdomain verification via Resend; see [org-email-channel.md](./org-email-channel.md)
 - WhatsApp / Messenger: types in DB only; outbound **501**
 

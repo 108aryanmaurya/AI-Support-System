@@ -106,12 +106,13 @@ Inventory of features **implemented in the codebase today** (client, server, sha
   - Priority: `low`, `medium`, `high`, `urgent`
   - Assignment type: `unassigned`, `assigned_to_agent`, `assigned_to_team`, `assigned_to_ai`
 - **Inbox UI** (`InboxPage`) — conversation list, thread view, composer, lifecycle buttons (Resolve / Close / Waiting on customer), lifecycle list badges and detail hints, status/priority/assignee controls
+- **New conversation composer** — `/org/:orgId/inbox/new-conversation` creates a new Email/Chat conversation, defaults assignee to the creator, supports To/Cc/Bcc recipient picking from customer list, and sends the first outbound message via the existing email pipeline *(chat realtime delivery pending; email fallback implemented)*.
 - **Inbox state (client)** — Zustand `inboxStore` (conversations, filters, typing, mention cues)
 - **Filter caching & debounced refetch** — faster sidebar switching
 - **Periodic HTTP sync** — backup when realtime is quiet
 - **Claim-on-first-reply** — replying on an **unassigned** or **team-inbox** thread can self-assign the agent (org **Self-assign by replying** on Settings → Assignment; respects `client_request_id` idempotency)
 - **RBAC & collaboration** — org capabilities (`settings.permissions` + role presets); `requirePermission`; assignment steal prevention; `POST .../conversations/:id/claim`; spam/close/analytics/invite gates; audit `GET .../audit/events`; send collision `stale_thread` warning — see [rba-sprints.md](docs/features/rba-sprints.md)
-- **One open conversation per customer** — DB constraint for email/web threads
+- **Parallel active conversations per customer** — DB uniqueness constraint removed; multiple active/open threads per customer are allowed
 - **Active thread index / RPC helpers** — migrations for performant inbox queries
 - **Intelligent assignment (Sprint 1–8)** — Settings → Assignment (**default assignee** when round robin / balanced auto-route finds no agent; **self-assign by replying**); per-inbox auto-route on Team inboxes; `GET .../assignment/metrics` + Reports overview KPIs; structured assignment logs; preview rate limits; ops runbook [auto-assignment-operations.md](docs/features/auto-assignment-operations.md); worker jobs `assignment.auto_route` / `assignment.reassign`
 
@@ -227,6 +228,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Settings layout** — nested routes under `/org/:orgId/settings`
 - **Settings home** — card grid; Teammates and AI & Automation cards link to live pages *(other cards UI-only)*
 - **Settings nav taxonomy** — Workspace, Subscription, Channels, Inbox, AI & Automation, Integrations, Data, Help Center, Outbound, Personal *(AI & Automation routed; rest largely placeholder)*
+- **Contacts page** — `/org/:orgId/contact` from Hover Sidebar; lists org customers with search using `GET /api/org/:orgId/customers`, including `type` (`USER`/`LEAD`) and `user_id`; supports modal actions for **Create new user** and **Create new lead**
 - **Teammates settings** — fully wired (see §5)
 - **Org AI & automation settings** — `/settings/ai`; `GET/PATCH /api/org/:orgId/settings/ai`; persists `organizations.settings.ai` + `.automation`
 

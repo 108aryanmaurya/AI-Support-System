@@ -74,6 +74,11 @@ export function InboxSidebar({
             type="button"
             className="rounded-md bg-[#1b2741] p-1.5 text-slate-300 hover:text-white"
             aria-label="New conversation"
+            onClick={() => {
+              if (typeof orgId === 'string' && orgId.trim()) {
+                navigate(`/org/${orgId.trim()}/inbox/new-conversation`)
+              }
+            }}
           >
             <Plus size={14} />
           </button>

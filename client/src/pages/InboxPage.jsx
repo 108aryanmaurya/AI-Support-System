@@ -257,6 +257,9 @@ export default function InboxPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const inboxListParams = useMemo(() => parseInboxListParams(searchParams), [searchParams])
+  const isNewConversationOnlyMode =
+    searchParams.get('isNewConverstion') === 'true' ||
+    searchParams.get('isNewConversation') === 'true'
   const conversationIdFromUrl = inboxListParams.conversation
   /** Active thread is driven by `?conversation=` in the URL. */
   const activeConversationId = conversationIdFromUrl
@@ -961,6 +964,12 @@ export default function InboxPage() {
   }, [activeConversationId, loadMessages])
 
   const conversationView = useMemo(() => conversations.map(toConversationViewModel), [conversations])
+  const visibleConversationView = useMemo(() => {
+    if (!isNewConversationOnlyMode) return conversationView
+    if (!activeConversationId) return []
+    return conversationView.filter((item) => item.id === activeConversationId)
+  }, [conversationView, isNewConversationOnlyMode, activeConversationId])
+  const listInViewCount = visibleConversationView.length
 
   const assignConversation = useCallback(
     async (conversationId, memberId) => {
@@ -1115,6 +1124,18 @@ export default function InboxPage() {
     },
     [organizationId, setSearchParams],
   )
+
+  const handleShowAllConversations = useCallback(() => {
+    setSearchParams(
+      (prev) => {
+        const next = new URLSearchParams(prev)
+        next.delete('isNewConverstion')
+        next.delete('isNewConversation')
+        return next
+      },
+      { replace: true },
+    )
+  }, [setSearchParams])
 
   useEffect(() => {
     if (!organizationId) return
@@ -1378,7 +1399,7 @@ export default function InboxPage() {
           <div className="inbox-scrollbar min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3 [scrollbar-gutter:stable]">
             <div className="mb-3 flex items-center justify-between">
               <span className="rounded-full border border-[#3a4b6f] bg-[#18233b] px-2.5 py-1 text-[12px] font-semibold text-white">
-                {loadingConversations ? 'Loading...' : `${listTotal} in view`}
+                {loadingConversations ? 'Loading...' : `${listInViewCount} in view`}
               </span>
               <div className="flex items-center gap-2">
                 <span className="rounded-full border border-[#3a4b6f] bg-[#18233b] px-2.5 py-1 text-[12px] font-semibold text-white">
@@ -1391,7 +1412,7 @@ export default function InboxPage() {
             </div>
 
             <div className="space-y-0">
-              {conversationView.map((item) => (
+              {visibleConversationView.map((item) => (
                 <ConversationListRow
                   key={item.id}
                   conversationId={item.id}
@@ -1403,9 +1424,20 @@ export default function InboxPage() {
                   onSelect={handleSelectConversation}
                 />
               ))}
-              {!loadingConversations && conversationView.length === 0 ? (
+              {!loadingConversations && visibleConversationView.length === 0 ? (
                 <div className="px-1 py-3 text-sm text-slate-400">
                   No conversations found.
+                </div>
+              ) : null}
+              {isNewConversationOnlyMode && !loadingConversations ? (
+                <div className="px-1 pb-2 pt-3">
+                  <button
+                    type="button"
+                    onClick={handleShowAllConversations}
+                    className="text-xs font-medium text-sky-300 hover:text-sky-200"
+                  >
+                    {`See all (${listTotal}) conversations`}
+                  </button>
                 </div>
               ) : null}
             </div>

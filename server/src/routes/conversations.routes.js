@@ -3,6 +3,7 @@ import { requirePermission } from '../middleware/orgAccess.js';
 import { inboxTransferRateLimit } from '../middleware/inboxRateLimit.js';
 import {
   claimConversationController,
+  composeConversationAndSendController,
   createConversationController,
   getConversationCountsController,
   getConversationMessagesController,
@@ -16,6 +17,7 @@ import { transferConversationInboxController } from '../controllers/transferInbo
 const router = Router({ mergeParams: true });
 
 router.post('/', createConversationController);
+router.post('/compose', requirePermission('messages.send'), composeConversationAndSendController);
 router.get('/', getConversationsController);
 router.get('/counts', getConversationCountsController);
 router.get('/members', listOrganizationMembersController);

@@ -232,6 +232,8 @@ async function httpSendResend({
   apiKey,
   fromEmail,
   toEmail,
+  ccEmails,
+  bccEmails,
   subject,
   text,
   inReplyTo,
@@ -268,7 +270,9 @@ async function httpSendResend({
     },
     body: JSON.stringify({
       from: fromAddress,
-      to: [toEmail],
+      to: Array.isArray(toEmail) ? toEmail : [toEmail],
+      ...(Array.isArray(ccEmails) && ccEmails.length ? { cc: ccEmails } : {}),
+      ...(Array.isArray(bccEmails) && bccEmails.length ? { bcc: bccEmails } : {}),
       subject,
       text,
       html: `<div>${escapedHtml}</div>`,
@@ -299,6 +303,8 @@ export async function sendEmailViaProvider({
   conversation,
   customer,
   message: messageBody,
+  recipients = null,
+  subjectOverride = null,
 }) {
   const text = typeof messageBody === 'string' ? messageBody.trim() : '';
 
@@ -322,10 +328,13 @@ export async function sendEmailViaProvider({
       };
     }
 
-    const recipient = normalizeEmail(
-      typeof customer?.email === 'string' ? customer.email : '',
-    );
-    if (!recipient || !isValidEmail(recipient)) {
+    const primaryRecipient = normalizeEmail(typeof customer?.email === 'string' ? customer.email : '');
+    const toFromOverride = Array.isArray(recipients?.to)
+      ? recipients.to.map((e) => normalizeEmail(e)).filter(Boolean)
+      : [];
+    const toFinal = toFromOverride.length ? toFromOverride : (primaryRecipient ? [primaryRecipient] : []);
+
+    if (!toFinal.length || !toFinal.some((e) => isValidEmail(e))) {
       return {
         ok: false,
         external_message_id: null,
@@ -334,13 +343,23 @@ export async function sendEmailViaProvider({
       };
     }
 
+    const ccFinal = Array.isArray(recipients?.cc)
+      ? recipients.cc.map((e) => normalizeEmail(e)).filter((e) => e && isValidEmail(e))
+      : [];
+    const bccFinal = Array.isArray(recipients?.bcc)
+      ? recipients.bcc.map((e) => normalizeEmail(e)).filter((e) => e && isValidEmail(e))
+      : [];
+
     const routing = await resolveEmailReferencesHeaders(conversation.organization_id, conversation.id);
     const inReplyTarget = routing.anchorRaw;
     const referencesForHeader =
       referencesHeaderFromAnchors(inReplyTarget, routing.priorReferencesRaw) ??
       normalizeMessageId(inReplyTarget);
 
+    const overrideSubject =
+      typeof subjectOverride === 'string' && subjectOverride.trim() ? subjectOverride.trim() : null;
     const subjectLine =
+      overrideSubject ||
       (typeof conversation.subject === 'string' && conversation.subject.trim()) ||
       routing.threadSubject ||
       'Support reply';
@@ -394,7 +413,9 @@ export async function sendEmailViaProvider({
     const { external_message_id: externalId } = await httpSendResend({
       apiKey,
       fromEmail,
-      toEmail: recipient,
+      toEmail: toFinal,
+      ccEmails: ccFinal,
+      bccEmails: bccFinal,
       subject: subjectLine,
       text,
       inReplyTo: inReplyTarget,

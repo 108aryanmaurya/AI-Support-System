@@ -30,7 +30,7 @@ const topItems = [
   { label: 'Knowledge', icon: BookOpen, path: 'knowledge' },
   { label: 'Reports', icon: SquareChartGantt, path: 'reports', permission: 'analytics.view_org' },
   { label: 'Outbound', icon: ArrowRight },
-  { label: 'Contacts', icon: ContactRound },
+  { label: 'Contacts', icon: ContactRound, path: 'contact' },
 ]
 
 const bottomItems = [

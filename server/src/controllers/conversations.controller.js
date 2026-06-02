@@ -14,6 +14,7 @@ import {
 import {
   createConversation,
   getPagination,
+  findOrCreateCustomer,
   listMessages,
   listOrganizationMembersWithProfiles,
   updateConversationSpam,
@@ -21,6 +22,10 @@ import {
 import { updateConversationFields } from '../services/conversationUpdate.service.js';
 import { scheduleAssignmentWithFallback } from '../services/automation/automationNotify.service.js';
 import { setConversationTags } from '../services/tags.service.js';
+import { createMessage } from '../services/support.service.js';
+import { replaceMessageMetadataExact, syncEmailThreadsLastMessageId } from '../services/emailOutboundDbSync.service.js';
+import { sendEmailViaProvider, fetchReplyCustomer } from '../services/emailOutbound.service.js';
+import { normalizeEmail, isValidEmail, sanitizeMessage, getMaxMessageLength } from '../utils/incomingMessageValidation.js';
 
 function orgIdOrThrow(req) {
   const id = req.orgId ?? req.organizationId;
@@ -39,6 +44,7 @@ export async function createConversationController(req, res, next) {
       channelId = null,
       priority = null,
       metadata = {},
+      subject = null,
     } = req.body ?? {};
 
     if (!customerId) {
@@ -62,9 +68,172 @@ export async function createConversationController(req, res, next) {
       priority,
       metadata,
       createdByUserId: req.userId ?? req.user.id,
+      subject,
     });
 
     res.status(201).json({ conversation });
+  } catch (error) {
+    next(error);
+  }
+}
+
+const MAX_MESSAGE_LENGTH = getMaxMessageLength();
+
+function parseEmailList(value) {
+  if (value == null) return [];
+  const raw = Array.isArray(value) ? value : String(value).split(/[,\n]/g);
+  const out = [];
+  for (const seg of raw) {
+    const e = normalizeEmail(seg);
+    if (e && isValidEmail(e) && !out.includes(e)) out.push(e);
+  }
+  return out;
+}
+
+export async function composeConversationAndSendController(req, res, next) {
+  try {
+    const organizationId = orgIdOrThrow(req);
+    const actorUserId = req.userId ?? req.user.id;
+    const actorMemberId = req.orgMembership?.id ?? null;
+    if (!actorMemberId) {
+      throw new HttpError(500, 'Organization membership missing (middleware misconfigured).');
+    }
+
+    const {
+      channel = 'email', // 'email' | 'chat'
+      to,
+      cc,
+      bcc,
+      subject,
+      body,
+      assignedToMemberId = null,
+      teamInboxId = null,
+    } = req.body ?? {};
+
+    const channelNorm = String(channel || '').trim().toLowerCase();
+    if (channelNorm !== 'email' && channelNorm !== 'chat') {
+      throw new HttpError(400, "channel must be 'email' or 'chat'.");
+    }
+
+    const toList = parseEmailList(to);
+    const ccList = parseEmailList(cc);
+    const bccList = parseEmailList(bcc);
+
+    if (!toList.length) {
+      throw new HttpError(400, 'At least one To email is required.');
+    }
+
+    const subjectTrim = typeof subject === 'string' ? subject.trim() : '';
+    if (!subjectTrim) {
+      throw new HttpError(400, 'Subject is required.');
+    }
+
+    if (typeof body !== 'string') {
+      throw new HttpError(400, 'Body is required.');
+    }
+    const sanitizedBody = sanitizeMessage(body);
+    if (!sanitizedBody) throw new HttpError(400, 'Body cannot be empty.');
+    if (sanitizedBody.length > MAX_MESSAGE_LENGTH) {
+      throw new HttpError(400, `Body exceeds max length of ${MAX_MESSAGE_LENGTH} characters.`);
+    }
+
+    const primaryEmail = toList[0];
+    const customerResult = await findOrCreateCustomer({
+      organizationId,
+      email: primaryEmail,
+      name: null,
+      phone: null,
+      externalId: null,
+      metadata: {},
+    });
+
+    const conversation = await createConversation({
+      organizationId,
+      customerId: customerResult.customer.id,
+      assignedToMemberId: assignedToMemberId ?? actorMemberId,
+      source: channelNorm === 'email' ? 'email' : 'chat',
+      channelType: channelNorm === 'email' ? 'email' : 'web',
+      channelId: null,
+      priority: null,
+      metadata: {
+        compose: {
+          recipients: { to: toList, cc: ccList, bcc: bccList },
+          channel: channelNorm,
+        },
+        ...(teamInboxId ? { team_inbox_id: teamInboxId } : {}),
+      },
+      createdByUserId: actorUserId,
+      subject: channelNorm === 'email' ? subjectTrim : null,
+    });
+
+    if (teamInboxId) {
+      await updateConversationFields({
+        organizationId,
+        conversationId: conversation.id,
+        actorUserId,
+        teamInboxId,
+        assignmentType: 'assigned_to_team',
+        orgPermissions: req.orgPermissions,
+      });
+    }
+
+    const inserted = await createMessage({
+      organizationId,
+      conversationId: conversation.id,
+      senderType: 'agent',
+      senderUserId: actorUserId,
+      senderMemberId: assignedToMemberId ?? actorMemberId,
+      content: sanitizedBody,
+      metadata: {
+        status: 'pending',
+        compose_recipients: { to: toList, cc: ccList, bcc: bccList },
+      },
+    });
+
+    const customer = await fetchReplyCustomer(organizationId, conversation.customer_id);
+
+    const delivery = await sendEmailViaProvider({
+      conversation,
+      customer,
+      message: sanitizedBody,
+      recipients: { to: toList, cc: ccList, bcc: bccList },
+      subjectOverride: subjectTrim,
+    });
+
+    if (!delivery.ok) {
+      await replaceMessageMetadataExact({
+        organizationId,
+        messageId: inserted.id,
+        metadata: {
+          ...(inserted.metadata && typeof inserted.metadata === 'object' ? inserted.metadata : {}),
+          status: 'failed',
+          error: delivery.error || 'Outbound email failed.',
+        },
+      });
+      throw new HttpError(502, delivery.error || 'Outbound email failed.');
+    }
+
+    const updated = await replaceMessageMetadataExact({
+      organizationId,
+      messageId: inserted.id,
+      metadata: {
+        ...(inserted.metadata && typeof inserted.metadata === 'object' ? inserted.metadata : {}),
+        status: 'sent',
+        external_message_id: delivery.external_message_id ?? null,
+        channel: conversation.channel_type,
+        email_delivery: { provider: delivery.provider ?? 'resend' },
+      },
+    });
+
+    if (conversation.channel_type === 'email' && updated?.id) {
+      await syncEmailThreadsLastMessageId({
+        organizationId,
+        conversationId: conversation.id,
+        messageId: updated.id,
+      });
+    }
+
+    res.status(201).json({ conversation, message: updated });
   } catch (error) {
     next(error);
   }

@@ -6,7 +6,7 @@ Authenticated workspace UX uses a **collapsible hover sidebar**, **workspace nav
 
 ## Capabilities
 
-- Sidebar: Inbox, Reports, Search, Settings (plus non-routed labels: Fin AI, Knowledge, Outbound, Contacts)
+- Sidebar: Inbox, Reports, Search, Settings, Contacts (routed); Fin AI and Outbound remain non-routed labels
 - `OrgWorkspaceLayout` wraps all `/org/:orgId/*` child routes
 - Settings home card grid (Teammates + AI & Automation linked; other cards stubbed)
 - Settings nav taxonomy in `settingsNav.js`
@@ -41,6 +41,7 @@ flowchart TB
 | Path | Page |
 |------|------|
 | `inbox` | InboxPage |
+| `contact` | ContactsPage |
 | `reports` | OrgReportsPage |
 | `search` | InboxSearchPage |
 | `settings` | OrgSettingsLayout (+ children) |

@@ -9,6 +9,7 @@ Agents work customer issues in a **conversation-centric inbox**: list threads by
 - CRUD-style conversation APIs with inbox filters and pagination
 - Sidebar filters: your inbox, mentions, created by, unassigned (`team_inbox_id` + assignee both null), spam; dropdowns for team inboxes, teammates, and channels (views)
 - Details panel: assign **teammate** or **team inbox** (dropdown menus); team inbox sets `conversations.team_inbox_id` and `assigned_to_team` queue
+- New conversation composer page (`/org/:orgId/inbox/new-conversation`) with Email/Chat initial send
 - Per-filter counts; debounced refetch and short-lived cache
 - Workspace fields: status, priority, assignment type (+ optional assignee member)
 - Spam flag; **claim-on-first-reply** (server assigns unassigned thread to replying agent on send)
@@ -33,9 +34,11 @@ flowchart LR
 | Layer | Path |
 |-------|------|
 | Page | `client/src/pages/InboxPage.jsx` |
+| Page | `client/src/pages/InboxNewConversationPage.jsx` |
 | Store | `client/src/stores/inboxStore.js` |
 | Config | `client/src/config/inboxFilters.js` |
 | API client | `client/src/services/inboxApi.js` |
+| API client | `client/src/services/customersApi.js` |
 | Sidebar | `client/src/components/InboxSidebar.jsx` |
 | Controller | `server/src/controllers/conversations.controller.js` |
 | Routes | `server/src/routes/conversations.routes.js` |
@@ -52,6 +55,7 @@ flowchart LR
 | GET | `.../conversations?filter=` | Paginated list |
 | GET | `.../conversations/counts` | Sidebar badges |
 | POST | `.../conversations` | Create thread |
+| POST | `.../conversations/compose` | Create thread + send first outbound (Email/Chat) |
 | PATCH | `.../conversations/:id` | Status, priority, **assignment** (`assignedToMemberId`, `assignmentType`), `aiEnabled`, `tagIds` |
 | PATCH | `.../conversations/:id/spam` | Spam bucket |
 | GET | `.../conversations/:id/messages` | Thread history |
@@ -65,7 +69,7 @@ flowchart LR
 ## Database
 
 - `conversations` — `status`, `priority`, `assignment_type`, `assigned_to_member_id`, `metadata` (mentions), `last_message_at`, `channel_type`, `channel_id`; lifecycle columns (`resolved_at`, `closed_at`, `closed_reason`, `last_*_message_at`, `customer_reminder_sent_at`) — see [conversation-status-handling.md](./conversation-status-handling.md)
-- Constraint: one open conversation per customer (email/web)
+- No uniqueness constraint on active/open conversations per customer (parallel active threads allowed)
 - RPC/index migrations for active-thread performance
 
 ## Connections

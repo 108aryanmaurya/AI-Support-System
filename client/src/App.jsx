@@ -5,6 +5,8 @@ import Register from './pages/Register.jsx'
 import OnboardingPage from './pages/OnboardingPage.jsx'
 import InboxPage from './pages/InboxPage.jsx'
 import InboxSearchPage from './pages/InboxSearchPage.jsx'
+import InboxNewConversationPage from './pages/InboxNewConversationPage.jsx'
+import ContactsPage from './pages/ContactsPage.jsx'
 import OrgReportsPage from './pages/OrgReportsPage.jsx'
 import TestSendMessagePage from './pages/TestSendMessagePage.jsx'
 import PostAuthRedirect from './pages/PostAuthRedirect.jsx'
@@ -49,6 +51,8 @@ export default function App() {
 
         <Route path="/org/:orgId" element={<OrgWorkspaceLayout />}>
           <Route path="inbox" element={<InboxPage />} />
+          <Route path="inbox/new-conversation" element={<InboxNewConversationPage />} />
+          <Route path="contact" element={<ContactsPage />} />
           <Route path="knowledge" element={<OrgKnowledgeListPage />} />
           <Route path="knowledge/new" element={<OrgKnowledgeEditorPage />} />
           <Route path="knowledge/:articleId" element={<OrgKnowledgeEditorPage />} />

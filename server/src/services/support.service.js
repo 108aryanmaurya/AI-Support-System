@@ -48,9 +48,29 @@ export async function findOrCreateCustomer({
   name,
   phone,
   externalId,
+  customerType = 'USER',
+  userId = null,
   metadata = {},
 }) {
   const normalizedEmail = email?.trim()?.toLowerCase() || null;
+  const normalizedUserId = typeof userId === 'string' ? userId.trim() : '';
+  const nextCustomerType =
+    customerType === 'LEAD' || customerType === 'USER' ? customerType : 'USER';
+
+  if (normalizedUserId) {
+    const { data: existingByUserId, error: findByUserIdError } = await supabaseAdmin
+      .from('customers')
+      .select('*')
+      .eq('organization_id', organizationId)
+      .eq('user_id', normalizedUserId)
+      .limit(1)
+      .maybeSingle();
+
+    if (findByUserIdError) {
+      throw new HttpError(500, findByUserIdError.message || 'Failed to fetch customer.');
+    }
+    if (existingByUserId) return { customer: existingByUserId, created: false };
+  }
 
   if (normalizedEmail) {
     const { data: existing, error: findError } = await supabaseAdmin
@@ -73,6 +93,8 @@ export async function findOrCreateCustomer({
       name: name?.trim() || null,
       phone: phone?.trim() || null,
       external_id: externalId?.trim() || null,
+      customer_type: nextCustomerType,
+      user_id: normalizedUserId || null,
       metadata,
     })
     .select('*')

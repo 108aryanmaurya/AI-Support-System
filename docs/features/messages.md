@@ -58,7 +58,8 @@ sequenceDiagram
 | POST | `/api/org/:orgId/conversations/:id/claim` | Yes (self-assign unassigned) |
 | POST | `/api/org/:orgId/messages` | Yes |
 | POST | `/api/org/:orgId/messages/incoming` | No (ingress rate limit) |
-| POST | `/api/org/:orgId/customers` | Yes |
+| GET | `/api/org/:orgId/customers` | Yes (supports `query`, returns `customer_type` + `user_id`) |
+| POST | `/api/org/:orgId/customers` | Yes (`type: USER|LEAD`, optional `user_id`) |
 
 ## Database
 
