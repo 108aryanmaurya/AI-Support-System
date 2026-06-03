@@ -319,6 +319,23 @@ export {
 } from './knowledgeIngest.js';
 
 export {
+  DEFAULT_WIDGET_SETTINGS,
+  WIDGET_KEY_PREFIX_LIVE,
+  WIDGET_KEY_PREFIX_TEST,
+  WIDGET_LIMITS,
+  WIDGET_SECRET_PREFIX,
+  isValidWidgetDomain,
+  mergeWidgetSettings,
+} from './widgetSettings.js';
+
+export {
+  WIDGET_MAX_MESSAGE_LENGTH,
+  WIDGET_MAX_METADATA_BYTES,
+  WIDGET_MAX_PRE_CHAT_FIELDS,
+  WIDGET_VISITOR_TOKEN_BYTES,
+} from './widgetLimits.js';
+
+export {
   KNOWLEDGE_ARTICLE_STATUSES,
   KNOWLEDGE_ARTICLE_VISIBILITIES,
   KNOWLEDGE_MAX_CHUNKS_PER_VERSION,

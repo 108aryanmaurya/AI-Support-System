@@ -50,6 +50,10 @@ export const ORG_PERMISSIONS_AGENT_DEFAULTS = Object.freeze({
     manage_email: false,
     manage_webhooks: false,
   }),
+  widget: Object.freeze({
+    manage: false,
+    view: true,
+  }),
 });
 
 /** All org-scoped capabilities enabled (platform secrets remain server-only). */
@@ -98,6 +102,10 @@ export const ORG_PERMISSIONS_ADMIN_DEFAULTS = Object.freeze({
   channels: Object.freeze({
     manage_email: true,
     manage_webhooks: true,
+  }),
+  widget: Object.freeze({
+    manage: true,
+    view: true,
   }),
 });
 

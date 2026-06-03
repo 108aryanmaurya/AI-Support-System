@@ -26,6 +26,7 @@ import OrgTagsSettingsPage from './pages/OrgTagsSettingsPage.jsx'
 import OrgInboxesSettingsPage from './pages/OrgInboxesSettingsPage.jsx'
 import OrgAssignmentSettingsPage from './pages/OrgAssignmentSettingsPage.jsx'
 import OrgEmailSettingsPage from './pages/OrgEmailSettingsPage.jsx'
+import OrgWidgetSettingsPage from './pages/OrgWidgetSettingsPage.jsx'
 import OrgLifecycleSettingsPage from './pages/OrgLifecycleSettingsPage.jsx'
 import OrgGeneralSettingsPage from './pages/OrgGeneralSettingsPage.jsx'
 import OrgKnowledgeListPage from './pages/OrgKnowledgeListPage.jsx'
@@ -74,6 +75,7 @@ export default function App() {
             <Route path="inboxes" element={<OrgInboxesSettingsPage />} />
             <Route path="assignment" element={<OrgAssignmentSettingsPage />} />
             <Route path="email" element={<OrgEmailSettingsPage />} />
+            <Route path="widget" element={<OrgWidgetSettingsPage />} />
             <Route path="lifecycle" element={<OrgLifecycleSettingsPage />} />
           </Route>
         </Route>

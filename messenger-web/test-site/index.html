@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Widget test site</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        max-width: 720px;
+        margin: 40px auto;
+        padding: 0 20px;
+        line-height: 1.5;
+      }
+      code {
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+      }
+      .card {
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        padding: 20px;
+        margin: 20px 0;
+      }
+      button {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 10px 16px;
+        border-radius: 8px;
+        cursor: pointer;
+        margin-right: 8px;
+        margin-top: 8px;
+      }
+      button.secondary {
+        background: #475569;
+      }
+      input {
+        width: 100%;
+        padding: 8px;
+        margin: 8px 0;
+        border: 1px solid #cbd5e1;
+        border-radius: 6px;
+      }
+      .warn {
+        color: #b45309;
+        font-size: 14px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Acme Store — demo site</h1>
+    <p>
+      This page simulates a customer website with the messenger widget embedded. It runs on
+      <strong>port 5180</strong> (separate from the agent app on 5173).
+    </p>
+
+    <div class="card">
+      <h2>Setup</h2>
+      <ol>
+        <li>Run API (<code>npm run dev:server</code>), Redis, and apply Supabase migrations.</li>
+        <li>
+          Create a widget installation (Settings → Web widget) or run
+          <code>node server/scripts/seed-widget-installation.js &lt;orgId&gt;</code>
+        </li>
+        <li>Paste your <code>widget_key</code> below and reload.</li>
+      </ol>
+      <label for="widgetKey">Widget key</label>
+      <input id="widgetKey" placeholder="wk_test_..." />
+      <p class="warn" id="status">Widget not loaded yet.</p>
+    </div>
+
+    <div class="card">
+      <h2>Simulate logged-in user</h2>
+      <p>Uses <code>SupportWidget.identify()</code> (HMAC optional in dev).</p>
+      <input id="userId" placeholder="User ID" value="demo-user-1" />
+      <input id="email" type="email" placeholder="Email" value="demo@example.com" />
+      <input id="name" placeholder="Name" value="Demo User" />
+      <button type="button" id="btnIdentify" class="secondary">Identify user</button>
+      <button type="button" id="btnOpen">Open chat</button>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

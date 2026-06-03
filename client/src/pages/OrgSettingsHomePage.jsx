@@ -248,11 +248,13 @@ export default function OrgSettingsHomePage() {
               title="Email"
               description="Forward your support inbox for receiving, then verify DNS to send replies from your domain."
             />
-            <SettingsCard
+            <GatedSettingsCard
+              permission="widget.view"
+              to={`/org/${orgId}/settings/widget`}
               icon={MessageSquare}
-              iconClass="bg-violet-600"
-              title="Chat & social"
-              description="Messenger, WhatsApp, and other messaging channels."
+              iconClass="bg-blue-600"
+              title="Web messenger widget"
+              description="Embed chat on your website with a script snippet and domain allowlist."
             />
             <SettingsCard
               icon={Phone}

@@ -16,6 +16,8 @@ Per-feature implementation guides for the AI Support System monorepo. Each doc e
 | [messages.md](./features/messages.md) | Send pipeline, mentions, internal notes |
 | [realtime.md](./features/realtime.md) | Supabase Realtime, typing presence |
 | [multi-channel.md](./features/multi-channel.md) | Email, web ingress/outbound, channel router |
+| [messenger-web-plan.md](./features/messenger-web-plan.md) | Embeddable web messenger widget (loader + iframe) — **plan** |
+| [messenger-web-sprints.md](./features/sprints/messenger-web-sprints.md) | Messenger widget implementation sprints (0–14) |
 | [org-email-channel.md](./features/org-email-channel.md) | Resend DNS verification, org send/receive addresses |
 | [notifications-and-automation.md](./features/notifications-and-automation.md) | Job queue, worker, SLA, staff email |
 | [analytics-and-reports.md](./features/analytics-and-reports.md) | support_events, reports API & UI |

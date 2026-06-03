@@ -39,6 +39,11 @@ export const SUPPORT_EVENT_TYPES = Object.freeze([
   'assignment.reassign_skipped',
   'lifecycle.reminder_sent',
   'lifecycle.reminder_skipped',
+  'widget.opened',
+  'widget.conversation_started',
+  'widget.message.sent',
+  'widget.installation_created',
+  'widget.secret_rotated',
 ]);
 
 /** @param {unknown} v */

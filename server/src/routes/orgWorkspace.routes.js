@@ -12,6 +12,7 @@ import orgKnowledgeRoutes from './orgKnowledge.routes.js';
 import orgTagsRoutes from './orgTags.routes.js';
 import assignmentRoutes from './assignment.routes.js';
 import inboxesRoutes from './inboxes.routes.js';
+import widgetAdminRoutes from './widgetAdmin.routes.js';
 import {
   createInviteController,
   createInvitesBatchController,
@@ -81,5 +82,6 @@ router.use('/analytics', orgAnalyticsRoutes);
 router.use('/conversations', conversationsRoutes);
 router.use('/customers', customersRoutes);
 router.use('/messages', messagesAuthRoutes);
+router.use('/widget', widgetAdminRoutes);
 
 export default router;

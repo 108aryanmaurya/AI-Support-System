@@ -13,9 +13,17 @@ function loadEnv() {
     );
   }
 
-  const origins = process.env.CORS_ORIGIN
+  const defaultOrigins = [
+    'http://localhost:5173',
+    'http://localhost:5174',
+    'http://localhost:5175',
+    'http://localhost:5180',
+  ];
+  const fromEnv = process.env.CORS_ORIGIN
     ? process.env.CORS_ORIGIN.split(',').map((s) => s.trim()).filter(Boolean)
-    : ['http://localhost:5173'];
+    : [];
+  // Merge env origins with widget dev ports so CORS_ORIGIN=http://localhost:5173 still allows the iframe (5175).
+  const origins = [...new Set([...defaultOrigins, ...fromEnv])];
 
   const mockRaw = process.env.EMAIL_PROVIDER_MOCK?.trim().toLowerCase();
   let emailProvider = (process.env.EMAIL_PROVIDER || 'resend').trim().toLowerCase();

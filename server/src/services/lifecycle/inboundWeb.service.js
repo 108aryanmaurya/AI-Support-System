@@ -16,7 +16,7 @@ import { getOrgLifecycleSettings } from './lifecycleSettings.service.js';
  * @param {string|null} params.idempotencyKey
  * @returns {Promise<{ conversationId: string, messageId: string }|null>}
  */
-async function findIncomingIdempotency({ organizationId, idempotencyKey }) {
+export async function findIncomingIdempotency({ organizationId, idempotencyKey }) {
   const key = typeof idempotencyKey === 'string' ? idempotencyKey.trim() : '';
   if (!key) return null;
 

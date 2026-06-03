@@ -1,0 +1,14 @@
+{
+  "name": "@ai-support/widget-loader",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build && concurrently -k \"vite build --watch --minify false\" \"vite preview --port 5174 --strictPort\"",
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "vite": "^6.3.5"
+  }
+}

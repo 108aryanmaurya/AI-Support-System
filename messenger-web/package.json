@@ -1,0 +1,18 @@
+{
+  "name": "messenger-web",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Embeddable support messenger — loader, iframe app, test site",
+  "scripts": {
+    "build": "npm run build:loader && npm run build:messenger",
+    "build:loader": "npm run build --prefix loader",
+    "build:messenger": "npm run build --prefix messenger",
+    "dev": "concurrently -n loader,messenger,test -c blue,green,yellow \"npm run dev --prefix loader\" \"npm run dev --prefix messenger\" \"npm run dev --prefix test-site\"",
+    "dev:loader": "npm run dev --prefix loader",
+    "dev:messenger": "npm run dev --prefix messenger",
+    "dev:test-site": "npm run dev --prefix test-site"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  }
+}
