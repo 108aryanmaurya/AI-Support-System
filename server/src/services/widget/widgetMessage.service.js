@@ -17,6 +17,7 @@ import {
   prepareConversationForCustomerMessage,
   resolveActiveConversationForVisitor,
   createVisitorConversation,
+  assertVisitorHistoryAccess,
 } from './widgetConversation.service.js';
 import { updateSessionConversationId } from './widgetSession.service.js';
 import { findIncomingIdempotency } from '../lifecycle/inboundWeb.service.js';
@@ -25,9 +26,14 @@ export async function listConversationMessages({
   organizationId,
   conversationId,
   customerId,
+  customer = null,
+  visitor = null,
+  session = null,
   since = null,
   limit = 50,
 }) {
+  assertVisitorHistoryAccess({ customer, visitor, session, conversationId });
+
   await prepareConversationForCustomerMessage({
     organizationId,
     conversationId,
@@ -123,8 +129,20 @@ export async function sendWidgetMessage({
     };
   }
 
+  const { data: sessionRow } = await supabaseAdmin
+    .from('widget_sessions')
+    .select('id, conversation_id')
+    .eq('id', sessionId)
+    .maybeSingle();
+
   let conversationId = inputConversationId;
   if (conversationId) {
+    assertVisitorHistoryAccess({
+      customer,
+      visitor: linkedVisitor,
+      session: sessionRow,
+      conversationId,
+    });
     await prepareConversationForCustomerMessage({
       organizationId,
       conversationId,

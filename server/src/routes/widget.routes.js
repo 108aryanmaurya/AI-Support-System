@@ -11,6 +11,7 @@ import {
   widgetTypingController,
   widgetGetTypingController,
 } from '../controllers/widget.controller.js';
+import { widgetDevSignUserJwtController } from '../controllers/widgetDev.controller.js';
 import { requireWidgetSession } from '../middleware/widgetAuth.js';
 import {
   widgetBootstrapRateLimit,
@@ -23,6 +24,7 @@ import {
 const router = Router();
 
 router.get('/bootstrap', widgetBootstrapRateLimit, widgetBootstrapController);
+router.post('/dev/sign-user-jwt', widgetDevSignUserJwtController);
 router.post('/session/refresh', requireWidgetSession, widgetRefreshRateLimit, widgetRefreshSessionController);
 router.post('/pre-chat', requireWidgetSession, widgetPreChatController);
 router.post('/identify', widgetIdentifyRateLimit, requireWidgetSession, widgetIdentifyController);

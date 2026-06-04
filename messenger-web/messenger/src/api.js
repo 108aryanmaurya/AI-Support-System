@@ -163,9 +163,10 @@ export function createWidgetApi(apiBase, initialToken, hooks = {}) {
     },
 
     /** No session; no auto-retry. */
-    async bootstrap(widgetKey, visitorToken) {
+    async bootstrap(widgetKey, visitorToken, userJwt) {
       const q = new URLSearchParams({ widget_key: widgetKey });
       if (visitorToken) q.set('visitor_token', visitorToken);
+      if (userJwt && typeof userJwt === 'string') q.set('user_jwt', userJwt);
       return rawRequest(`/bootstrap?${q}`, { method: 'GET' }, null);
     },
 

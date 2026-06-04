@@ -19,7 +19,11 @@ import {
   submitPreChat,
 } from '../services/widget/widgetMessage.service.js';
 import { identifyWidgetVisitor } from '../services/widget/widgetIdentify.service.js';
-import { ensureVisitorCustomer } from '../services/widget/widgetCustomer.service.js';
+import {
+  ensureVisitorCustomer,
+  getVisitorIdentificationState,
+  formatWidgetVisitor,
+} from '../services/widget/widgetCustomer.service.js';
 import { emitSupportEvent } from '../services/analytics/supportEvents.service.js';
 
 function logWidget(event, fields) {
@@ -32,6 +36,8 @@ export async function widgetBootstrapController(req, res, next) {
     const widgetKey = typeof req.query.widget_key === 'string' ? req.query.widget_key.trim() : '';
     const visitorToken =
       typeof req.query.visitor_token === 'string' ? req.query.visitor_token.trim() : null;
+    const userJwt =
+      typeof req.query.user_jwt === 'string' ? req.query.user_jwt.trim() : null;
 
     if (!widgetKey) throw new HttpError(400, 'widget_key is required.');
 
@@ -50,11 +56,20 @@ export async function widgetBootstrapController(req, res, next) {
       throw new HttpError(403, 'Origin not allowed for this widget.');
     }
 
-    const { visitor, visitorToken: token } = await findOrCreateVisitor({
+    let { visitor, visitorToken: token } = await findOrCreateVisitor({
       installation,
       visitorToken,
       ip: req.ip,
     });
+
+    if (userJwt) {
+      const identified = await identifyWidgetVisitor({
+        installation,
+        visitor,
+        userJwt,
+      });
+      visitor = identified.visitor;
+    }
 
     const { sessionToken, expiresAt } = await createWidgetSession({
       visitor,
@@ -77,6 +92,10 @@ export async function widgetBootstrapController(req, res, next) {
     });
 
     const settings = mergeWidgetSettings(installation.settings);
+    const { isIdentified } = await getVisitorIdentificationState(
+      installation.organization_id,
+      visitor,
+    );
 
     res.json({
       visitorToken: token,
@@ -96,12 +115,7 @@ export async function widgetBootstrapController(req, res, next) {
         privacyUrl: settings.privacyUrl,
         darkMode: settings.darkMode,
       },
-      visitor: {
-        id: visitor.id,
-        email: visitor.email,
-        name: visitor.name,
-        customerId: visitor.customer_id,
-      },
+      visitor: formatWidgetVisitor(visitor, { isIdentified }),
     });
   } catch (err) {
     next(err);
@@ -134,7 +148,9 @@ export async function widgetPreChatController(req, res, next) {
       email,
       name,
     });
-    res.json({ visitor });
+    res.json({
+      visitor: formatWidgetVisitor(visitor, { isIdentified: false }),
+    });
   } catch (err) {
     next(err);
   }
@@ -142,7 +158,7 @@ export async function widgetPreChatController(req, res, next) {
 
 export async function widgetIdentifyController(req, res, next) {
   try {
-    const { userId, email, name, hash } = req.body ?? {};
+    const { userId, email, name, hash, userJwt } = req.body ?? {};
     const result = await identifyWidgetVisitor({
       installation: req.widgetInstallation,
       visitor: req.widgetVisitor,
@@ -150,12 +166,20 @@ export async function widgetIdentifyController(req, res, next) {
       email,
       name,
       hash,
+      userJwt,
     });
     logWidget('widget.identify', {
       organization_id: req.widgetInstallation.organization_id,
       visitor_id: req.widgetVisitor.id,
+      customer_id: result.customer.id,
+      lead_merged: Boolean(result.merged),
+      upgraded_in_place: Boolean(result.upgradedInPlace),
     });
-    res.json({ visitor: result.visitor, customerId: result.customer.id });
+    res.json({
+      visitor: formatWidgetVisitor(result.visitor, { isIdentified: true }),
+      customerId: result.customer.id,
+      merged: Boolean(result.merged),
+    });
   } catch (err) {
     next(err);
   }
@@ -164,10 +188,14 @@ export async function widgetIdentifyController(req, res, next) {
 export async function widgetListConversationsController(req, res, next) {
   try {
     const orgId = req.widgetInstallation.organization_id;
-    const { customerId } = await ensureVisitorCustomer({
+    const { customerId, customer } = await ensureVisitorCustomer({
       organizationId: orgId,
       visitor: req.widgetVisitor,
     });
+    if (!req.widgetVisitor.customer_id) {
+      res.json({ conversations: [] });
+      return;
+    }
     const conversations = await listVisitorConversations({
       organizationId: orgId,
       customerId,
@@ -208,7 +236,7 @@ export async function widgetListMessagesController(req, res, next) {
   try {
     const orgId = req.widgetInstallation.organization_id;
     const conversationId = req.params.conversationId;
-    const { customerId } = await ensureVisitorCustomer({
+    const { customerId, customer } = await ensureVisitorCustomer({
       organizationId: orgId,
       visitor: req.widgetVisitor,
     });
@@ -216,6 +244,9 @@ export async function widgetListMessagesController(req, res, next) {
       organizationId: orgId,
       conversationId,
       customerId,
+      customer,
+      visitor: req.widgetVisitor,
+      session: req.widgetSession,
       since: req.query.since || null,
     });
     res.json({ messages });

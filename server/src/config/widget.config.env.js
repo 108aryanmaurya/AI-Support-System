@@ -55,6 +55,10 @@ export function widgetConfigFromEnv() {
     jwtIssuer: 'ai-support-widget',
     sessionTtlSec: parsePositiveInt(process.env.WIDGET_SESSION_TTL_SEC, 1800),
     sessionRefreshMaxSec: parsePositiveInt(process.env.WIDGET_SESSION_REFRESH_MAX_SEC, 604_800),
+    /** Default lifetime when customer backend signs user JWTs (Intercom-style). */
+    userJwtDefaultTtlSec: parsePositiveInt(process.env.WIDGET_USER_JWT_DEFAULT_TTL_SEC, 604_800),
+    /** Reject user JWTs whose exp−iat exceeds this (cap abuse). Default 7 days. */
+    userJwtMaxTtlSec: parsePositiveInt(process.env.WIDGET_USER_JWT_MAX_TTL_SEC, 604_800),
     iframeOrigin,
     cdnOrigin,
     apiPublicUrl,

@@ -162,7 +162,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 - **Rate limiting** — middleware on incoming ingress
 - **Transactional RPC** — `handle_incoming_message` (customer + conversation + message in one DB transaction)
 - **Web outbound adapter** — delivers agent replies for `channel_type = web`
-- **Embeddable messenger widget** — loader + iframe (`messenger-web/`); `GET/POST /api/widget/v1/*`; installations admin at Settings → Web messenger widget; test site on port **5180** ([messenger-web-plan.md](./features/messenger-web-plan.md))
+- **Embeddable messenger widget** — loader + iframe (`messenger-web/`); `GET/POST /api/widget/v1/*`; logged-in host users via **user JWT** or legacy HMAC identify; **lead continuity** — `visitor_token` on host + pre-chat resumes chat on same browser; **lead→user merge** on `identify`/`userJwt` when same `visitor_token` (conversations reassigned to `USER`); new browser/cleared storage = new visitor, no merge; installations admin at Settings → Web messenger widget; test site on port **5180** ([messenger-web-plan.md](./features/messenger-web-plan.md))
 
 ### 9.2 Email channel
 

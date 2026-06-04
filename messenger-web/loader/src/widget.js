@@ -16,6 +16,7 @@
     open: false,
     ready: false,
     pendingIdentify: null,
+    pendingUserJwt: null,
   };
 
   function storageKey(key) {
@@ -66,15 +67,26 @@
     return btn;
   }
 
-  function ensureIframe(widgetKey) {
-    if (state.iframe) return state.iframe;
-    const visitor = getVisitorToken(widgetKey);
+  function buildIframeSrc(widgetKey) {
     const params = new URLSearchParams({ widget_key: widgetKey });
+    const visitor = getVisitorToken(widgetKey);
     if (visitor) params.set('visitor_token', visitor);
+    if (state.pendingUserJwt) params.set('user_jwt', state.pendingUserJwt);
+    return `${messengerBase}/?${params.toString()}`;
+  }
+
+  function ensureIframe(widgetKey) {
+    if (state.iframe) {
+      if (state.pendingUserJwt && !state.iframe.src.includes('user_jwt=')) {
+        state.ready = false;
+        state.iframe.src = buildIframeSrc(widgetKey);
+      }
+      return state.iframe;
+    }
 
     const iframe = document.createElement('iframe');
     iframe.title = 'Support messenger';
-    iframe.src = `${messengerBase}/?${params.toString()}`;
+    iframe.src = buildIframeSrc(widgetKey);
     Object.assign(iframe.style, {
       position: 'fixed',
       zIndex: '2147483647',
@@ -92,6 +104,15 @@
     document.body.appendChild(iframe);
     state.iframe = iframe;
 
+    iframe.addEventListener('load', () => {
+      if (state.pendingUserJwt && iframe.contentWindow) {
+        iframe.contentWindow.postMessage(
+          { type: 'SW_USER_JWT', userJwt: state.pendingUserJwt },
+          state.iframeOrigin,
+        );
+      }
+    });
+
     window.addEventListener('message', (event) => {
       if (event.origin !== state.iframeOrigin) return;
       const data = event.data;
@@ -100,6 +121,12 @@
       if (data.type === 'SW_READY') {
         state.ready = true;
         if (data.visitorToken) setVisitorToken(widgetKey, data.visitorToken);
+        if (state.pendingUserJwt) {
+          iframe.contentWindow?.postMessage(
+            { type: 'SW_USER_JWT', userJwt: state.pendingUserJwt },
+            state.iframeOrigin,
+          );
+        }
         if (state.pendingIdentify) {
           iframe.contentWindow?.postMessage(
             { type: 'SW_IDENTIFY', payload: state.pendingIdentify },
@@ -119,6 +146,12 @@
     return iframe;
   }
 
+  function applyUserJwt(userJwt) {
+    if (typeof userJwt === 'string' && userJwt.trim()) {
+      state.pendingUserJwt = userJwt.trim();
+    }
+  }
+
   const SupportWidget = {
     init(opts = {}) {
       const key =
@@ -134,7 +167,21 @@
         messengerBase = resolveMessengerBase(opts.iframeOrigin);
         state.iframeOrigin = new URL(messengerBase).origin;
       }
+      applyUserJwt(opts.userJwt);
       createLauncher(opts.position || 'bottom-right', opts.brandColor);
+    },
+
+    /** Intercom-style boot: init + optional logged-in user JWT from your backend. */
+    boot(opts = {}) {
+      this.init(opts);
+      if (opts.userJwt) {
+        applyUserJwt(opts.userJwt);
+        if (state.iframe) {
+          state.ready = false;
+          state.iframe.src = buildIframeSrc(state.widgetKey);
+        }
+        this.open();
+      }
     },
 
     open() {
@@ -161,7 +208,14 @@
 
     identify(payload) {
       if (!state.widgetKey || !payload) return;
+      if (payload.userJwt) applyUserJwt(payload.userJwt);
       if (state.ready && state.iframe?.contentWindow) {
+        if (payload.userJwt) {
+          state.iframe.contentWindow.postMessage(
+            { type: 'SW_USER_JWT', userJwt: payload.userJwt },
+            state.iframeOrigin,
+          );
+        }
         state.iframe.contentWindow.postMessage(
           { type: 'SW_IDENTIFY', payload },
           state.iframeOrigin,
@@ -179,6 +233,8 @@
       document.getElementById('sw-launcher')?.remove();
       state.widgetKey = null;
       state.ready = false;
+      state.pendingUserJwt = null;
+      state.pendingIdentify = null;
     },
   };
 

@@ -220,7 +220,7 @@ Visitors and host-site users are **not** Supabase Auth agent users. Agent JWT pa
 |---------|--------------------------------------|--------------|---------|
 | **Anonymous** | Loader creates/stores `visitor_token`; bootstrap mints session | Created on first email or remain visitor-only until identify | Widget JWT |
 | **Known visitor** | Pre-chat form (name/email) in iframe | `findOrCreateCustomer` by email; visitor linked | Widget JWT |
-| **Logged-in site user** | `SupportWidget.identify({ userId, email, name, hash? })` | `customers.user_id` + email (`customer_type: USER`) | Widget JWT upgraded |
+| **Logged-in site user** | `SupportWidget.boot({ userJwt })` or `identify({ userJwt })` (legacy: `userId` + HMAC `hash`) | `customers.user_id` + email (`customer_type: USER`) | Widget session JWT |
 | **Returning anonymous** | Same `visitor_token` in localStorage | Same visitor row | New session if expired |
 
 ### 6.1 Bootstrap (no secret in browser beyond `widget_key`)
@@ -272,28 +272,38 @@ When `settings.require_email = false`:
 
 When `require_email = true`, block send until pre-chat completed.
 
-### 6.4 Identified / logged-in users (`identify`)
+### 6.4 Identified / logged-in users (user JWT + legacy `identify`)
 
-Host calls (from loader API):
+**Recommended (Intercom-style):** host **backend** signs HS256 **user JWT** with installation secret; browser passes `userJwt` only.
+
+```javascript
+window.SupportWidget.boot({
+  widgetKey: 'wk_live_…',
+  iframeOrigin: 'https://api.example/v1/messenger',
+  userJwt: '<from your backend>',
+});
+// Or: SupportWidget.identify({ userJwt: '…' });
+```
+
+- JWT: `typ: widget_user`, required `sub` / `user_id`, optional `email`, `name`, `attributes`, `exp` / `iat` (max TTL capped server-side).
+- Verified on `GET /bootstrap?user_jwt=…` and `POST /identify` with `{ userJwt }`. Implementation: `server/src/utils/widgetUserJwt.js`.
+
+**Legacy HMAC** (still supported):
 
 ```javascript
 window.SupportWidget.identify({
-  userId: 'acct_123',           // required for logged-in path
+  userId: 'acct_123',
   email: 'user@example.com',
   name: 'Jane Doe',
-  hash: '<hmac_sha256_hex>',      // required in production when secret configured
+  hash: '<hmac_sha256_hex>',
 });
 ```
 
-**Server-side HMAC (recommended for production):**
+`hash = HMAC-SHA256(widget_secret, userId + ':' + email)` — host backend computes; never ship secret to browser.
 
-`hash = HMAC-SHA256(widget_secret, userId + ':' + email)` (constant-time compare).
+Both paths call `findOrCreateCustomer(…, customerType: 'USER')` and link `widget_visitors.customer_id`.
 
-- Host **backend** computes hash; never ship `widget_secret` to the browser.
-- Widget `POST /api/widget/v1/identify` with session bearer + body; verifies hash if installation has secret.
-- Calls `findOrCreateCustomer({ organizationId, email, name, userId, customerType: 'USER' })`, links `widget_visitors.customer_id`, merges open web conversations per product rules (default: keep multiple threads; optional setting to prefer single active).
-
-**Without HMAC (dev only):** allow identify with email + userId over HTTPS for trusted staging domains; disable in production via org flag.
+**Without verify (dev only):** `identify({ userId, email, name })` when `identifyAllowInsecure` + non-production.
 
 ### 6.5 Distinction: agent auth vs widget auth
 

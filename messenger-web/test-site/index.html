@@ -36,12 +36,24 @@
       button.secondary {
         background: #475569;
       }
-      input {
+      input,
+      textarea {
         width: 100%;
         padding: 8px;
         margin: 8px 0;
         border: 1px solid #cbd5e1;
         border-radius: 6px;
+        font-family: inherit;
+        font-size: 14px;
+      }
+      textarea {
+        min-height: 72px;
+        resize: vertical;
+      }
+      .hint {
+        font-size: 13px;
+        color: #64748b;
+        margin: 8px 0;
       }
       .warn {
         color: #b45309;
@@ -72,12 +84,40 @@
     </div>
 
     <div class="card">
-      <h2>Simulate logged-in user</h2>
-      <p>Uses <code>SupportWidget.identify()</code> (HMAC optional in dev).</p>
-      <input id="userId" placeholder="User ID" value="demo-user-1" />
+      <h2>Simulate logged-in user (JWT boot)</h2>
+      <p class="hint">
+        Production flow: your backend signs a JWT; the host calls
+        <code>SupportWidget.boot({ userJwt })</code>. Generate a token locally:
+      </p>
+      <pre
+        style="
+          background: #f8fafc;
+          padding: 12px;
+          border-radius: 8px;
+          font-size: 12px;
+          overflow-x: auto;
+        "
+      ><code>node --env-file=server/.env server/scripts/sign-widget-user-jwt.js \
+  &lt;widget_key&gt; &lt;userId&gt; [email] [name]</code></pre>
+      <label for="userJwt">User JWT (paste from script output)</label>
+      <textarea
+        id="userJwt"
+        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+        spellcheck="false"
+      ></textarea>
+      <button type="button" id="btnBootJwt">Boot as logged-in user</button>
+      <button type="button" id="btnLogoutSim" class="secondary">Simulate logout</button>
+      <p class="hint">
+        <strong>Merge test:</strong> chat as a lead first (no JWT), refresh, then Boot with JWT — same
+        browser <code>visitor_token</code> merges threads into the user profile.
+      </p>
+      <hr style="margin: 20px 0; border: none; border-top: 1px solid #e2e8f0" />
+      <p class="hint">Or sign via dev API (requires API + <code>identifyAllowInsecure</code>):</p>
+      <input id="userId" placeholder="User ID" value="user_123" />
       <input id="email" type="email" placeholder="Email" value="demo@example.com" />
       <input id="name" placeholder="Name" value="Demo User" />
-      <button type="button" id="btnIdentify" class="secondary">Identify user</button>
+      <button type="button" id="btnSignAndBoot" class="secondary">Sign JWT (dev API) &amp; boot</button>
+      <button type="button" id="btnIdentify" class="secondary">Identify (legacy, no JWT)</button>
       <button type="button" id="btnOpen">Open chat</button>
     </div>
 

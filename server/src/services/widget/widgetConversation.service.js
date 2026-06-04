@@ -10,8 +10,24 @@ import {
 } from '../lifecycle/conversationLifecycle.service.js';
 import { getOrgLifecycleSettings } from '../lifecycle/lifecycleSettings.service.js';
 import { ensureWebChannelForOrg } from './widgetChannel.service.js';
-import { ensureVisitorCustomer } from './widgetCustomer.service.js';
+import {
+  ensureVisitorCustomer,
+  canAccessConversationHistory,
+} from './widgetCustomer.service.js';
 import { updateSessionConversationId } from './widgetSession.service.js';
+
+/**
+ * Anonymous (no email yet): current widget session thread only.
+ * Leads (email + visitor token) and host-identified users: customer's conversations.
+ * @param {object} params
+ */
+export function assertVisitorHistoryAccess({ customer, visitor, session, conversationId }) {
+  if (!conversationId) return;
+  if (canAccessConversationHistory({ customer, visitor })) return;
+  if (session?.conversation_id !== conversationId) {
+    throw new HttpError(403, 'Complete pre-chat or sign in to view this conversation.');
+  }
+}
 
 /**
  * @param {object} params
@@ -58,6 +74,24 @@ export async function listVisitorConversations({
   return data ?? [];
 }
 
+/** Latest web thread for a customer (any status) — used to resume lead/visitor chat after refresh. */
+export async function findLatestWebConversation({ organizationId, customerId }) {
+  const { data, error } = await supabaseAdmin
+    .from('conversations')
+    .select('*')
+    .eq('organization_id', organizationId)
+    .eq('customer_id', customerId)
+    .eq('channel_type', 'web')
+    .order('last_message_at', { ascending: false, nullsFirst: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    throw new HttpError(500, error.message || 'Failed to load latest web conversation.');
+  }
+  return data ?? null;
+}
+
 export async function createVisitorConversation({
   organizationId,
   visitor,
@@ -98,18 +132,25 @@ export async function resolveActiveConversationForVisitor({
   installation,
   sessionId,
 }) {
-  const { customerId, visitor: linkedVisitor } = await ensureVisitorCustomer({
+  const { customerId, customer, visitor: linkedVisitor } = await ensureVisitorCustomer({
     organizationId,
     visitor,
   });
 
-  const active = await findActiveWebConversation({
-    organizationId,
-    customerId,
-  });
-  if (active) {
-    await updateSessionConversationId(sessionId, active.id);
-    return active;
+  if (linkedVisitor.customer_id) {
+    const active = await findActiveWebConversation({
+      organizationId,
+      customerId,
+    });
+    if (active) {
+      await updateSessionConversationId(sessionId, active.id);
+      return active;
+    }
+    const latest = await findLatestWebConversation({ organizationId, customerId });
+    if (latest) {
+      await updateSessionConversationId(sessionId, latest.id);
+      return latest;
+    }
   }
 
   return createVisitorConversation({

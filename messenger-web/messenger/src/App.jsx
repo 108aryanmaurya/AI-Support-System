@@ -9,6 +9,7 @@ export default function App() {
   const q = useQuery();
   const widgetKey = q.get('widget_key') || '';
   const initialVisitor = q.get('visitor_token') || '';
+  const initialUserJwt = q.get('user_jwt') || '';
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -23,11 +24,17 @@ export default function App() {
   const [sending, setSending] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [showList, setShowList] = useState(false);
+  const [chatReload, setChatReload] = useState(0);
   const [agentTyping, setAgentTyping] = useState(false);
   const apiRef = useRef(null);
   const pollRef = useRef(null);
   const parentOrigin = useRef('*');
   const configRef = useRef(null);
+  const userJwtRef = useRef(initialUserJwt || null);
+  const bootstrapStartedRef = useRef(false);
+  const conversationIdRef = useRef(null);
+  const messagesRef = useRef([]);
+  const loadMessagesRef = useRef(null);
 
   const notifyParent = useCallback((type, extra = {}) => {
     window.parent.postMessage({ type, ...extra }, parentOrigin.current);
@@ -38,14 +45,15 @@ export default function App() {
       setConfig(data);
       configRef.current = data;
       setVisitor(data.visitor);
-      try {
-        localStorage.setItem(`sw:${widgetKey}:visitor`, data.visitorToken);
-      } catch {
-        // ignore
-      }
+      // Persist on host via loader (SW_READY); iframe must not keep a second copy on another origin.
       notifyParent('SW_READY', { visitorToken: data.visitorToken });
 
-      if (data.settings?.requireEmail && !data.visitor?.email && !data.visitor?.customerId) {
+      // Pre-chat is for anonymous visitors/leads only — not host-identified users (JWT boot).
+      if (
+        data.settings?.requireEmail &&
+        !data.visitor?.isIdentified &&
+        !data.visitor?.customerId
+      ) {
         setStep('prechat');
       } else {
         setStep('chat');
@@ -59,15 +67,11 @@ export default function App() {
     if (!widgetKey) {
       throw new Error('Missing widget_key');
     }
-    let storedVisitor = '';
-    try {
-      storedVisitor = localStorage.getItem(`sw:${widgetKey}:visitor`) || '';
-    } catch {
-      // ignore
-    }
-    const visitorToken = initialVisitor || storedVisitor;
+    // Visitor continuity token comes from the host page only (loader localStorage → URL param).
+    // Do not read iframe-origin storage — clearing the customer site would not reset the widget.
+    const visitorToken = initialVisitor || '';
     const bootstrapApi = createWidgetApi(null, null);
-    const data = await bootstrapApi.bootstrap(widgetKey, visitorToken);
+    const data = await bootstrapApi.bootstrap(widgetKey, visitorToken, userJwtRef.current);
     return applyBootstrapData(data);
   }, [widgetKey, initialVisitor, applyBootstrapData]);
 
@@ -94,106 +98,176 @@ export default function App() {
     setLoading(false);
   }, [runBootstrap, attachApi]);
 
-  useEffect(() => {
+  const startBootstrap = useCallback(() => {
+    if (bootstrapStartedRef.current) return;
+    bootstrapStartedRef.current = true;
     bootstrap().catch((e) => {
       setError(formatWidgetError(e));
       setLoading(false);
     });
-    return () => apiRef.current?.destroy();
   }, [bootstrap]);
 
   useEffect(() => {
     const onMessage = (event) => {
       if (!event.data?.type) return;
       if (event.data.type === 'SW_OPEN') parentOrigin.current = event.origin;
-      if (event.data.type === 'SW_IDENTIFY' && apiRef.current) {
+      if (event.data.type === 'SW_USER_JWT' && typeof event.data.userJwt === 'string') {
+        userJwtRef.current = event.data.userJwt;
+        if (!bootstrapStartedRef.current) {
+          startBootstrap();
+        } else if (apiRef.current && !configRef.current?.visitor?.isIdentified) {
+          apiRef.current
+            .identify({ userJwt: event.data.userJwt })
+            .then((r) => {
+              setVisitor(r.visitor);
+              configRef.current = { ...configRef.current, visitor: r.visitor };
+              setStep('chat');
+              setChatReload((n) => n + 1);
+            })
+            .catch(() => {});
+        }
+      }
+      if (event.data.type === 'SW_IDENTIFY') {
         const p = event.data.payload;
+        if (p?.userJwt && !bootstrapStartedRef.current) {
+          userJwtRef.current = p.userJwt;
+          startBootstrap();
+          return;
+        }
+        if (!apiRef.current) return;
+        const body = p?.userJwt ? { userJwt: p.userJwt } : p;
         apiRef.current
-          .identify(p)
+          .identify(body)
           .then((r) => {
             setVisitor(r.visitor);
+            configRef.current = {
+              ...configRef.current,
+              visitor: r.visitor,
+            };
+            setConversations([]);
+            setConversationId(null);
+            setMessages([]);
+            setShowList(false);
             setStep('chat');
+            setChatReload((n) => n + 1);
           })
           .catch(() => {});
       }
     };
     window.addEventListener('message', onMessage);
-    return () => window.removeEventListener('message', onMessage);
-  }, []);
+    let t;
+    if (initialUserJwt) {
+      startBootstrap();
+    } else {
+      t = setTimeout(() => startBootstrap(), 80);
+    }
+    return () => {
+      if (t) clearTimeout(t);
+      window.removeEventListener('message', onMessage);
+      apiRef.current?.destroy();
+    };
+  }, [startBootstrap, initialUserJwt]);
+
+  conversationIdRef.current = conversationId;
+  messagesRef.current = messages;
 
   const ensureConversation = useCallback(async () => {
-    if (conversationId) return conversationId;
+    if (conversationIdRef.current) return conversationIdRef.current;
     const api = apiRef.current;
     if (!api) return null;
-    const { conversations: list } = await api.listConversations();
-    setConversations(list || []);
-    const settings = configRef.current?.settings;
-    if (list?.length && !settings?.showConversationList) {
-      setConversationId(list[0].id);
-      return list[0].id;
+    const v = configRef.current?.visitor;
+    const canResumeChat = Boolean(v?.canResumeChat ?? v?.customerId);
+
+    if (canResumeChat) {
+      const { conversations: list } = await api.listConversations();
+      const sorted = [...(list || [])].sort((a, b) => {
+        const ta = a.last_message_at || a.created_at || '';
+        const tb = b.last_message_at || b.created_at || '';
+        return tb.localeCompare(ta);
+      });
+      setConversations(sorted);
+      if (sorted.length > 0) {
+        const latestId = sorted[0].id;
+        conversationIdRef.current = latestId;
+        setConversationId(latestId);
+        return latestId;
+      }
+    } else {
+      setConversations([]);
     }
-    if (list?.length && settings?.showConversationList) {
-      return null;
-    }
+
     const { conversation } = await api.createConversation('Web chat');
+    conversationIdRef.current = conversation.id;
     setConversationId(conversation.id);
     return conversation.id;
-  }, [conversationId]);
+  }, []);
 
-  const loadMessages = useCallback(
-    async (convId) => {
-      const api = apiRef.current;
-      if (!api || !convId) return;
-      try {
-        const since =
-          messages.length > 0 ? messages[messages.length - 1].created_at : null;
-        const { messages: batch } = await api.listMessages(convId, since);
-        if (batch?.length) {
-          setMessages((prev) => {
-            const ids = new Set(prev.map((m) => m.id));
-            const merged = [...prev];
-            for (const m of batch) {
-              if (!ids.has(m.id)) merged.push(m);
-            }
-            return merged.sort((a, b) => a.created_at.localeCompare(b.created_at));
-          });
-          const last = batch[batch.length - 1];
-          if (last.sender_type === 'agent') {
-            notifyParent('SW_UNREAD', { count: 1 });
+  const loadMessages = useCallback(async (convId, { fullHistory = false } = {}) => {
+    const api = apiRef.current;
+    if (!api || !convId) return;
+    try {
+      const prev = messagesRef.current;
+      const since =
+        fullHistory || prev.length === 0 ? null : prev[prev.length - 1]?.created_at ?? null;
+      const { messages: batch } = await api.listMessages(convId, since);
+      if (batch?.length) {
+        setMessages((p) => {
+          const ids = new Set(p.map((m) => m.id));
+          const merged = [...p];
+          for (const m of batch) {
+            if (!ids.has(m.id)) merged.push(m);
           }
+          const next = merged.sort((a, b) => a.created_at.localeCompare(b.created_at));
+          messagesRef.current = next;
+          return next;
+        });
+        const last = batch[batch.length - 1];
+        if (last.sender_type === 'agent') {
+          notifyParent('SW_UNREAD', { count: 1 });
         }
-        try {
-          const { agentTyping: typing } = await api.getTyping(convId);
-          setAgentTyping(typing);
-        } catch {
-          // ignore typing errors during poll
-        }
-      } catch {
-        // Polling: auth refresh is handled in api layer; don't flash errors on background poll
       }
-    },
-    [messages, notifyParent],
-  );
+      try {
+        const { agentTyping: typing } = await api.getTyping(convId);
+        setAgentTyping(typing);
+      } catch {
+        // ignore typing errors during poll
+      }
+    } catch {
+      // Polling: auth refresh is handled in api layer; don't flash errors on background poll
+    }
+  }, [notifyParent]);
 
+  loadMessagesRef.current = loadMessages;
+
+  // Only re-run when entering chat or explicit reload — NOT when messages/conversationId change.
   useEffect(() => {
     if (step !== 'chat' || !apiRef.current) return;
     let cancelled = false;
     (async () => {
       try {
+        setMessages([]);
+        messagesRef.current = [];
         const conv = await ensureConversation();
         if (cancelled || !conv) return;
+        conversationIdRef.current = conv;
         setConversationId(conv);
-        await loadMessages(conv);
-        pollRef.current = setInterval(() => loadMessages(conv), 3000);
+        await loadMessages(conv, { fullHistory: true });
+        if (cancelled) return;
+        pollRef.current = setInterval(() => {
+          loadMessagesRef.current?.(conv);
+        }, 3000);
       } catch (e) {
         if (!cancelled) setError(formatWidgetError(e));
       }
     })();
     return () => {
       cancelled = true;
-      if (pollRef.current) clearInterval(pollRef.current);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
     };
-  }, [step, ensureConversation, loadMessages]);
+  }, [step, chatReload, ensureConversation, loadMessages]);
 
   async function handlePreChat(e) {
     e.preventDefault();
@@ -202,7 +276,9 @@ export default function App() {
     try {
       const r = await apiRef.current.preChat({ email, name });
       setVisitor(r.visitor);
+      configRef.current = { ...configRef.current, visitor: r.visitor };
       setStep('chat');
+      setChatReload((n) => n + 1);
     } catch (err) {
       setError(formatWidgetError(err));
     } finally {
@@ -232,6 +308,8 @@ export default function App() {
   }
 
   const brand = config?.settings?.brandColor || '#2563eb';
+  const canViewHistory = visitor?.isIdentified === true;
+  const canResumeChat = Boolean(visitor?.customerId);
 
   if (loading) {
     return (
@@ -253,7 +331,7 @@ export default function App() {
     <div className="shell" style={{ '--brand': brand }}>
       <header className="header">
         <strong>{config?.settings?.greeting || 'Support'}</strong>
-        {config?.settings?.showConversationList && (
+        {config?.settings?.showConversationList && canViewHistory && (
           <button type="button" className="link" onClick={() => setShowList(!showList)}>
             {showList ? 'Chat' : 'History'}
           </button>
@@ -284,17 +362,26 @@ export default function App() {
         </form>
       )}
 
-      {step === 'chat' && showList && (
+      {step === 'chat' && canViewHistory && showList && (
         <ul className="conv-list">
           {conversations.map((c) => (
             <li key={c.id}>
               <button
                 type="button"
                 onClick={() => {
+                  if (pollRef.current) {
+                    clearInterval(pollRef.current);
+                    pollRef.current = null;
+                  }
+                  conversationIdRef.current = c.id;
                   setConversationId(c.id);
                   setMessages([]);
+                  messagesRef.current = [];
                   setShowList(false);
-                  loadMessages(c.id);
+                  loadMessages(c.id, { fullHistory: true });
+                  pollRef.current = setInterval(() => {
+                    loadMessagesRef.current?.(c.id);
+                  }, 3000);
                 }}
               >
                 {c.subject || 'Conversation'} · {c.status}
@@ -307,10 +394,20 @@ export default function App() {
               className="link"
               onClick={async () => {
                 try {
+                  if (pollRef.current) {
+                    clearInterval(pollRef.current);
+                    pollRef.current = null;
+                  }
                   const { conversation } = await apiRef.current.createConversation('New chat');
+                  conversationIdRef.current = conversation.id;
                   setConversationId(conversation.id);
                   setMessages([]);
+                  messagesRef.current = [];
                   setShowList(false);
+                  await loadMessages(conversation.id, { fullHistory: true });
+                  pollRef.current = setInterval(() => {
+                    loadMessagesRef.current?.(conversation.id);
+                  }, 3000);
                 } catch (err) {
                   setError(formatWidgetError(err));
                 }
