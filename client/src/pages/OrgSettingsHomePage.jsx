@@ -253,8 +253,8 @@ export default function OrgSettingsHomePage() {
               to={`/org/${orgId}/settings/widget`}
               icon={MessageSquare}
               iconClass="bg-blue-600"
-              title="Web messenger widget"
-              description="Embed chat on your website with a script snippet and domain allowlist."
+              title="Messenger"
+              description="Embed web chat, control inbound volume, and manage your installation snippet."
             />
             <SettingsCard
               icon={Phone}

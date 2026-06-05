@@ -30,6 +30,20 @@ export const DEFAULT_WIDGET_SETTINGS = Object.freeze({
   identifyAllowInsecure: false,
   attachmentMaxBytes: 5_242_880,
   captchaEnabled: false,
+  /** Visitors: allow starting new widget conversations. */
+  visitorsAllowStartConversation: true,
+  visitorsPreventMultipleConversations: false,
+  visitorsRequireSearchBeforeStart: false,
+  visitorsAllowStartAfterHelpReaction: true,
+  visitorsPreventReplyClosedConversations: false,
+  visitorsPreventReplyClosedTickets: false,
+  /** Identified users (JWT / identify). */
+  usersAllowStartConversation: true,
+  usersPreventMultipleConversations: false,
+  usersRequireSearchBeforeStart: false,
+  usersAllowStartAfterHelpReaction: false,
+  usersPreventReplyClosedConversations: false,
+  usersPreventReplyClosedTickets: false,
 });
 
 /**

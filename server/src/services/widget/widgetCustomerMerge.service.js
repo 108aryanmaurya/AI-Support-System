@@ -177,7 +177,9 @@ export async function resolveUserCustomerForIdentify({
       if (emailErr) throw new HttpError(500, emailErr.message || 'Failed to fetch customer by email.');
 
       if (byEmail) {
-        
+        if (byEmail.user_id && byEmail.user_id !== normalizedUserId) {
+          throw new HttpError(409, 'Email is already linked to another user.');
+        }
         const { data: updated, error: patchErr } = await supabaseAdmin
           .from('customers')
           .update({

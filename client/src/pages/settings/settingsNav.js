@@ -122,6 +122,13 @@ export const settingsNav = [
         permission: 'channels.manage_email',
         icon: Mail,
       },
+      {
+        id: 'messenger',
+        label: 'Messenger',
+        path: 'widget',
+        permission: 'widget.view',
+        icon: MessageSquare,
+      },
       { id: 'chat-social', label: 'Chat & social', icon: MessageSquare, disabled: true },
       { id: 'phone-sms', label: 'Phone & SMS', icon: Phone, disabled: true },
     ],

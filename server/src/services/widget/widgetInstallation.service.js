@@ -129,14 +129,14 @@ export async function patchWidgetInstallation({
   settings,
   status,
 }) {
-  await getWidgetInstallationById(organizationId, installationId);
+  const existing = await getWidgetInstallationById(organizationId, installationId);
 
   const patch = { updated_at: new Date().toISOString() };
   if (allowedDomains !== undefined) {
     patch.allowed_domains = normalizeDomains(allowedDomains);
   }
   if (settings !== undefined) {
-    patch.settings = mergeWidgetSettings(settings);
+    patch.settings = mergeWidgetSettings({ ...existing.settings, ...settings });
   }
   if (status === 'active' || status === 'disabled') {
     patch.status = status;

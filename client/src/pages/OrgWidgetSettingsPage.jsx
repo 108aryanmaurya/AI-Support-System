@@ -1,6 +1,10 @@
-import { Check, Copy, Loader2, MessageCircle, Plus } from 'lucide-react';
+import { DEFAULT_WIDGET_SETTINGS } from '@ai-support/shared';
+import { Loader2, MessageSquare } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
+import ControlInboundVolumeSection from '../components/widget/ControlInboundVolumeSection.jsx';
+import MessengerInstallSection from '../components/widget/MessengerInstallSection.jsx';
+import { MessengerTabBar } from '../components/widget/MessengerSettingsUi.jsx';
 import { useWorkspaceCanManage } from '../hooks/useWorkspaceCanManage.js';
 import {
   createWidgetInstallation,
@@ -10,32 +14,33 @@ import {
   rotateWidgetSecret,
 } from '../services/widgetApi.js';
 
-function CopyButton({ value }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    if (!value) return;
-    await navigator.clipboard.writeText(value);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
-  return (
-    <button
-      type="button"
-      onClick={copy}
-      className="rounded-lg border border-[#2b3858] p-1.5 text-slate-400 hover:text-white"
-      title="Copy"
-    >
-      {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-    </button>
-  );
+const MESSENGER_TABS = [
+  { id: 'widget', label: 'Widget', disabled: true },
+  { id: 'spotlight', label: 'Spotlight', disabled: true },
+  { id: 'mobile', label: 'Mobile SDKs', disabled: true },
+  { id: 'conversations', label: 'Conversations', disabled: true },
+  { id: 'general', label: 'General' },
+  { id: 'install', label: 'Install' },
+  { id: 'security', label: 'Security', disabled: true },
+];
+
+function mergeSettings(base, patch) {
+  return { ...DEFAULT_WIDGET_SETTINGS, ...base, ...patch };
 }
 
 export default function OrgWidgetSettingsPage() {
   const { orgId } = useParams();
   const canManage = useWorkspaceCanManage(orgId);
+
   const [loading, setLoading] = useState(true);
   const [installations, setInstallations] = useState([]);
+  const [activeInstallationId, setActiveInstallationId] = useState(null);
+  const [settings, setSettings] = useState({ ...DEFAULT_WIDGET_SETTINGS });
+  const [activeTab, setActiveTab] = useState('general');
   const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [loadingSnippet, setLoadingSnippet] = useState(false);
   const [secretReveal, setSecretReveal] = useState(null);
   const [snippet, setSnippet] = useState('');
   const [domains, setDomains] = useState('localhost\n127.0.0.1');
@@ -45,9 +50,15 @@ export default function OrgWidgetSettingsPage() {
     setError('');
     try {
       const data = await fetchWidgetInstallations(orgId);
-      setInstallations(data.installations ?? []);
+      const list = data.installations ?? [];
+      setInstallations(list);
+      setActiveInstallationId((prev) => {
+        if (list.length === 0) return null;
+        if (prev && list.some((i) => i.id === prev)) return prev;
+        return list[0].id;
+      });
     } catch (e) {
-      setError(e.message || 'Failed to load widget settings');
+      setError(e.message || 'Failed to load messenger settings');
     } finally {
       setLoading(false);
     }
@@ -57,7 +68,43 @@ export default function OrgWidgetSettingsPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    const inst = installations.find((i) => i.id === activeInstallationId);
+    if (inst) {
+      setSettings(mergeSettings(inst.settings));
+    }
+  }, [activeInstallationId, installations]);
+
+  async function persistSettings(nextSettings) {
+    if (!canManage || !activeInstallationId) return;
+    setSaving(true);
+    setError('');
+    try {
+      const data = await patchWidgetInstallation(orgId, activeInstallationId, {
+        settings: nextSettings,
+      });
+      setSettings(mergeSettings(data.installation?.settings));
+      setInstallations((prev) =>
+        prev.map((i) =>
+          i.id === activeInstallationId ? { ...i, settings: data.installation?.settings } : i,
+        ),
+      );
+    } catch (e) {
+      setError(e.message || 'Failed to save settings');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleToggle(key, value) {
+    const next = { ...settings, [key]: value };
+    setSettings(next);
+    void persistSettings(next);
+  }
+
   async function handleCreate() {
+    if (!canManage) return;
+    setCreating(true);
     setError('');
     try {
       const domainList = domains
@@ -72,19 +119,45 @@ export default function OrgWidgetSettingsPage() {
       setSecretReveal({
         widgetKey: data.installation.widget_key,
         secret: data.secret,
-        snippet: data.snippet,
       });
-      setSnippet(data.snippet);
-      await load();
+      setSnippet(data.snippet ?? '');
+      setActiveInstallationId(data.installation.id);
+      setSettings(mergeSettings(data.installation.settings));
+      const refreshed = await fetchWidgetInstallations(orgId);
+      setInstallations(refreshed.installations ?? []);
+      setActiveTab('install');
     } catch (e) {
       setError(e.message);
+    } finally {
+      setCreating(false);
     }
   }
 
   async function showSnippet(installationId) {
+    setLoadingSnippet(true);
+    setError('');
     try {
       const data = await fetchWidgetSnippet(orgId, installationId);
       setSnippet(data.snippet);
+      setActiveInstallationId(installationId);
+      setActiveTab('install');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoadingSnippet(false);
+    }
+  }
+
+  async function handleRotateSecret(inst) {
+    if (!canManage) return;
+    setError('');
+    try {
+      const data = await rotateWidgetSecret(orgId, inst.id);
+      setSecretReveal({
+        widgetKey: inst.widget_key,
+        secret: data.secret,
+      });
+      setActiveTab('install');
     } catch (e) {
       setError(e.message);
     }
@@ -99,106 +172,108 @@ export default function OrgWidgetSettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-8 p-6 text-slate-200">
-      <div className="flex items-center gap-3">
-        <MessageCircle className="h-8 w-8 text-blue-400" />
-        <div>
-          <h1 className="text-2xl font-semibold text-white">Web messenger widget</h1>
-          <p className="text-sm text-slate-400">
-            Embed chat on your site. Test on <code className="text-slate-300">localhost:5180</code>{' '}
-            (messenger-web/test-site).
-          </p>
-        </div>
-      </div>
-
-      {error && <p className="rounded-lg bg-red-950/50 px-4 py-2 text-sm text-red-300">{error}</p>}
-
-      {canManage && (
-        <section className="rounded-xl border border-[#2b3858] bg-[#0f1424] p-5">
-          <h2 className="mb-3 font-medium text-white">Create installation</h2>
-          <label className="block text-sm text-slate-400">Allowed domains (one per line)</label>
-          <textarea
-            className="mt-1 w-full rounded-lg border border-[#2b3858] bg-[#1a2238] p-2 text-sm"
-            rows={3}
-            value={domains}
-            onChange={(e) => setDomains(e.target.value)}
-          />
-          <button
-            type="button"
-            onClick={handleCreate}
-            className="mt-3 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
-          >
-            <Plus className="h-4 w-4" />
-            Create widget
-          </button>
-        </section>
-      )}
-
-      {secretReveal && (
-        <section className="rounded-xl border border-amber-800/50 bg-amber-950/30 p-5">
-          <h2 className="font-medium text-amber-200">Save these values — shown once</h2>
-          <p className="mt-2 text-sm">
-            Widget key: <code>{secretReveal.widgetKey}</code>
-            <CopyButton value={secretReveal.widgetKey} />
-          </p>
-          <p className="mt-2 break-all text-sm">
-            Secret: <code>{secretReveal.secret}</code>
-            <CopyButton value={secretReveal.secret} />
-          </p>
-          <pre className="mt-3 overflow-x-auto rounded bg-black/40 p-3 text-xs">{snippet}</pre>
-        </section>
-      )}
-
-      <section className="space-y-4">
-        <h2 className="font-medium text-white">Installations</h2>
-        {installations.length === 0 && (
-          <p className="text-sm text-slate-400">No widget yet. Create one above.</p>
-        )}
-        {installations.map((inst) => (
-          <div key={inst.id} className="rounded-xl border border-[#2b3858] bg-[#0f1424] p-4">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <code className="text-sm text-blue-300">{inst.widget_key}</code>
-              <span className="text-xs text-slate-500">{inst.status}</span>
-            </div>
-            <p className="mt-2 text-xs text-slate-400">
-              Domains: {(inst.allowed_domains || []).join(', ') || 'none'}
-            </p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="rounded-lg border border-[#2b3858] px-3 py-1 text-xs hover:bg-[#1a2238]"
-                onClick={() => showSnippet(inst.id)}
-              >
-                Show snippet
-              </button>
-              {canManage && (
-                <button
-                  type="button"
-                  className="rounded-lg border border-[#2b3858] px-3 py-1 text-xs hover:bg-[#1a2238]"
-                  onClick={async () => {
-                    const data = await rotateWidgetSecret(orgId, inst.id);
-                    setSecretReveal({
-                      widgetKey: inst.widget_key,
-                      secret: data.secret,
-                      snippet: null,
-                    });
-                  }}
-                >
-                  Rotate secret
-                </button>
-              )}
+    <main className="h-full min-h-0 overflow-y-auto px-4 py-6 sm:px-8 lg:px-10">
+      <div className="mx-auto max-w-3xl">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600/20 text-blue-400">
+              <MessageSquare className="h-5 w-5" />
+            </span>
+            <div>
+              <h1 className="text-xl font-semibold text-white">Messenger</h1>
+              <p className="text-sm text-slate-400">Web chat channel for your website</p>
             </div>
           </div>
-        ))}
-      </section>
+          <Link
+            to={`/org/${orgId}/settings`}
+            className="text-sm text-slate-400 hover:text-white"
+          >
+            ← Settings
+          </Link>
+        </div>
 
-      {snippet && (
-        <section className="rounded-xl border border-[#2b3858] bg-[#0f1424] p-4">
-          <h3 className="mb-2 text-sm font-medium">Embed snippet</h3>
-          <pre className="overflow-x-auto rounded bg-black/40 p-3 text-xs">{snippet}</pre>
-          <CopyButton value={snippet} />
-        </section>
-      )}
-    </div>
+        {error && (
+          <p className="mb-4 rounded-lg bg-red-950/50 px-4 py-2 text-sm text-red-300">{error}</p>
+        )}
+
+        {!canManage && (
+          <p className="mb-4 rounded-lg border border-[#2b3858] bg-[#12192c] px-4 py-2 text-sm text-slate-400">
+            You have read-only access. Ask an admin to change messenger settings.
+          </p>
+        )}
+
+        {installations.length > 1 && (
+          <div className="mb-4">
+            <label className="text-xs font-medium uppercase tracking-wide text-slate-500">
+              Installation
+            </label>
+            <select
+              className="mt-1 block w-full max-w-md rounded-lg border border-[#2b3858] bg-[#12192c] px-3 py-2 text-sm text-white"
+              value={activeInstallationId ?? ''}
+              onChange={(e) => setActiveInstallationId(e.target.value)}
+            >
+              {installations.map((inst) => (
+                <option key={inst.id} value={inst.id}>
+                  {inst.widget_key}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <MessengerTabBar tabs={MESSENGER_TABS} activeTab={activeTab} onChange={setActiveTab} />
+
+        <div className="mt-6">
+          {activeTab === 'general' && (
+            <>
+              {installations.length === 0 ? (
+                <div className="rounded-xl border border-[#2b3858] bg-[#12192c] p-6 text-center">
+                  <p className="text-sm text-slate-400">
+                    Create an installation on the <strong className="text-white">Install</strong>{' '}
+                    tab to configure inbound volume.
+                  </p>
+                  <button
+                    type="button"
+                    className="mt-4 text-sm font-medium text-[#ff7a59] hover:underline"
+                    onClick={() => setActiveTab('install')}
+                  >
+                    Go to Install →
+                  </button>
+                </div>
+              ) : (
+                <ControlInboundVolumeSection
+                  settings={settings}
+                  onToggle={handleToggle}
+                  saving={saving}
+                  readOnly={!canManage}
+                />
+              )}
+            </>
+          )}
+
+          {activeTab === 'install' && (
+            <MessengerInstallSection
+              installations={installations}
+              canManage={canManage}
+              snippet={snippet}
+              secretReveal={secretReveal}
+              domains={domains}
+              onDomainsChange={setDomains}
+              onCreate={handleCreate}
+              onShowSnippet={showSnippet}
+              onRotateSecret={handleRotateSecret}
+              creating={creating}
+              loadingSnippet={loadingSnippet}
+            />
+          )}
+
+          {['widget', 'spotlight', 'mobile', 'conversations', 'security'].includes(activeTab) && (
+            <div className="rounded-xl border border-[#2b3858] bg-[#12192c] p-8 text-center">
+              <p className="text-sm text-slate-400">This section is coming soon.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </main>
   );
 }
