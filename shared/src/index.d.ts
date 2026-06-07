@@ -298,3 +298,32 @@ export function permissionsForRole(
 ): Record<string, Record<string, boolean>>;
 export function hasOrgPermission(permissions: unknown, key: string): boolean;
 export function hasAllOrgPermissions(permissions: unknown, keys: string[]): boolean;
+
+export const SEARCH_ENTITY_TYPES: readonly ['conversation', 'message', 'customer'];
+export const SEARCH_CHANNEL_TYPES: readonly ['email', 'web', 'whatsapp', 'messenger'];
+export const SEARCH_FILTER_TOKENS: readonly ['status', 'priority', 'tag', 'assignee', 'channel'];
+export const SEARCH_LIMITS: Readonly<{
+  maxQueryLength: number;
+  defaultPageSize: number;
+  maxPageSize: number;
+  maxPage: number;
+}>;
+export const SEARCH_ERROR_CODES: Readonly<{
+  invalid_input: string;
+  forbidden: string;
+  unavailable: string;
+  rate_limited: string;
+}>;
+export function isSearchEntityType(value: unknown): value is (typeof SEARCH_ENTITY_TYPES)[number];
+export function isSearchChannelType(value: unknown): value is (typeof SEARCH_CHANNEL_TYPES)[number];
+export function normalizeSearchPagination(raw?: {
+  page?: unknown;
+  pageSize?: unknown;
+}): { page: number; pageSize: number; offset: number };
+export function normalizeSearchQuery(query: unknown): string;
+export function searchErrorShape(message: string, code?: string): { error: string; code?: string };
+export function searchUnavailableShape(message?: string): {
+  available: false;
+  error: string;
+  code: string;
+};

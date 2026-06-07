@@ -72,6 +72,8 @@ flowchart TB
 | [Multi-channel](./multi-channel.md) | Ingress without end-user JWT |
 | [Platform](./platform-and-monorepo.md) | CORS origins from `env.corsOrigins` |
 | [RBAC sprints](./rba-sprints.md) | Sprint plan and capability matrix |
+| [Search infra baseline](./search-infra-baseline.md) | Tenant-safe search scope and API contracts (S0) |
+| [Search infra sprints](./sprints/search-infra-sprints.md) | Search implementation sprint plan |
 
 ## RBAC (ADMIN / AGENT)
 
@@ -87,6 +89,20 @@ flowchart TB
 
 `GET /api/org/:orgId/settings/permissions` returns effective permissions for the signed-in member.
 
+## Search: tenant-safe before ranking
+
+Search endpoints (`/api/org/:orgId/search*`, future semantic/advanced routes) MUST enforce tenancy and visibility **before** ranking, highlighting, facets, or hydration — not as a post-filter on scored results.
+
+| Control | Requirement |
+|---------|-------------|
+| Org scope | `requireOrgAccess`; `organization_id` from URL param only |
+| SQL/RPC filter | `WHERE organization_id = :orgId` (and inbox visibility) applied first |
+| Inbox ACL | Same rules as conversation list: `listAccessibleInboxIds` / `canAccessInboxId` |
+| Internal notes | Respect `messages.internal_note`; omit or redact snippets when denied |
+| Cross-org leakage | Facet counts and semantic vector search must never aggregate across tenants |
+
+Full scope inventory, API contracts, and S0 checklist: [search-infra-baseline.md](./search-infra-baseline.md). Sprint plan: [search-infra-sprints.md](./sprints/search-infra-sprints.md).
+
 ## Status
 
-**Complete** for current agent and ingress models, including capability-based RBAC (Sprints 1–6). Review RLS policies when adding new tables. Team/VIP visibility (Sprint 7) deferred.
+**Complete** for current agent and ingress models, including capability-based RBAC (Sprints 1–6). Review RLS policies when adding new tables. Team/VIP visibility (Sprint 7) deferred. Search S0 baseline documented (2026-06-07).

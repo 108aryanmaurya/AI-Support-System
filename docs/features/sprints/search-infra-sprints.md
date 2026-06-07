@@ -62,8 +62,10 @@ flowchart LR
 
 **Exit**
 
-- [ ] `search-infra-sprints.md` agreed by team.
-- [ ] “Tenant-safe before ranking” constraint documented in `security-and-access-control.md` (or linked).
+- [x] `search-infra-sprints.md` agreed by team.
+- [x] “Tenant-safe before ranking” constraint documented in `security-and-access-control.md` (or linked).
+
+**Evidence:** [search-infra-baseline.md](../search-infra-baseline.md), `shared/src/searchContracts.js`.
 
 ---
 
@@ -273,7 +275,7 @@ flowchart LR
 
 | Sprint | Status |
 |--------|--------|
-| S0 — Baseline + contracts | Not started |
+| S0 — Baseline + contracts | **Complete** (2026-06-07) — [baseline](../search-infra-baseline.md) |
 | S1 — Structured search API | Not started |
 | S2 — Postgres FTS | Not started |
 | S3 — Advanced filters/facets | Not started |

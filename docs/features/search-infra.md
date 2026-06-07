@@ -818,3 +818,17 @@ Semantic Retrieval Engine
 +
 AI Context Infrastructure
 ```
+
+---
+
+# Implementation status
+
+Sprint breakdown and exit criteria: [search-infra-sprints.md](./sprints/search-infra-sprints.md).
+
+| Sprint | Status | Doc |
+|--------|--------|-----|
+| S0 — Baseline + contracts | **Complete** (2026-06-07) | [search-infra-baseline.md](./search-infra-baseline.md) |
+| S1 — Structured search API | Not started | — |
+| S2+ | Not started | — |
+
+Shared contracts: `shared/src/searchContracts.js` (`SEARCH_LIMITS`, result shapes, error codes).

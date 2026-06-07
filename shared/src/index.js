@@ -347,3 +347,17 @@ export {
   isValidKnowledgeSlug,
   normalizeKnowledgeSlug,
 } from './knowledgeArticle.js';
+
+export {
+  SEARCH_CHANNEL_TYPES,
+  SEARCH_ENTITY_TYPES,
+  SEARCH_ERROR_CODES,
+  SEARCH_FILTER_TOKENS,
+  SEARCH_LIMITS,
+  isSearchChannelType,
+  isSearchEntityType,
+  normalizeSearchPagination,
+  normalizeSearchQuery,
+  searchErrorShape,
+  searchUnavailableShape,
+} from './searchContracts.js';
