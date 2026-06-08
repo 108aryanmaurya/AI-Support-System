@@ -327,3 +327,26 @@ export function searchUnavailableShape(message?: string): {
   error: string;
   code: string;
 };
+
+export function tokenizeSearchQuery(input: string): string[];
+export function parseSearchQuery(raw: unknown): {
+  text: string;
+  filters: {
+    status?: string;
+    priority?: string;
+    assignee?: string;
+    channel?: string;
+    tags: string[];
+  };
+};
+export function hasSearchCriteria(criteria: {
+  text?: string;
+  filters?: Record<string, unknown>;
+  status?: string;
+  priority?: string;
+  assignee?: string;
+  channel?: string;
+  tags?: string[];
+  dateFrom?: string;
+  dateTo?: string;
+}): boolean;

@@ -2,9 +2,9 @@
 
 ## Overview
 
-A dedicated **Search** route exists under the org workspace with the same inbox sidebar chrome. **Sprint 0** locked scope, permissions, and API contracts; **no backend search API** ships until S1.
+A dedicated **Search** route under the org workspace supports structured inbox search (filters + basic text match). Full-text search (snippets/highlights) ships in S2.
 
-**Baseline (S0):** [search-infra-baseline.md](./search-infra-baseline.md) · **Sprint plan:** [search-infra-sprints.md](./sprints/search-infra-sprints.md)
+**Docs:** [S0 baseline](./search-infra-baseline.md) · [Sprint plan](./sprints/search-infra-sprints.md)
 
 ## Capabilities
 
@@ -31,4 +31,4 @@ A dedicated **Search** route exists under the org workspace with the same inbox 
 
 ## Status
 
-**Partial** — UI shell + S0 contracts. Implement `GET .../search` (S1) + wire input before marking complete in `IMPLEMENTED-FEATURES.md`.
+**Partial** — Structured search API (S1) without FTS/snippets. Mark complete after S2 (Postgres FTS) is shipped and wired.

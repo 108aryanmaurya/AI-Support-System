@@ -32,6 +32,7 @@ Per-feature implementation guides for the AI Support System monorepo. Each doc e
 | [search.md](./features/search.md) | Search page *(partial)* |
 | [search-infra.md](./features/search-infra.md) | Search architecture plan (FTS, semantic, retrieval) |
 | [search-infra-baseline.md](./features/search-infra-baseline.md) | Search S0 — scope, permissions, API contracts |
+| [search-infra-s1.md](./features/search-infra-s1.md) | Search S1 — structured `GET .../search` API + UI |
 | [search-infra-sprints.md](./features/sprints/search-infra-sprints.md) | Search infrastructure implementation sprints |
 | [ai-capabilities.md](./features/ai-capabilities.md) | AI stubs, schema hooks, roadmap link |
 | [knowledge-base.md](./features/knowledge-base.md) | Articles, search, file ingest (Phase 2) |

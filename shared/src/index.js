@@ -361,3 +361,9 @@ export {
   searchErrorShape,
   searchUnavailableShape,
 } from './searchContracts.js';
+
+export {
+  hasSearchCriteria,
+  parseSearchQuery,
+  tokenizeSearchQuery,
+} from './searchQueryParser.js';

@@ -88,8 +88,10 @@ flowchart LR
 
 **Exit**
 
-- [ ] Can search by structured filters without scanning full tables (indexes in S2 help).
-- [ ] 400/403 behavior consistent and documented.
+- [x] Can search by structured filters without scanning full tables (indexes in S2 help).
+- [x] 400/403 behavior consistent and documented.
+
+**Evidence:** `GET /api/org/:orgId/search`, `structuredSearch.service.js`, `searchQueryParser.js`, `InboxSearchPage.jsx`.
 
 ---
 
@@ -276,7 +278,7 @@ flowchart LR
 | Sprint | Status |
 |--------|--------|
 | S0 — Baseline + contracts | **Complete** (2026-06-07) — [baseline](../search-infra-baseline.md) |
-| S1 — Structured search API | Not started |
+| S1 — Structured search API | **Complete** (2026-06-07) |
 | S2 — Postgres FTS | Not started |
 | S3 — Advanced filters/facets | Not started |
 | S4 — UX quick + advanced search | Not started |
