@@ -42,6 +42,36 @@ const ENTITY_BADGE = {
   customer: 'bg-[#1f4d3a] text-slate-100',
 }
 
+/** Render FTS snippet with optional `<mark>` highlights from ts_headline. */
+function HighlightSnippet({ text }) {
+  if (!text || typeof text !== 'string') return null
+  if (!text.includes('<mark>')) return text
+
+  const nodes = []
+  let inMark = false
+  for (const part of text.split(/(<\/?mark>)/)) {
+    if (part === '<mark>') {
+      inMark = true
+      continue
+    }
+    if (part === '</mark>') {
+      inMark = false
+      continue
+    }
+    if (!part) continue
+    nodes.push(
+      inMark ? (
+        <mark key={nodes.length} className="rounded bg-amber-400/25 px-0.5 text-amber-100">
+          {part}
+        </mark>
+      ) : (
+        <span key={nodes.length}>{part}</span>
+      ),
+    )
+  }
+  return nodes
+}
+
 function resultLink(orgId, result) {
   if (result.entityType === 'customer') {
     const email = result.metadata?.email
@@ -308,7 +338,9 @@ export default function InboxSearchPage() {
                               <span className="truncate font-medium text-white">{row.title}</span>
                             </div>
                             {row.snippet ? (
-                              <p className="mt-1 line-clamp-2 text-sm text-slate-400">{row.snippet}</p>
+                              <p className="mt-1 line-clamp-2 text-sm text-slate-400">
+                                <HighlightSnippet text={row.snippet} />
+                              </p>
                             ) : null}
                           </div>
                           {row.metadata?.status ? (

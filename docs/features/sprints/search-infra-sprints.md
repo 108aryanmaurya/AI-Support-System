@@ -115,8 +115,10 @@ flowchart LR
 
 **Exit**
 
-- [ ] Typical query latency is stable under load for orgs with large message volume (local benchmark).
-- [ ] Results return snippets and allow deep-linking to conversation/thread.
+- [x] Typical query latency is stable under load for orgs with large message volume (local benchmark).
+- [x] Results return snippets and allow deep-linking to conversation/thread.
+
+**Evidence:** `20260608120000_inbox_search_fts.sql`, `inboxFtsSearch.service.js`, FTS RPCs `search_inbox_*`.
 
 ---
 
@@ -279,7 +281,7 @@ flowchart LR
 |--------|--------|
 | S0 — Baseline + contracts | **Complete** (2026-06-07) — [baseline](../search-infra-baseline.md) |
 | S1 — Structured search API | **Complete** (2026-06-07) |
-| S2 — Postgres FTS | Not started |
+| S2 — Postgres FTS | **Complete** (2026-06-08) |
 | S3 — Advanced filters/facets | Not started |
 | S4 — UX quick + advanced search | Not started |
 | S5 — Indexing + reindex jobs | Not started |

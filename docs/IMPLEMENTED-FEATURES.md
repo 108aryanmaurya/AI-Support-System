@@ -237,7 +237,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ## 13. Search
 
-- **Search page** — `/org/:orgId/search` with inbox sidebar, structured filters, and `GET /api/org/:orgId/search` (S1 structured search; Postgres FTS/snippets in S2) *(partial)*
+- **Search** — `/org/:orgId/search` + `GET /api/org/:orgId/search`: structured filters, Postgres FTS (`search_tsv` + `search_inbox_*` RPCs), ranked snippets with highlights *(partial — no CMD+K / semantic yet)*
 
 ---
 

@@ -14,6 +14,11 @@ import {
 import { supabaseAdmin } from '../../config/supabase.js';
 import { HttpError } from '../../utils/httpError.js';
 import { listAccessibleInboxIds } from '../inboxAccess.service.js';
+import {
+  searchConversationsFts,
+  searchCustomersFts,
+  searchMessagesFts,
+} from './inboxFtsSearch.service.js';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -24,10 +29,6 @@ function searchHttpError(status, message, code) {
   const err = new HttpError(status, message);
   if (code) err.code = code;
   return err;
-}
-
-function escapeIlike(value) {
-  return String(value).replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
 /**
@@ -353,35 +354,47 @@ async function searchConversations({
   if (assignee) matchedFields.push('assignee');
   if (tagNames.length) matchedFields.push('tag');
 
-  let tagConversationIds = null;
+  let tagIds = null;
   if (tagNames.length) {
-    const { tagIds, missingNames } = await resolveTagIdsByNames(organizationId, tagNames);
-    if (missingNames.length === tagNames.length) {
+    const resolved = await resolveTagIdsByNames(organizationId, tagNames);
+    if (resolved.missingNames.length === tagNames.length) {
       return {
         results: [],
         total: 0,
-        appliedFilters: { tags: tagNames, tagsNotFound: missingNames },
+        appliedFilters: { tags: tagNames, tagsNotFound: resolved.missingNames },
       };
     }
-    tagConversationIds = await conversationIdsForAllTags(organizationId, tagIds);
-    if (tagConversationIds.length === 0) {
+    tagIds = resolved.tagIds;
+    if (!tagIds.length) {
       return { results: [], total: 0, appliedFilters: { tags: tagNames } };
     }
   }
 
-  let customerIdsForText = null;
   if (text) {
-    const esc = escapeIlike(text);
-    const { data: customers, error: custErr } = await supabaseAdmin
-      .from('customers')
-      .select('id')
-      .eq('organization_id', organizationId)
-      .or(`email.ilike.%${esc}%,name.ilike.%${esc}%,phone.ilike.%${esc}%`)
-      .limit(50);
+    return searchConversationsFts({
+      organizationId,
+      text,
+      status,
+      priority,
+      channel,
+      assigneeMemberId,
+      unassignedOnly,
+      tagIds,
+      dateFrom,
+      dateTo,
+      inboxIds,
+      viewAll,
+      pagination,
+      matchedFields,
+    });
+  }
 
-    if (custErr) throw new HttpError(500, custErr.message || 'Customer lookup failed.');
-    customerIdsForText = (customers ?? []).map((c) => c.id).filter(Boolean);
-    matchedFields.push('text');
+  let tagConversationIds = null;
+  if (tagIds?.length) {
+    tagConversationIds = await conversationIdsForAllTags(organizationId, tagIds);
+    if (tagConversationIds.length === 0) {
+      return { results: [], total: 0, appliedFilters: { tags: tagNames } };
+    }
   }
 
   let query = supabaseAdmin
@@ -405,15 +418,6 @@ async function searchConversations({
   if (dateTo) query = query.lte('last_message_at', dateTo);
   if (tagConversationIds) query = query.in('id', tagConversationIds);
 
-  if (text) {
-    const esc = escapeIlike(text);
-    const parts = [`subject.ilike.%${esc}%`];
-    if (customerIdsForText?.length) {
-      parts.push(`customer_id.in.(${customerIdsForText.join(',')})`);
-    }
-    query = query.or(parts.join(','));
-  }
-
   const { data, error, count } = await query
     .order('last_message_at', { ascending: false })
     .range(pagination.offset, pagination.offset + pagination.pageSize - 1);
@@ -433,34 +437,7 @@ async function searchConversations({
  */
 async function searchCustomers({ organizationId, text, pagination }) {
   if (!text) return { results: [], total: 0 };
-
-  const esc = escapeIlike(text);
-  let query = supabaseAdmin
-    .from('customers')
-    .select('id, name, email, phone, external_id, customer_type, created_at', { count: 'exact' })
-    .eq('organization_id', organizationId)
-    .or(`email.ilike.%${esc}%,name.ilike.%${esc}%,phone.ilike.%${esc}%,external_id.ilike.%${esc}%`);
-
-  const { data, error, count } = await query
-    .order('created_at', { ascending: false })
-    .range(pagination.offset, pagination.offset + pagination.pageSize - 1);
-
-  if (error) throw new HttpError(500, error.message || 'Customer search failed.');
-
-  const results = (data ?? []).map((row) => ({
-    entityType: 'customer',
-    entityId: row.id,
-    title: row.name?.trim() || row.email?.trim() || 'Customer',
-    snippet: truncateSnippet([row.email, row.phone, row.external_id].filter(Boolean).join(' · ')),
-    rank: 1,
-    matchedFields: ['text'],
-    metadata: {
-      email: row.email ?? null,
-      customerType: row.customer_type ?? null,
-    },
-  }));
-
-  return { results, total: count ?? results.length };
+  return searchCustomersFts({ organizationId, text, pagination });
 }
 
 /**
@@ -477,57 +454,14 @@ async function searchMessages({ organizationId, membership, orgPermissions, text
 
   const includeInternalNotes = hasOrgPermission(orgPermissions, 'messages.internal_note');
 
-  let query = supabaseAdmin
-    .from('messages')
-    .select(
-      'id, conversation_id, content, sender_type, created_at, conversations!inner(id, subject, inbox_id, organization_id, customers(name, email))',
-      { count: 'exact' },
-    )
-    .eq('organization_id', organizationId)
-    .ilike('content', `%${escapeIlike(text)}%`);
-
-  if (!includeInternalNotes) {
-    query = query.neq('sender_type', 'internal_note');
-  }
-
-  const { data, error, count } = await query
-    .order('created_at', { ascending: false })
-    .range(0, pagination.pageSize - 1);
-
-  if (error) throw new HttpError(500, error.message || 'Message search failed.');
-
-  const rows = (data ?? []).filter((row) => {
-    const conv = row.conversations;
-    if (!conv || conv.organization_id !== organizationId) return false;
-    const inboxId = conv.inbox_id;
-    if (!inboxId) return true;
-    if (viewAll) return true;
-    return inboxIds.includes(inboxId);
+  return searchMessagesFts({
+    organizationId,
+    text,
+    inboxIds,
+    viewAll,
+    includeInternalNotes,
+    pagination,
   });
-
-  const results = rows.map((row) => {
-    const conv = row.conversations;
-    const title =
-      (typeof conv?.subject === 'string' && conv.subject.trim()) ||
-      conv?.customers?.name?.trim?.() ||
-      conv?.customers?.email?.trim?.() ||
-      'Message';
-    return {
-      entityType: 'message',
-      entityId: row.id,
-      conversationId: row.conversation_id,
-      title,
-      snippet: truncateSnippet(row.content),
-      rank: 1,
-      matchedFields: ['content'],
-      metadata: {
-        senderType: row.sender_type,
-        createdAt: row.created_at,
-      },
-    };
-  });
-
-  return { results, total: count ?? results.length };
 }
 
 /**
