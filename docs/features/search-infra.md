@@ -830,6 +830,7 @@ Sprint breakdown and exit criteria: [search-infra-sprints.md](./sprints/search-i
 | S0 — Baseline + contracts | **Complete** (2026-06-07) | [search-infra-baseline.md](./search-infra-baseline.md) |
 | S1 — Structured search API | **Complete** (2026-06-07) | [search.md](./search.md) |
 | S2 — Postgres FTS | **Complete** (2026-06-08) | `20260608120000_inbox_search_fts.sql` |
-| S3+ | Not started | — |
+| S3 — Advanced filters/facets | **Complete** (2026-06-08) | `20260609130000_inbox_search_advanced.sql` |
+| S4+ | Not started | — |
 
 Shared contracts: `shared/src/searchContracts.js`. FTS service: `server/src/services/search/inboxFtsSearch.service.js`.

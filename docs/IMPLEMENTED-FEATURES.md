@@ -237,7 +237,7 @@ Inventory of features **implemented in the codebase today** (client, server, sha
 
 ## 13. Search
 
-- **Search** — `/org/:orgId/search` + `GET /api/org/:orgId/search`: structured filters, Postgres FTS (`search_tsv` + `search_inbox_*` RPCs), ranked snippets with highlights *(partial — no CMD+K / semantic yet)*
+- **Search** — `/org/:orgId/search` + `GET/POST .../search/advanced`: structured + multi-select filters, Postgres FTS, facets, saved searches (localStorage); ranked snippets with highlights *(partial — no CMD+K / semantic yet)*
 
 ---
 

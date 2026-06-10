@@ -367,3 +367,11 @@ export {
   parseSearchQuery,
   tokenizeSearchQuery,
 } from './searchQueryParser.js';
+
+export {
+  ADVANCED_SEARCH_LIMITS,
+  hasAdvancedSearchCriteria,
+  normalizeSearchFilterArrays,
+  parseAdvancedSearchBody,
+  parseSearchStringArray,
+} from './advancedSearch.js';

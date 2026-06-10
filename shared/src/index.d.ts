@@ -350,3 +350,34 @@ export function hasSearchCriteria(criteria: {
   dateFrom?: string;
   dateTo?: string;
 }): boolean;
+
+export const ADVANCED_SEARCH_LIMITS: Readonly<{
+  maxMultiSelect: number;
+  maxSavedSearches: number;
+  savedSearchNameMax: number;
+}>;
+export function parseSearchStringArray(raw: unknown, max?: number): string[];
+export function normalizeSearchFilterArrays(raw?: Record<string, unknown>): {
+  statuses: string[];
+  priorities: string[];
+  channels: string[];
+  assignees: string[];
+  tags: string[];
+  aiIntents: string[];
+};
+export function parseAdvancedSearchBody(body: unknown): {
+  text: string;
+  statuses: string[];
+  priorities: string[];
+  channels: string[];
+  assignees: string[];
+  tags: string[];
+  aiIntents: string[];
+  dateFrom: string | null;
+  dateTo: string | null;
+  slaAtRisk: boolean | null;
+  entityType: string;
+  includeFacets: boolean;
+  rawQuery: string | null;
+};
+export function hasAdvancedSearchCriteria(criteria: Record<string, unknown>): boolean;

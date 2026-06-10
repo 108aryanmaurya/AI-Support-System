@@ -11,8 +11,8 @@ describe('parseStructuredSearchRequest', () => {
       page: '2',
       pageSize: '10',
     });
-    assert.equal(parsed.status, 'open');
-    assert.equal(parsed.priority, 'high');
+    assert.deepEqual(parsed.statuses, ['open']);
+    assert.deepEqual(parsed.priorities, ['high']);
     assert.equal(parsed.text, 'refund');
     assert.equal(parsed.pagination.page, 2);
     assert.equal(parsed.pagination.pageSize, 10);
@@ -21,8 +21,8 @@ describe('parseStructuredSearchRequest', () => {
   it('allows structured-only search without free text', () => {
     const parsed = parseStructuredSearchRequest({ status: 'open', assignee: 'me' });
     assert.equal(parsed.text, '');
-    assert.equal(parsed.status, 'open');
-    assert.equal(parsed.assignee, 'me');
+    assert.deepEqual(parsed.statuses, ['open']);
+    assert.deepEqual(parsed.assignees, ['me']);
   });
 
   it('rejects empty criteria with invalid_input code', () => {

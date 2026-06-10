@@ -8,6 +8,7 @@ import {
   isConversationPriority,
   isConversationStatus,
   isSearchChannelType,
+  normalizeSearchFilterArrays,
   normalizeSearchPagination,
   parseSearchQuery,
 } from '@ai-support/shared';
@@ -19,6 +20,11 @@ import {
   searchCustomersFts,
   searchMessagesFts,
 } from './inboxFtsSearch.service.js';
+import {
+  applyConversationFilters,
+  buildMatchedFields,
+  normalizeSearchCriteria,
+} from './searchFilterUtils.js';
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -143,18 +149,48 @@ export function parseStructuredSearchRequest(query) {
     throw searchHttpError(400, 'dateFrom must be before dateTo.', SEARCH_ERROR_CODES.invalid_input);
   }
 
-  const criteria = {
-    text,
+  const arrays = normalizeSearchFilterArrays({
     status,
     priority,
-    assignee,
     channel,
+    assignee,
     tags: parseTagNamesParam(tagNames),
+  });
+
+  for (const a of arrays.assignees) {
+    const lower = a.toLowerCase();
+    if (!['me', 'unassigned', 'none'].includes(lower) && !UUID_RE.test(a)) {
+      throw searchHttpError(
+        400,
+        'assignee must be me, unassigned, or a member UUID.',
+        SEARCH_ERROR_CODES.invalid_input,
+      );
+    }
+  }
+
+  const criteria = {
+    text,
+    statuses: arrays.statuses,
+    priorities: arrays.priorities,
+    channels: arrays.channels,
+    assignees: arrays.assignees,
+    tags: arrays.tags,
     dateFrom,
     dateTo,
+    slaAtRisk: null,
+    aiIntents: [],
   };
 
-  if (!hasSearchCriteria(criteria)) {
+  if (!hasSearchCriteria({
+    text,
+    status: arrays.statuses[0],
+    priority: arrays.priorities[0],
+    assignee: arrays.assignees[0],
+    channel: arrays.channels[0],
+    tags: arrays.tags,
+    dateFrom,
+    dateTo,
+  })) {
     throw searchHttpError(
       400,
       'Provide q and/or structured filters (status, priority, assignee, tag, channel, date range).',
@@ -168,29 +204,6 @@ export function parseStructuredSearchRequest(query) {
   });
 
   return { ...criteria, entityType, pagination, rawQuery: qRaw.trim() || null };
-}
-
-/**
- * @param {string | null} assignee
- * @param {string} memberId
- */
-function resolveAssigneeMemberId(assignee, memberId) {
-  if (!assignee) return { assigneeMemberId: null, unassignedOnly: false };
-  const value = assignee.trim().toLowerCase();
-  if (value === 'me') {
-    return { assigneeMemberId: memberId, unassignedOnly: false };
-  }
-  if (value === 'unassigned' || value === 'none') {
-    return { assigneeMemberId: null, unassignedOnly: true };
-  }
-  if (!UUID_RE.test(assignee.trim())) {
-    throw searchHttpError(
-      400,
-      'assignee must be me, unassigned, or a member UUID.',
-      SEARCH_ERROR_CODES.invalid_input,
-    );
-  }
-  return { assigneeMemberId: assignee.trim(), unassignedOnly: false };
 }
 
 /**
@@ -326,15 +339,7 @@ async function searchConversations({
   organizationId,
   membership,
   orgPermissions,
-  text,
-  status,
-  priority,
-  assignee,
-  channel,
-  tagNames,
-  dateFrom,
-  dateTo,
-  pagination,
+  criteria,
 }) {
   const { inboxIds, viewAll } = await listAccessibleInboxIds({
     organizationId,
@@ -342,17 +347,8 @@ async function searchConversations({
     orgPermissions,
   });
 
-  const { assigneeMemberId, unassignedOnly } = resolveAssigneeMemberId(
-    assignee,
-    membership.id,
-  );
-
-  const matchedFields = [];
-  if (status) matchedFields.push('status');
-  if (priority) matchedFields.push('priority');
-  if (channel) matchedFields.push('channel');
-  if (assignee) matchedFields.push('assignee');
-  if (tagNames.length) matchedFields.push('tag');
+  const matchedFields = buildMatchedFields(criteria);
+  const tagNames = criteria.tags ?? [];
 
   let tagIds = null;
   if (tagNames.length) {
@@ -370,21 +366,24 @@ async function searchConversations({
     }
   }
 
-  if (text) {
+  if (criteria.text) {
     return searchConversationsFts({
       organizationId,
-      text,
-      status,
-      priority,
-      channel,
-      assigneeMemberId,
-      unassignedOnly,
+      text: criteria.text,
+      statuses: criteria.statuses,
+      priorities: criteria.priorities,
+      channels: criteria.channels,
+      assigneeMemberIds: criteria.assigneeMemberIds,
+      includeUnassigned: criteria.includeUnassigned,
       tagIds,
-      dateFrom,
-      dateTo,
+      dateFrom: criteria.dateFrom,
+      dateTo: criteria.dateTo,
       inboxIds,
       viewAll,
-      pagination,
+      boostMemberId: membership.id,
+      aiIntents: criteria.aiIntents,
+      slaAtRisk: criteria.slaAtRisk,
+      pagination: criteria.pagination,
       matchedFields,
     });
   }
@@ -408,23 +407,18 @@ async function searchConversations({
     .eq('is_spam', false);
 
   query = applyInboxVisibilityFilter(query, inboxIds, viewAll);
-
-  if (status) query = query.eq('status', status);
-  if (priority) query = query.eq('priority', priority);
-  if (channel) query = query.eq('channel_type', channel);
-  if (unassignedOnly) query = query.is('assigned_to_member_id', null);
-  else if (assigneeMemberId) query = query.eq('assigned_to_member_id', assigneeMemberId);
-  if (dateFrom) query = query.gte('last_message_at', dateFrom);
-  if (dateTo) query = query.lte('last_message_at', dateTo);
+  query = applyConversationFilters(query, criteria);
   if (tagConversationIds) query = query.in('id', tagConversationIds);
 
   const { data, error, count } = await query
     .order('last_message_at', { ascending: false })
-    .range(pagination.offset, pagination.offset + pagination.pageSize - 1);
+    .range(criteria.pagination.offset, criteria.pagination.offset + criteria.pagination.pageSize - 1);
 
   if (error) throw new HttpError(500, error.message || 'Conversation search failed.');
 
-  const results = (data ?? []).map((row) => mapConversationRow(row, text, [...matchedFields]));
+  const results = (data ?? []).map((row) =>
+    mapConversationRow(row, criteria.text, [...matchedFields]),
+  );
 
   return {
     results,
@@ -473,19 +467,8 @@ export async function structuredSearch({
   orgPermissions,
   criteria,
 }) {
-  const {
-    text,
-    status,
-    priority,
-    assignee,
-    channel,
-    tags,
-    dateFrom,
-    dateTo,
-    entityType,
-    pagination,
-    rawQuery,
-  } = criteria;
+  const normalized = normalizeSearchCriteria({ ...criteria, memberId: membership.id });
+  const { text, entityType, pagination, rawQuery } = normalized;
 
   let results = [];
   let total = 0;
@@ -510,15 +493,7 @@ export async function structuredSearch({
         organizationId,
         membership,
         orgPermissions,
-        text,
-        status,
-        priority,
-        assignee,
-        channel,
-        tagNames: tags,
-        dateFrom,
-        dateTo,
-        pagination,
+        criteria: normalized,
       }),
       text
         ? searchCustomers({
@@ -544,15 +519,7 @@ export async function structuredSearch({
       organizationId,
       membership,
       orgPermissions,
-      text,
-      status,
-      priority,
-      assignee,
-      channel,
-      tagNames: tags,
-      dateFrom,
-      dateTo,
-      pagination,
+      criteria: normalized,
     });
     results = convHits.results;
     total = convHits.total;
@@ -569,13 +536,15 @@ export async function structuredSearch({
       hasMore: pagination.offset + results.length < total,
     },
     filters: {
-      status: status ?? null,
-      priority: priority ?? null,
-      assignee: assignee ?? null,
-      channel: channel ?? null,
-      tags: tags ?? [],
-      dateFrom: dateFrom ?? null,
-      dateTo: dateTo ?? null,
+      status: normalized.statuses,
+      priority: normalized.priorities,
+      assignee: normalized.assignees,
+      channel: normalized.channels,
+      tags: normalized.tags,
+      aiIntents: normalized.aiIntents,
+      slaAtRisk: normalized.slaAtRisk,
+      dateFrom: normalized.dateFrom,
+      dateTo: normalized.dateTo,
       entityType,
     },
   };

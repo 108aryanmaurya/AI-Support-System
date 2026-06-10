@@ -25,3 +25,16 @@ export function searchWorkspace(organizationId, params = {}) {
   const query = qs.toString()
   return apiFetch(`${searchBase(organizationId)}${query ? `?${query}` : ''}`)
 }
+
+/**
+ * Advanced inbox search (S3) — multi-select filters + facets.
+ * @param {string} organizationId
+ * @param {object} body
+ */
+export function searchWorkspaceAdvanced(organizationId, body = {}) {
+  return apiFetch(`${searchBase(organizationId)}/advanced`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+}

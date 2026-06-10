@@ -141,8 +141,10 @@ flowchart LR
 
 **Exit**
 
-- [ ] Advanced search supports: status, priority, assignee, tags, channel, date range.
-- [ ] Facet counts match results scope (no leakage across org or filters).
+- [x] Advanced search supports: status, priority, assignee, tags, channel, date range.
+- [x] Facet counts match results scope (no leakage across org or filters).
+
+**Evidence:** `POST /api/org/:orgId/search/advanced`, `search_inbox_facets` RPC, `InboxSearchPage.jsx` multi-select + saved searches.
 
 ---
 
@@ -282,7 +284,7 @@ flowchart LR
 | S0 — Baseline + contracts | **Complete** (2026-06-07) — [baseline](../search-infra-baseline.md) |
 | S1 — Structured search API | **Complete** (2026-06-07) |
 | S2 — Postgres FTS | **Complete** (2026-06-08) |
-| S3 — Advanced filters/facets | Not started |
+| S3 — Advanced filters/facets | **Complete** (2026-06-08) |
 | S4 — UX quick + advanced search | Not started |
 | S5 — Indexing + reindex jobs | Not started |
 | S6 — Semantic search (pgvector) | Not started |

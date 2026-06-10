@@ -13,6 +13,7 @@ export function isMissingInboxSearchRpc(error) {
     msg.includes('search_inbox_conversations') ||
     msg.includes('search_inbox_messages') ||
     msg.includes('search_inbox_customers') ||
+    msg.includes('search_inbox_facets') ||
     msg.includes('search_tsv')
   );
 }
@@ -113,30 +114,91 @@ export function mapCustomerFtsRow(row) {
 /**
  * @param {object} params
  */
-export async function searchConversationsFts({
+/**
+ * @param {Array<{ facet_type: string, facet_value: string, facet_label: string, count: number | string }>} rows
+ */
+export function mapFacetRows(rows) {
+  /** @type {Record<string, Array<{ value: string, label: string, count: number }>>} */
+  const facets = { status: [], priority: [], channel: [], assignee: [], tag: [] };
+  for (const row of rows ?? []) {
+    const key = row.facet_type;
+    if (!facets[key]) continue;
+    facets[key].push({
+      value: row.facet_value,
+      label: row.facet_label ?? row.facet_value,
+      count: Number(row.count) || 0,
+    });
+  }
+  return facets;
+}
+
+/**
+ * @param {object} params
+ */
+export async function searchInboxFacets({
   organizationId,
   text,
-  status,
-  priority,
-  channel,
-  assigneeMemberId,
-  unassignedOnly,
+  statuses,
+  priorities,
+  channels,
+  assigneeMemberIds,
+  includeUnassigned,
   tagIds,
   dateFrom,
   dateTo,
   inboxIds,
   viewAll,
+  aiIntents,
+  slaAtRisk,
+}) {
+  const { data, error } = await supabaseAdmin.rpc('search_inbox_facets', {
+    p_organization_id: organizationId,
+    p_query: text ?? '',
+    p_statuses: statuses?.length ? statuses : null,
+    p_priorities: priorities?.length ? priorities : null,
+    p_channels: channels?.length ? channels : null,
+    p_assignee_member_ids: assigneeMemberIds?.length ? assigneeMemberIds : null,
+    p_include_unassigned: includeUnassigned === true,
+    p_tag_ids: tagIds?.length ? tagIds : null,
+    p_date_from: dateFrom ?? null,
+    p_date_to: dateTo ?? null,
+    p_inbox_ids: viewAll ? null : inboxIds,
+    p_view_all_inboxes: viewAll === true,
+    p_ai_intents: aiIntents?.length ? aiIntents : null,
+    p_sla_at_risk: slaAtRisk === true,
+  });
+
+  if (error) throw inboxSearchUnavailableError(error);
+  return mapFacetRows(data ?? []);
+}
+
+export async function searchConversationsFts({
+  organizationId,
+  text,
+  statuses,
+  priorities,
+  channels,
+  assigneeMemberIds,
+  includeUnassigned,
+  tagIds,
+  dateFrom,
+  dateTo,
+  inboxIds,
+  viewAll,
+  boostMemberId,
+  aiIntents,
+  slaAtRisk,
   pagination,
   matchedFields,
 }) {
   const { data, error } = await supabaseAdmin.rpc('search_inbox_conversations', {
     p_organization_id: organizationId,
     p_query: text,
-    p_status: status ?? null,
-    p_priority: priority ?? null,
-    p_channel: channel ?? null,
-    p_assignee_member_id: assigneeMemberId ?? null,
-    p_unassigned_only: unassignedOnly === true,
+    p_status: null,
+    p_priority: null,
+    p_channel: null,
+    p_assignee_member_id: null,
+    p_unassigned_only: false,
     p_tag_ids: tagIds?.length ? tagIds : null,
     p_date_from: dateFrom ?? null,
     p_date_to: dateTo ?? null,
@@ -144,6 +206,14 @@ export async function searchConversationsFts({
     p_view_all_inboxes: viewAll === true,
     p_offset: pagination.offset,
     p_limit: pagination.pageSize,
+    p_statuses: statuses?.length ? statuses : null,
+    p_priorities: priorities?.length ? priorities : null,
+    p_channels: channels?.length ? channels : null,
+    p_assignee_member_ids: assigneeMemberIds?.length ? assigneeMemberIds : null,
+    p_include_unassigned: includeUnassigned === true,
+    p_boost_member_id: boostMemberId ?? null,
+    p_ai_intents: aiIntents?.length ? aiIntents : null,
+    p_sla_at_risk: slaAtRisk === true,
   });
 
   if (error) throw inboxSearchUnavailableError(error);
